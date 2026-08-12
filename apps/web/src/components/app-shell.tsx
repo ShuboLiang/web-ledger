@@ -27,6 +27,7 @@ const mobileNav = [
   { key: "/more", label: "更多", icon: <MoreOutlined /> },
 ];
 const morePaths = new Set(["/more", "/budgets", "/ai", "/management", "/settings"]);
+const analyticsFilterKey = "qing-zhang-analytics-filter";
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"], "/transactions": ["账目明细", "查找、核对和整理每一笔账目"],
   "/analytics": ["统计分析", "比较周期、分类与长期变化"], "/ai": ["AI 助手", "用自然语言记账和查询"],
@@ -46,6 +47,7 @@ export function AppShell() {
   const { data: auth } = useQuery({ queryKey: ["auth-me"], queryFn: () => api<{ user: AuthUser }>("/api/auth/me"), staleTime: Infinity });
   const logout = useMutation({ mutationFn: () => api("/api/auth/logout", { method: "POST" }), onSuccess: () => { queryClient.clear(); window.location.assign("/login"); } });
   const [title, subtitle] = titles[location.pathname] || titles["/dashboard"];
+  const analyticsHref = () => { const saved = sessionStorage.getItem(analyticsFilterKey); return saved ? `/analytics${saved}` : "/analytics"; };
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } };
     window.addEventListener("keydown", openSearch);
@@ -67,7 +69,7 @@ export function AppShell() {
   return <Layout className="app-layout">
     {desktop && <Sider width={240} className="app-sider">
       <Button type="text" className="brand" onClick={() => navigate("/dashboard")}><BookTwoTone twoToneColor="#70d2bf" className="brand-icon" /><span><b>轻账</b><small>PERSONAL LEDGER</small></span></Button>
-      <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={nav} onClick={({ key }) => navigate(key)} />
+      <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={nav} onClick={({ key }) => navigate(key === "/analytics" ? analyticsHref() : key)} />
     </Sider>}
     <Layout>
       <Header className="app-header">
@@ -85,7 +87,7 @@ export function AppShell() {
       </Header>
       <Content className="app-content"><Outlet /></Content>
     </Layout>
-    {!desktop && <div className="mobile-nav"><Flex align="center" justify="space-around">{mobileNav.slice(0, 2).map((item) => <Button type="text" key={item.key} className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>)}<Button type="primary" shape="circle" size="large" icon={<PlusOutlined />} className="mobile-add" aria-label="记一笔" onClick={() => setDrawer(true)} />{mobileNav.slice(2).map((item) => { const active = item.key === "/more" ? morePaths.has(location.pathname) : location.pathname === item.key; return <Button type="text" key={item.key} className={`mobile-nav-item ${active ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>; })}</Flex></div>}
+    {!desktop && <div className="mobile-nav"><Flex align="center" justify="space-around">{mobileNav.slice(0, 2).map((item) => <Button type="text" key={item.key} className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`} onClick={() => navigate(item.key === "/analytics" ? analyticsHref() : item.key)} icon={item.icon}><span>{item.label}</span></Button>)}<Button type="primary" shape="circle" size="large" icon={<PlusOutlined />} className="mobile-add" aria-label="记一笔" onClick={() => setDrawer(true)} />{mobileNav.slice(2).map((item) => { const active = item.key === "/more" ? morePaths.has(location.pathname) : location.pathname === item.key; return <Button type="text" key={item.key} className={`mobile-nav-item ${active ? "active" : ""}`} onClick={() => navigate(item.key === "/analytics" ? analyticsHref() : item.key)} icon={item.icon}><span>{item.label}</span></Button>; })}</Flex></div>}
     <Modal open={searchOpen} title="搜索全部账目" footer={null} destroyOnHidden onCancel={() => setSearchOpen(false)}>
       <Typography.Paragraph type="secondary">可搜索项目、备注、一级分类和二级分类，结果会在账目工作区中展示。</Typography.Paragraph>
       <Input.Search autoFocus allowClear size="large" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} onSearch={submitSearch} enterButton="搜索" placeholder="例如：午饭、饮品、出差" />

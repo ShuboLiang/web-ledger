@@ -43,11 +43,13 @@ export class LedgerService {
     return rows.map((row) => this.serialize(row));
   }
 
-  async pageTransactions({ page = 1, pageSize = 20, date = "", month = "", query = "", category1 = "", category2 = "", direction = "", sortBy = "date", sortOrder = "desc", accountId = "" }: Record<string, unknown> = {}) {
+  async pageTransactions({ page = 1, pageSize = 20, date = "", month = "", start = "", end = "", query = "", category1 = "", category2 = "", direction = "", sortBy = "date", sortOrder = "desc", accountId = "" }: Record<string, unknown> = {}) {
     const { ledgerId } = await this.context();
     const take = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
     const selectedDate = /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(date)) ? String(date) : "";
     const selectedMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(month)) ? String(month) : "";
+    const selectedStart = /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(start)) ? String(start) : "";
+    const selectedEnd = /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(String(end)) ? String(end) : "";
     const search = clean(query, 80);
     const primary = clean(category1, 40);
     const secondary = clean(category2, 40);
@@ -59,6 +61,10 @@ export class LedgerService {
     } else if (selectedMonth) {
       const [year, monthNumber] = selectedMonth.split("-").map(Number);
       where.date = { gte: new Date(Date.UTC(year, monthNumber - 1, 1)), lt: new Date(Date.UTC(year, monthNumber, 1)) };
+    } else if (selectedStart && selectedEnd && selectedStart <= selectedEnd) {
+      const [startYear, startMonth, startDay] = selectedStart.split("-").map(Number);
+      const [endYear, endMonth, endDay] = selectedEnd.split("-").map(Number);
+      where.date = { gte: new Date(Date.UTC(startYear, startMonth - 1, startDay)), lt: new Date(Date.UTC(endYear, endMonth - 1, endDay + 1)) };
     }
     if (search) where.OR = ["item", "note", "category1", "category2"].map((field) => ({ [field]: { contains: search, mode: "insensitive" } })) as Prisma.TransactionWhereInput[];
     if (primary) where.category1 = primary;
@@ -71,7 +77,7 @@ export class LedgerService {
     const totalPages = Math.max(1, Math.ceil(total / take));
     const current = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const rows = await this.prisma.transaction.findMany({ where, include: { account: { select: { name: true } } }, take, skip: (current - 1) * take, orderBy: [{ [orderField]: order }, { id: order }] });
-    return { records: rows.map((row) => this.serialize(row)), total, page: current, pageSize: take, totalPages, date: selectedDate, month: selectedMonth, query: search, category1: primary, category2: secondary, direction: selectedDirection, sortBy: orderField, sortOrder: order };
+    return { records: rows.map((row) => this.serialize(row)), total, page: current, pageSize: take, totalPages, date: selectedDate, month: selectedMonth, start: selectedStart, end: selectedEnd, query: search, category1: primary, category2: secondary, direction: selectedDirection, sortBy: orderField, sortOrder: order };
   }
 
   async get(id: string | number) {

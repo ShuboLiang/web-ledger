@@ -79,6 +79,40 @@ function monthlySeries(records: any[], anchor: string) {
   });
 }
 
+function periodSeries(records: any[], start: string, end: string, scope: string) {
+  if (scope === "year") {
+    const series: { key: string; label: string; amount: number }[] = [];
+    let cursor = startOfMonth(start);
+    while (cursor <= end) {
+      series.push({ key: cursor.slice(0, 7), label: `${Number(cursor.slice(5, 7))}月`, amount: sumRange(records, cursor, endOfMonth(cursor) > end ? end : endOfMonth(cursor)) });
+      const date = utcDate(cursor);
+      date.setUTCMonth(date.getUTCMonth() + 1);
+      cursor = dateString(date);
+    }
+    return series;
+  }
+  const days = Math.round((utcDate(end).getTime() - utcDate(start).getTime()) / 86_400_000) + 1;
+  return Array.from({ length: days }, (_, index) => {
+    const date = addDays(start, index);
+    return { key: date, label: date.slice(5).replace("-", "/"), amount: sumRange(records, date, date) };
+  });
+}
+
+function comparisonBreakdown(records: any[], start: string, end: string) {
+  const days = Math.round((utcDate(end).getTime() - utcDate(start).getTime()) / 86_400_000) + 1;
+  const previousEnd = addDays(start, -1);
+  const previousStart = addDays(previousEnd, -days + 1);
+  const current = breakdown(records, start, end);
+  const previous = breakdown(records, previousStart, previousEnd);
+  const currentMap = new Map(current.map((row) => [row.category, row.amount]));
+  const previousMap = new Map(previous.map((row) => [row.category, row.amount]));
+  return [...new Set([...currentMap.keys(), ...previousMap.keys()])].map((category) => {
+    const currentAmount = currentMap.get(category) || 0;
+    const previousAmount = previousMap.get(category) || 0;
+    return { category, current: currentAmount, previous: previousAmount, difference: Number((currentAmount - previousAmount).toFixed(2)) };
+  }).sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly ledger: LedgerService, private readonly prisma: PrismaService) {}
@@ -129,7 +163,9 @@ export class DashboardService {
       breakdowns: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, breakdown(records, start, end)])),
       secondaryBreakdowns: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, breakdown(records, start, end, "secondary")])),
       series: { day: dailySeries(records, anchor), week: weeklySeries(records, anchor), month: monthlySeries(records, anchor) },
+      rangeSeries: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, periodSeries(records, start, end, key)])),
       comparison,
+      comparisonBreakdowns: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, comparisonBreakdown(records, start, end)])),
       yearHeatmap: [...yearExpenses.entries()].map(([date, amount]) => [date, Number(amount.toFixed(2))]),
       transactionCount: records.length,
       budget: budgetRow ? { id: budgetRow.id, month: anchor.slice(0, 7), amount: budgetAmount, used: budgetUsed, remaining: Number((budgetAmount - budgetUsed).toFixed(2)), usageRate: budgetRate, status: budgetRate > 1 ? "over" : budgetRate >= 0.8 ? "warning" : "normal" } : null,
@@ -149,6 +185,18 @@ export class DashboardService {
       let cursor = startOfMonth(start);
       while (cursor <= end) { series.push({ key: cursor.slice(0, 7), label: cursor.slice(0, 7), amount: sumRange(records, cursor < start ? start : cursor, endOfMonth(cursor) > end ? end : endOfMonth(cursor)) }); const date = utcDate(cursor); date.setUTCMonth(date.getUTCMonth() + 1); cursor = dateString(date); }
     }
-    return { start, end, days, cashflow: cashflowRange(records, start, end), breakdown: breakdown(records, start, end), secondaryBreakdown: breakdown(records, start, end, "secondary"), series };
+    const previousEnd = addDays(start, -1);
+    const previousStart = addDays(previousEnd, -days + 1);
+    const currentExpense = sumRange(records, start, end);
+    const previousExpense = sumRange(records, previousStart, previousEnd);
+    return {
+      start, end, days,
+      cashflow: cashflowRange(records, start, end),
+      breakdown: breakdown(records, start, end),
+      secondaryBreakdown: breakdown(records, start, end, "secondary"),
+      comparisonBreakdown: comparisonBreakdown(records, start, end),
+      comparison: { current: currentExpense, previous: previousExpense, change: previousExpense ? (currentExpense - previousExpense) / previousExpense : null, previousRange: [previousStart, previousEnd] },
+      series,
+    };
   }
 }

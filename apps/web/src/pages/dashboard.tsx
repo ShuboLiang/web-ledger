@@ -1,10 +1,11 @@
 import { ArrowRightOutlined, FileDoneOutlined, RobotOutlined } from "@ant-design/icons";
-import { Line, Pie } from "@ant-design/plots";
+import { Line } from "@ant-design/plots";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, Button, Card, Col, Empty, Flex, List, Progress, Row, Skeleton, Statistic, Tag, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
 import { api, type Dashboard, type DashboardBudget, type Transaction } from "@/lib/api";
 import { money } from "@/lib/utils";
+import { CategoryBreakdownBars } from "@/components/category-breakdown-bars";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -25,19 +26,6 @@ export function DashboardPage() {
     style: { lineWidth: 2.5, stroke: "#2a8277" },
     axis: { x: { tick: false }, y: { labelFormatter: (value: number) => `¥${value}`, gridStroke: "#e3e9e4" } },
     tooltip: { title: { field: "label" }, items: [{ field: "amount", name: "支出金额", valueFormatter: (value: number) => money(value) }] },
-  };
-  const pieData = data.breakdowns.month.map((row) => ({ category: row.category, amount: row.amount, share: row.share }));
-  const pieConfig: any = {
-    data: pieData,
-    angleField: "amount",
-    colorField: "category",
-    innerRadius: 0.68,
-    height: 290,
-    autoFit: true,
-    label: false,
-    scale: { color: { range: ["#176b62", "#6d8f78", "#c99748", "#c96b52", "#6d7795", "#9a7f67", "#88b5aa"] } },
-    legend: { color: { position: "bottom", layout: { justifyContent: "center" } } },
-    tooltip: { title: { field: "category" }, items: [{ field: "amount", name: "支出金额", valueFormatter: (value: number) => money(value) }, { field: "share", name: "占比", valueFormatter: (value: number) => `${(value * 100).toFixed(1)}%` }] },
   };
 
   return <div className="page-stack dashboard-page">
@@ -61,7 +49,7 @@ export function DashboardPage() {
         </Card>
       </Col>
       <Col xs={24} xl={14}>
-        <Card className="trend-card" title="每日支出轨迹" extra={<Button type="link" onClick={() => navigate("/analytics")}>打开完整分析 <ArrowRightOutlined /></Button>}>
+        <Card className="trend-card" title="每日支出轨迹" extra={<Button type="link" onClick={() => { const saved = sessionStorage.getItem("qing-zhang-analytics-filter"); navigate(saved ? `/analytics${saved}` : "/analytics"); }}>打开完整分析 <ArrowRightOutlined /></Button>}>
           <Line {...trendConfig} />
         </Card>
       </Col>
@@ -85,7 +73,7 @@ export function DashboardPage() {
     <Row gutter={[18, 18]}>
       <Col xs={24} lg={12} xl={8}>
         <Card className="category-overview-card" title="本月支出结构" extra={<Typography.Text type="secondary">{money(flow.expense)}</Typography.Text>}>
-          {pieData.length ? <Pie {...pieConfig} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月还没有支出" />}
+          {data.breakdowns.month.length ? <CategoryBreakdownBars rows={data.breakdowns.month} onCategoryClick={(row) => navigate(`/transactions?month=${data.anchor.slice(0, 7)}&category1=${encodeURIComponent(row.parent || row.category)}`)} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月还没有支出" />}
         </Card>
       </Col>
       <Col xs={24} lg={12} xl={10}>

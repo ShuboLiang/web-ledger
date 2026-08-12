@@ -121,6 +121,11 @@ try {
   const customRange = await request("/api/dashboard/range?start=2026-08-01&end=2026-08-31");
   assert.equal(customRange.days, 31);
   assert.equal(customRange.cashflow.expense, 25);
+  assert.equal(customRange.series.length, 31);
+  assert.ok(Array.isArray(customRange.comparisonBreakdown));
+  const rangedPage = await request("/api/transactions?start=2026-08-01&end=2026-08-11&page=1&pageSize=100");
+  assert.equal(rangedPage.total, 25);
+  assert.equal((await request("/api/dashboard?anchor=2026-08-11")).rangeSeries.week.length, 7);
   const account = await request("/api/management/accounts", { method: "POST", body: JSON.stringify({ name: "测试账户", type: "cash", openingBalance: 0 }) });
   const management = await request("/api/management");
   assert.ok(management.accounts.some((row) => row.id === account.id));

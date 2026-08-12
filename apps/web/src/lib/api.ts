@@ -1,5 +1,6 @@
 export type Transaction = { id: number; date: string; amount: number; item: string; category1: string; category2: string; accountId?: string; accountName?: string; note: string };
 export type Breakdown = { category: string; parent?: string; amount: number; share: number };
+export type BreakdownChange = { category: string; current: number; previous: number; difference: number };
 export type DashboardBudget = { id: string; month: string; category1?: string; amount: number; used: number; remaining: number; usageRate: number; status: "normal" | "warning" | "over" };
 export type Dashboard = {
   latestDate: string; anchor: string; transactionCount: number;
@@ -9,7 +10,9 @@ export type Dashboard = {
   breakdowns: Record<string, Breakdown[]>;
   secondaryBreakdowns: Record<string, Breakdown[]>;
   series: Record<string, { key: string; label: string; amount: number }[]>;
+  rangeSeries: Record<string, { key: string; label: string; amount: number }[]>;
   comparison: Record<string, { current: number; previous: number; change: number | null; previousRange: [string, string] }>;
+  comparisonBreakdowns: Record<string, BreakdownChange[]>;
   yearHeatmap: [string, number][];
   budget: DashboardBudget | null;
   categoryBudgets: DashboardBudget[];
