@@ -213,7 +213,7 @@ button, input, textarea, select { font: inherit; }
 .section-label { display: block; margin: 22px 8px 8px; font-size: 10px; font-weight: 700; letter-spacing: .14em; }
 .ai-pending .section-label { margin: 0; }
 .ai-pending h5 { margin: 4px 0 0 !important; }
-.ai-chat { display: flex; min-width: 0; flex-direction: column; background: white; }
+.ai-chat { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: white; }
 .ai-chat-header { min-height: 64px; padding: 12px 18px; border-bottom: 1px solid #eef2f3; }
 .ai-chat-header > .ant-flex:first-child > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .ai-messages { flex: 1; min-height: 0; padding: 20px !important; overflow-y: auto; }

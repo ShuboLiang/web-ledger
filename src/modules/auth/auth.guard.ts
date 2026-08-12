@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
+import { CanActivate, ExecutionContext, Inject, Injectable, Optional, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { createHash } from "node:crypto";
 import type { Request } from "express";
@@ -7,7 +7,10 @@ import { PUBLIC_ROUTE } from "./public.decorator.js";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService, private readonly reflector: Reflector) {}
+  private reflector: Reflector;
+  constructor(private readonly prisma: PrismaService, @Optional() @Inject(Reflector) reflector?: Reflector) {
+    this.reflector = reflector ?? new Reflector();
+  }
   async canActivate(context: ExecutionContext) {
     const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_ROUTE, [context.getHandler(), context.getClass()]);
     if (isPublic) return true;

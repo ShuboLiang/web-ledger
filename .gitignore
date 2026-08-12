@@ -11,3 +11,4 @@ tests/models-store.json
 *.log
 *.tar
 *.tar.gz
+pgdata

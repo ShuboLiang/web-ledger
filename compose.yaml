@@ -14,9 +14,7 @@ services:
       POSTGRES_PASSWORD: lsb19970624
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      # 账目、分类、账户、模型配置和审计日志都保存在这个固定命名卷中。
-      # 更新或重建容器不会删除它；不要执行 `docker compose down -v`。
-      - postgres_data:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -78,7 +76,4 @@ services:
         pg_dump -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "$$target";
         echo "Backup created: $$target"
 
-volumes:
-  postgres_data:
-    # 固定名称保证即使更换项目目录，仍然连接同一份本机数据库。
-    name: qing-zhang-postgres-data
+# PostgreSQL 数据现在直接保存在本地 ./pgdata 目录中（bind mount）。
