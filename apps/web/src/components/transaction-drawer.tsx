@@ -6,7 +6,7 @@ import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Dictionaries, type Transaction } from "@/lib/api";
 
-type FormValues = { date: any; direction: "expense" | "income"; amount: number; item: string; category1: string; category2: string; accountId?: string; note?: string };
+type FormValues = { date: any; direction: "expense" | "income"; amount: number; item: string; category1: string; category2: string; note?: string };
 
 export function TransactionDrawer({ open, onOpenChange, record }: { open: boolean; onOpenChange: (open: boolean) => void; record?: Transaction | null }) {
   const [form] = Form.useForm<FormValues>();
@@ -22,7 +22,7 @@ export function TransactionDrawer({ open, onOpenChange, record }: { open: boolea
     if (!open) return;
     const category1 = record?.category1 || (primaryOptions.includes("餐饮") ? "餐饮" : primaryOptions[0]) || "";
     const category2 = record?.category2 || categories.find((row) => row.category1 === category1)?.category2 || "";
-    form.setFieldsValue({ date: dayjs(record?.date), direction: record ? (record.amount > 0 ? "income" : "expense") : "expense", amount: record ? Math.abs(record.amount) : undefined, item: record?.item || "", category1, category2, accountId: record?.accountId || data?.accounts?.[0]?.id, note: record?.note || "" });
+    form.setFieldsValue({ date: dayjs(record?.date), direction: record ? (record.amount > 0 ? "income" : "expense") : "expense", amount: record ? Math.abs(record.amount) : undefined, item: record?.item || "", category1, category2, note: record?.note || "" });
   }, [open, record, data]);
   const save = useMutation({
     mutationFn: (values: FormValues) => api(record ? `/api/transactions/${record.id}` : "/api/transactions", { method: record ? "PUT" : "POST", body: JSON.stringify({ ...values, date: values.date.format("YYYY-MM-DD") }) }),
@@ -39,7 +39,6 @@ export function TransactionDrawer({ open, onOpenChange, record }: { open: boolea
       <Form.Item label="项目" name="item" rules={[{ required: true, whitespace: true, max: 80 }]}><Input placeholder="例如：午饭" list="project-options" /></Form.Item>
       <datalist id="project-options">{data?.projects.map((value) => <option key={value} value={value} />)}</datalist>
       <div className="form-grid-2"><Form.Item label="一级分类" name="category1" rules={[{ required: true }]}><Select aria-label="一级分类" placeholder="请选择" options={primaryChoices} onChange={(category1) => form.setFieldValue("category2", categories.find((row) => row.category1 === category1)?.category2)} /></Form.Item><Form.Item label="二级分类" name="category2" rules={[{ required: true }]}><Select aria-label="二级分类" disabled={!selectedPrimary} placeholder="请先选择一级分类" options={secondaryChoices} /></Form.Item></div>
-      <Form.Item label="账户" name="accountId"><Select options={data?.accounts?.map((account) => ({ label: account.name, value: account.id })) || []} placeholder="默认账户" /></Form.Item>
       <Form.Item label="备注" name="note" rules={[{ max: 500 }]}><Input.TextArea rows={4} showCount maxLength={500} /></Form.Item>
     </Form>
   </Drawer>;

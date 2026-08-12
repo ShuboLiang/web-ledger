@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { LedgerService } from "../../infrastructure/ledger/ledger.service.js";
+import { PrismaService } from "../../infrastructure/prisma/prisma.service.js";
 
 const utcDate = (value: string) => new Date(`${value}T00:00:00Z`);
 const dateString = (value: Date) => value.toISOString().slice(0, 10);
@@ -80,7 +81,7 @@ function monthlySeries(records: any[], anchor: string) {
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly ledger: LedgerService) {}
+  constructor(private readonly ledger: LedgerService, private readonly prisma: PrismaService) {}
 
   async build(requestedAnchor?: string | null) {
     const records = await this.ledger.allTransactions() as any[];
@@ -101,6 +102,22 @@ export class DashboardService {
       const previous = sumRange(records, previousStart, previousEnd);
       return [key, { current, previous, change: previous ? (current - previous) / previous : null, previousRange: [previousStart, previousEnd] }];
     }));
+    const cashflow = Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, cashflowRange(records, start, end)])) as Record<string, { expense: number; income: number; balance: number }>;
+    const { ledgerId } = await this.ledger.context();
+    const budgetRows = await this.prisma.budget.findMany({ where: { ledgerId, month: utcDate(startOfMonth(anchor)) }, orderBy: { category1: "asc" } });
+    const budgetRow = budgetRows.find((row) => row.category1 === null) || null;
+    const budgetAmount = Number(budgetRow?.amount || 0);
+    const budgetUsed = cashflow.month.expense;
+    const budgetRate = budgetAmount > 0 ? budgetUsed / budgetAmount : 0;
+    const monthBreakdown = breakdown(records, ranges.month[0], ranges.month[1]);
+    const categorySpending = new Map(monthBreakdown.map((row) => [row.category, row.amount]));
+    const riskRank: Record<string, number> = { over: 2, warning: 1, normal: 0 };
+    const categoryBudgets = budgetRows.filter((row) => row.category1 !== null).map((row) => {
+      const amount = Number(row.amount);
+      const used = categorySpending.get(row.category1!) || 0;
+      const usageRate = amount > 0 ? used / amount : 0;
+      return { id: row.id, month: anchor.slice(0, 7), category1: row.category1!, amount, used, remaining: Number((amount - used).toFixed(2)), usageRate, status: usageRate > 1 ? "over" : usageRate >= 0.8 ? "warning" : "normal" };
+    }).sort((a, b) => riskRank[b.status] - riskRank[a.status] || b.usageRate - a.usageRate);
     const yearExpenses = new Map<string, number>();
     for (const row of records) if (row.date.startsWith(anchor.slice(0, 4)) && row.amount < 0) yearExpenses.set(row.date, (yearExpenses.get(row.date) || 0) - Number(row.amount));
     return {
@@ -108,13 +125,15 @@ export class DashboardService {
       anchor,
       ranges,
       totals: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, sumRange(records, start, end)])),
-      cashflow: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, cashflowRange(records, start, end)])),
+      cashflow,
       breakdowns: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, breakdown(records, start, end)])),
       secondaryBreakdowns: Object.fromEntries(Object.entries(ranges).map(([key, [start, end]]) => [key, breakdown(records, start, end, "secondary")])),
       series: { day: dailySeries(records, anchor), week: weeklySeries(records, anchor), month: monthlySeries(records, anchor) },
       comparison,
       yearHeatmap: [...yearExpenses.entries()].map(([date, amount]) => [date, Number(amount.toFixed(2))]),
       transactionCount: records.length,
+      budget: budgetRow ? { id: budgetRow.id, month: anchor.slice(0, 7), amount: budgetAmount, used: budgetUsed, remaining: Number((budgetAmount - budgetUsed).toFixed(2)), usageRate: budgetRate, status: budgetRate > 1 ? "over" : budgetRate >= 0.8 ? "warning" : "normal" } : null,
+      categoryBudgets,
     };
   }
 

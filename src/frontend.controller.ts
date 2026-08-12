@@ -4,7 +4,7 @@ import path from "node:path";
 
 @Controller()
 export class FrontendController {
-  @Get(["dashboard", "transactions", "analytics", "ai", "management", "settings"])
+  @Get(["login", "register", "dashboard", "transactions", "analytics", "budgets", "ai", "management", "settings", "more"])
   render(@Res() response: Response) {
     return response.sendFile(path.join(process.cwd(), "dist-web", "index.html"));
   }

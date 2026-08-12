@@ -6,12 +6,12 @@ services:
     restart: unless-stopped
     shm_size: 256mb
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: qingzhang
+      POSTGRES_USER: qingzhang
+      POSTGRES_PASSWORD: lsb19970624
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       # 账目、分类、账户、模型配置和审计日志都保存在这个固定命名卷中。
@@ -33,26 +33,24 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
     ports:
-      - "${QING_ZHANG_PORT:-3218}:3218"
+      - "3218:3218"
     environment:
       TZ: Asia/Shanghai
       PORT: 3218
       HOST: 0.0.0.0
-      DATABASE_URL: ${DATABASE_URL_DOCKER}
+      DATABASE_URL: postgresql://qingzhang:lsb19970624@postgres:5432/qingzhang
       DATA_DIR: /app/data
       INITIAL_LEDGER_PATH: /app/seed/initial-ledger.json
+      # 直接使用 http://IP:3218 时保持 0；经 HTTPS 反向代理后改为 1。
+      COOKIE_SECURE: 0
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       # Pi SDK 生成的模型文件等运行数据，直接保存在宿主机目录中。
       - type: bind
-        source: ${QING_ZHANG_DATA_DIR:-./data}
+        source: ./data
         target: /app/data
-      # Pi 登录信息和 Agent 配置，直接保存在宿主机目录中。
-      - type: bind
-        source: ${PI_AGENT_DIR:-./pi}
-        target: /home/node/.pi/agent
 
   # 一次性备份工具：docker compose run --rm backup
   # 输出 PostgreSQL 自定义格式备份到宿主机 ./backups（可通过环境变量修改）。
@@ -64,12 +62,12 @@ services:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: qingzhang
+      POSTGRES_USER: qingzhang
+      PGPASSWORD: lsb19970624
     volumes:
       - type: bind
-        source: ${QING_ZHANG_BACKUP_DIR:-./backups}
+        source: ./backups
         target: /backups
     entrypoint: ["/bin/sh", "-c"]
     command:

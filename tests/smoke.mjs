@@ -13,7 +13,7 @@ const testUrl = new URL(process.env.DATABASE_URL);
 testUrl.searchParams.set("schema", schema);
 process.env.DATABASE_URL = testUrl.toString();
 const testDataDir = mkdtempSync(path.join(tmpdir(), "qing-zhang-smoke-"));
-const modelsPath = path.join(testDataDir, "pi-models.json");
+let modelsPath = "";
 process.env.NO_SEED = "1";
 process.env.DATA_DIR = testDataDir;
 execFileSync(process.execPath, [path.join(here, "..", "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], { cwd: path.join(here, ".."), env: process.env, stdio: "ignore" });
@@ -22,16 +22,20 @@ const { parseLocally } = await import("../lib/ai.mjs");
 const { app, server } = await startServer({ port: 0 });
 const port = server.address().port;
 const base = `http://127.0.0.1:${port}`;
+let sessionCookie = "";
+let lastSetCookie = "";
 
 async function request(pathname, options = {}) {
-  const response = await fetch(`${base}${pathname}`, { headers: { "Content-Type": "application/json" }, ...options });
+  const response = await fetch(`${base}${pathname}`, { ...options, headers: { "Content-Type": "application/json", ...(sessionCookie ? { Cookie: sessionCookie } : {}), ...options.headers } });
+  const setCookie = response.headers.get("set-cookie");
+  if (setCookie) { lastSetCookie = setCookie; sessionCookie = setCookie.split(";", 1)[0]; }
   const body = await response.json();
   assert.ok(response.ok, body.error || `HTTP ${response.status}`);
   return body;
 }
 
 async function requestError(pathname, options = {}) {
-  const response = await fetch(`${base}${pathname}`, { headers: { "Content-Type": "application/json" }, ...options });
+  const response = await fetch(`${base}${pathname}`, { ...options, headers: { "Content-Type": "application/json", ...(sessionCookie ? { Cookie: sessionCookie } : {}), ...options.headers } });
   const body = await response.json();
   assert.equal(response.ok, false, `Expected ${pathname} to fail`);
   return { status: response.status, body };
@@ -46,6 +50,14 @@ try {
   assert.match(page, /\/assets\//);
   const dashboardPage = await (await fetch(`${base}/dashboard`)).text();
   assert.match(dashboardPage, /id="root"/);
+  assert.equal((await requestError("/api/dashboard")).status, 401);
+  const registered = await request("/api/auth/register", { method: "POST", body: JSON.stringify({ username: "smoke_user", displayName: "冒烟测试", password: "SmokePass123!" }) });
+  assert.equal(registered.user.username, "smoke_user");
+  modelsPath = path.join(testDataDir, `pi-models-${registered.user.id}.json`);
+  assert.ok(sessionCookie.startsWith("qing_zhang_session="));
+  assert.match(lastSetCookie, /Max-Age=315360000/i);
+  assert.match(lastSetCookie, /HttpOnly/i);
+  assert.equal((await request("/api/auth/me")).user.displayName, "冒烟测试");
   assert.equal((await request("/api/ai/conversations/smoke-conversation", { method: "DELETE" })).ok, true);
   const savedSettings = await request("/api/ai/settings", {
     method: "PUT",
@@ -140,7 +152,23 @@ try {
   const primaryDelete = await request(`/api/management/categories/primary/${encodeURIComponent("已改一级")}`, { method: "DELETE" });
   assert.equal(primaryDelete.deleted, 1);
 
-  console.log("Smoke test passed: PostgreSQL health, profiles, CRUD, summaries, custom range, classification lifecycle, accounts, filtering, pagination, parser");
+  const firstUserCookie = sessionCookie;
+  const firstUserTotal = (await request("/api/transactions?page=1&pageSize=1")).total;
+  const secondUser = await request("/api/auth/register", { method: "POST", body: JSON.stringify({ username: "smoke_second", displayName: "隔离测试", password: "SmokePass456!" }) });
+  assert.equal(secondUser.user.username, "smoke_second");
+  assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 0);
+  assert.equal((await request("/api/ai/settings")).profiles.length, 0);
+  const secondRecord = await request("/api/transactions", { method: "POST", body: JSON.stringify({ date: "2026-08-12", amount: 9, direction: "expense", item: "第二用户账目", category1: "餐饮", category2: "午餐" }) });
+  assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 1);
+  sessionCookie = firstUserCookie;
+  assert.equal((await request("/api/transactions?page=1&pageSize=1")).total, firstUserTotal);
+  assert.equal((await request("/api/transactions?query=第二用户账目&page=1&pageSize=20")).total, 0);
+  sessionCookie = lastSetCookie.split(";", 1)[0];
+  await request("/api/auth/logout", { method: "POST" });
+  assert.equal((await requestError("/api/auth/me")).status, 401);
+  sessionCookie = firstUserCookie;
+
+  console.log("Smoke test passed: auth, long-lived session, user isolation, PostgreSQL health, profiles, CRUD, summaries, custom range, classification lifecycle, accounts, filtering, pagination, parser");
 } finally {
   await app.close();
   const cleanup = new PrismaClient();

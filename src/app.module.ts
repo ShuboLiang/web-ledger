@@ -10,12 +10,14 @@ import { HealthModule } from "./modules/health/health.module.js";
 import { TransactionsModule } from "./modules/transactions/transactions.module.js";
 import { ManagementModule } from "./modules/management/management.module.js";
 import { FrontendController } from "./frontend.controller.js";
+import { AuthModule } from "./modules/auth/auth.module.js";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({ rootPath: path.join(process.cwd(), "dist-web") }),
     LedgerModule,
+    AuthModule,
     DashboardModule,
     TransactionsModule,
     DictionariesModule,

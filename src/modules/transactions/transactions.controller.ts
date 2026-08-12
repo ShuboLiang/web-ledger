@@ -7,7 +7,7 @@ export class TransactionsController {
 
   @Get()
   async list(@Query() query: Record<string, string>) {
-    const paged = ["page", "month", "pageSize", "query", "category1", "category2", "direction", "accountId", "sortBy", "sortOrder"].some((key) => Object.hasOwn(query, key));
+    const paged = ["page", "date", "month", "pageSize", "query", "category1", "category2", "direction", "accountId", "sortBy", "sortOrder"].some((key) => Object.hasOwn(query, key));
     return paged ? this.ledger.pageTransactions(query) : { records: await this.ledger.listTransactions(query.limit) };
   }
 

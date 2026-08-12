@@ -12,6 +12,7 @@
 - 表单与反馈：Ant Design Form、Drawer、App 消息上下文与图标组件。
 - 图表与 AI 界面：Ant Design Charts；Ant Design X Conversations、Bubble、Sender；支持 Markdown 渲染和路由级代码拆分。
 - 数据：PostgreSQL 17、Prisma ORM、版本化迁移、审计日志；正式数据与容器生命周期分离。
+- 认证：用户名密码注册登录、PostgreSQL 持久会话、HttpOnly Cookie 和逐用户数据隔离。
 - AI：Pi SDK 仅位于 AI 基础设施层，通过账本工具访问领域能力。
 
 ## 已实现
@@ -29,11 +30,13 @@
 - 桌面端侧栏与全局顶栏；移动端底部导航和中央记账入口。
 - 新增、编辑账目使用右侧 Drawer，取消不会触发表单必填校验。
 - URL 保存账目筛选、服务端分页/排序、多选、筛选保存和 CSV 导出。
-- 分析页同时展示一级与二级分类饼图、环比、年度热力图和大额支出。
+- 分析页同时展示一级与二级分类饼图、环比、每日支出日历和大额支出；日历按月切换，点击日期可查看当天账目，跨年范围由趋势图统一汇总。
 - AI 独立多轮对话工作区、Markdown 渲染和待确认操作栏。
 - 自然语言记账和账本问答。
 - 首次启动自动导入当前 `记账.xlsx` 对应的 10 笔初始数据。
 - 新项目和“一级分类 + 二级分类”组合自动去重加入字典。
+- 注册、登录和退出；登录会话在服务端不设过期时间，浏览器 Cookie 采用十年期限并可由退出操作立即吊销。
+- 账目、分类、预算、AI 模型配置和 AI 对话按用户隔离；首个注册用户自动接管升级前已有数据。
 
 ## 启动
 
@@ -64,7 +67,7 @@ npm run dev
 
 ## Pi 集成
 
-应用使用官方 `@earendil-works/pi-coding-agent` SDK。默认读取 Pi 自己的模型、`~/.pi/agent/auth.json` 登录信息和环境变量；先按照 Pi 的方式完成 `/login` 或配置模型提供商即可。
+应用使用 `@earendil-works/pi-coding-agent` SDK 作为 Agent 内核。模型、Base URL 和 API Key 均在网页的“AI 设置”中配置并保存到 PostgreSQL，无需额外登录 Agent。
 
 Pi 在应用里只能使用以下账本工具，不具备文件或命令工具：
 
@@ -87,7 +90,7 @@ Pi 在应用里只能使用以下账本工具，不具备文件或命令工具�
 
 支持的 Pi API 类型包括 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Google Generative AI。无论使用哪一种配置，所有模型请求和账本工具调用都由 Pi SDK 执行，不存在另一套直连 API 的运行模式。
 
-AI 模型配置列表保存在 PostgreSQL，网页接口只返回“是否已配置”，不会返回完整 API Key。Pi SDK 的生成模型配置位于 `data/pi-models.json`。账目新增、修改和删除始终需要网页确认。
+AI 模型配置列表保存在 PostgreSQL，网页接口只返回“是否已配置”，不会返回完整 API Key。Pi SDK 为每名用户生成独立的 `data/pi-models-<用户ID>.json`。账目新增、修改和删除始终需要网页确认。
 
 Pi 的回答会在网页中安全渲染常用 Markdown，包括标题、强调、列表、引用、链接、代码块和表格；原始 HTML 不会直接执行。
 
@@ -99,7 +102,7 @@ npm test
 
 ## Docker 部署
 
-Compose 会启动 `web` 与 `postgres` 两个服务。PostgreSQL 数据持久化在固定命名卷 `qing-zhang-postgres-data`，宿主机 `data` 目录挂载到 `/app/data` 保存 `pi-models.json` 等 Pi 运行文件，宿主机 `pi` 目录挂载到 `/home/node/.pi/agent`。三个位置分别可通过 `QING_ZHANG_DATA_DIR`、`PI_AGENT_DIR` 调整文件目录（数据库卷名保持固定）。因此重建或升级 Web 容器不会删除账目、AI 配置或 Pi 登录配置：
+Compose 会启动 `web` 与 `postgres` 两个服务。PostgreSQL 数据持久化在固定命名卷 `qing-zhang-postgres-data`，其中也包含用户、密码哈希和持久登录会话；宿主机 `data` 目录挂载到 `/app/data` 保存各用户的 Agent 模型运行文件。运行目录可通过 `QING_ZHANG_DATA_DIR` 调整（数据库卷名保持固定）。因此重建或升级 Web 容器不会删除账户、账目、AI 配置、对话或登录会话：
 
 ```powershell
 docker compose up -d
@@ -119,6 +122,8 @@ docker compose run --rm backup
 $env:QING_ZHANG_PORT=8080
 docker compose up -d
 ```
+
+首次打开请注册账户。升级前已有的账目、分类、预算、AI 配置和对话会自动归属给第一个注册账户；之后注册的账户使用独立数据空间。直接通过 HTTP 访问时保持 `COOKIE_SECURE=0`，配置 HTTPS 反向代理后将其改为 `1`。
 
 导入离线镜像包后可直接使用 Compose 启动：
 

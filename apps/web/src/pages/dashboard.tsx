@@ -1,9 +1,9 @@
-import { ArrowRightOutlined, RobotOutlined, FallOutlined, RiseOutlined, WalletOutlined } from "@ant-design/icons";
-import { Pie, Line } from "@ant-design/plots";
+import { ArrowRightOutlined, FileDoneOutlined, RobotOutlined } from "@ant-design/icons";
+import { Line, Pie } from "@ant-design/plots";
 import { useQuery } from "@tanstack/react-query";
-import { Avatar, Button, Card, Col, Empty, Flex, List, Row, Skeleton, Statistic, Tag, Typography } from "antd";
+import { Avatar, Button, Card, Col, Empty, Flex, List, Progress, Row, Skeleton, Statistic, Tag, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
-import { api, type Dashboard, type Transaction } from "@/lib/api";
+import { api, type Dashboard, type DashboardBudget, type Transaction } from "@/lib/api";
 import { money } from "@/lib/utils";
 
 export function DashboardPage() {
@@ -11,23 +11,105 @@ export function DashboardPage() {
   const { data, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: () => api<Dashboard>("/api/dashboard") });
   const { data: recent } = useQuery({ queryKey: ["transactions", "recent"], queryFn: () => api<{ records: Transaction[] }>("/api/transactions?limit=6") });
   if (isLoading || !data) return <Skeleton active paragraph={{ rows: 12 }} />;
+
   const flow = data.cashflow.month;
   const days = Math.max(1, Number(data.anchor.slice(8)));
-  const kpis = [
-    { title: "本月支出", value: flow.expense, icon: <FallOutlined />, color: "#ea580c" },
-    { title: "本月收入", value: flow.income, icon: <RiseOutlined />, color: "#16a34a" },
-    { title: "本月结余", value: flow.balance, icon: <WalletOutlined />, color: flow.balance >= 0 ? "#0f766e" : "#dc2626" },
-    { title: "日均支出", value: flow.expense / days, icon: <FallOutlined />, color: "#2563eb" },
-  ];
-  const trendConfig: any = { data: data.series.day, xField: "label", yField: "amount", height: 270, smooth: true, autoFit: true, axis: { y: { labelFormatter: (value: number) => `¥${value}` } }, style: { lineWidth: 3 }, theme: { type: "light", color: "#0f766e" }, tooltip: { items: [{ channel: "y", name: "支出", valueFormatter: (value: number) => money(value) }] } };
-  const pieData = data.breakdowns.month.map((row) => ({ category: row.category, amount: row.amount }));
-  const pieConfig: any = { data: pieData, angleField: "amount", colorField: "category", innerRadius: 0.62, height: 270, autoFit: true, legend: { color: { position: "bottom", layout: { justifyContent: "center" } } }, label: false, tooltip: { items: [{ channel: "y", valueFormatter: (value: number) => money(value) }] } };
-  return <div className="page-stack">
-    <Flex align="center" justify="space-between"><SpaceLabel label="时间范围" value={`本月 · ${data.anchor.slice(0, 7)}`} /></Flex>
-    <Row gutter={[16, 16]}>{kpis.map((item) => <Col xs={24} sm={12} xl={6} key={item.title}><Card hoverable onClick={() => navigate(`/transactions?month=${data.anchor.slice(0, 7)}`)} className="metric-card"><Flex justify="space-between" align="flex-start"><Statistic title={item.title} value={item.value} precision={2} prefix="¥" valueStyle={{ color: item.color }} /><Avatar size={42} style={{ background: `${item.color}16`, color: item.color }} icon={item.icon} /></Flex><Typography.Text type="secondary" className="metric-hint">点击查看相关账目</Typography.Text></Card></Col>)}</Row>
-    <Row gutter={[20, 20]}><Col xs={24} xl={16}><Card title="近 14 日支出趋势" extra={<Button type="link" onClick={() => navigate("/analytics")}>完整分析 <ArrowRightOutlined /></Button>}><Line {...trendConfig} /></Card></Col><Col xs={24} xl={8}><Card title="本月分类占比">{pieData.length ? <Pie {...pieConfig} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}</Card></Col></Row>
-    <Row gutter={[20, 20]}><Col xs={24} xl={16}><Card title="最近账目" extra={<Button type="link" onClick={() => navigate("/transactions")}>查看全部</Button>}><List dataSource={recent?.records || []} locale={{ emptyText: "暂无账目" }} renderItem={(row) => <List.Item extra={<Typography.Text strong type={row.amount < 0 ? "danger" : "success"}>{row.amount < 0 ? "−" : "+"}{money(Math.abs(row.amount))}</Typography.Text>}><List.Item.Meta avatar={<Avatar shape="square" style={{ background: "#ecfdf5", color: "#0f766e" }}>{row.date.slice(8)}</Avatar>} title={row.item} description={`${row.category1} · ${row.category2}`} /></List.Item>} /></Card></Col><Col xs={24} xl={8}><Card className="ai-insight-card"><Flex vertical className="ai-insight-content"><Avatar size={44} icon={<RobotOutlined />} /><Typography.Text>AI 财务洞察</Typography.Text><Typography.Title level={3}>本月最大支出类别是<br />{data.breakdowns.month[0]?.category || "暂无"}</Typography.Title><Typography.Paragraph>占本月支出的 {((data.breakdowns.month[0]?.share || 0) * 100).toFixed(1)}%，可以继续询问 AI 获取详细建议。</Typography.Paragraph><Button type="primary" ghost onClick={() => navigate("/ai")}>进入 AI 助手 <ArrowRightOutlined /></Button></Flex></Card></Col></Row>
+  const netPositive = flow.balance >= 0;
+  const trendConfig: any = {
+    data: data.series.day,
+    xField: "label",
+    yField: "amount",
+    height: 260,
+    smooth: true,
+    autoFit: true,
+    style: { lineWidth: 2.5, stroke: "#2a8277" },
+    axis: { x: { tick: false }, y: { labelFormatter: (value: number) => `¥${value}`, gridStroke: "#e3e9e4" } },
+    tooltip: { title: { field: "label" }, items: [{ field: "amount", name: "支出金额", valueFormatter: (value: number) => money(value) }] },
+  };
+  const pieData = data.breakdowns.month.map((row) => ({ category: row.category, amount: row.amount, share: row.share }));
+  const pieConfig: any = {
+    data: pieData,
+    angleField: "amount",
+    colorField: "category",
+    innerRadius: 0.68,
+    height: 290,
+    autoFit: true,
+    label: false,
+    scale: { color: { range: ["#176b62", "#6d8f78", "#c99748", "#c96b52", "#6d7795", "#9a7f67", "#88b5aa"] } },
+    legend: { color: { position: "bottom", layout: { justifyContent: "center" } } },
+    tooltip: { title: { field: "category" }, items: [{ field: "amount", name: "支出金额", valueFormatter: (value: number) => money(value) }, { field: "share", name: "占比", valueFormatter: (value: number) => `${(value * 100).toFixed(1)}%` }] },
+  };
+
+  return <div className="page-stack dashboard-page">
+    <Row gutter={[18, 18]}>
+      <Col xs={24} xl={10}>
+        <Card className="statement-card">
+          <Flex vertical style={{ minHeight: 292 }}>
+            <Flex align="center" justify="space-between" gap={12}>
+              <Flex align="center" gap={9}><FileDoneOutlined style={{ color: "#a8e2d5" }} /><Typography.Text className="statement-eyebrow">MONTHLY CLOSING · {data.anchor.slice(0, 7)}</Typography.Text></Flex>
+              <Tag bordered={false} color="cyan">截至 {data.anchor.slice(5)}</Tag>
+            </Flex>
+            <Statistic className="statement-value" title={netPositive ? "本月净结余" : "本月净流出"} value={Math.abs(flow.balance)} precision={2} prefix="¥" />
+            <Typography.Text type="secondary">本月每一笔收支，已汇总至这张月度结单。</Typography.Text>
+            <Row className="statement-ledger" gutter={18}>
+              <Col span={8}><Statistic title="支出" value={flow.expense} precision={2} prefix="¥" /></Col>
+              <Col span={8}><Statistic title="收入" value={flow.income} precision={2} prefix="¥" /></Col>
+              <Col span={8}><Statistic title="日均" value={flow.expense / days} precision={2} prefix="¥" /></Col>
+            </Row>
+            <Button ghost style={{ alignSelf: "flex-start", marginTop: 20 }} onClick={() => navigate(`/transactions?month=${data.anchor.slice(0, 7)}`)}>核对本月账目 <ArrowRightOutlined /></Button>
+          </Flex>
+        </Card>
+      </Col>
+      <Col xs={24} xl={14}>
+        <Card className="trend-card" title="每日支出轨迹" extra={<Button type="link" onClick={() => navigate("/analytics")}>打开完整分析 <ArrowRightOutlined /></Button>}>
+          <Line {...trendConfig} />
+        </Card>
+      </Col>
+    </Row>
+
+    <Card className={`dashboard-budget-card ${data.budget?.status || "unset"}`}>
+      {data.budget ? <Flex vertical gap={12}>
+        <Flex align="center" justify="space-between" gap={16} wrap>
+          <div><Typography.Text className="section-label">MONTHLY BUDGET · {data.budget.month}</Typography.Text><Typography.Title level={4}>本月预算已使用 {(data.budget.usageRate * 100).toFixed(1)}%</Typography.Title></div>
+          <Button type="link" onClick={() => navigate(`/budgets?month=${data.budget!.month}`)}>管理预算 <ArrowRightOutlined /></Button>
+        </Flex>
+        <Progress percent={Math.min(100, Number((data.budget.usageRate * 100).toFixed(1)))} showInfo={false} status={data.budget.status === "over" ? "exception" : "normal"} strokeColor={data.budget.status === "warning" ? "#c99748" : data.budget.status === "over" ? "#c65f43" : "#176b62"} trailColor="#e2e9e4" />
+        <Row gutter={[18, 8]}><Col xs={12} md={6}><Statistic title="预算" value={data.budget.amount} precision={2} prefix="¥" /></Col><Col xs={12} md={6}><Statistic title="已花" value={data.budget.used} precision={2} prefix="¥" /></Col><Col xs={12} md={6}><Statistic title={data.budget.remaining >= 0 ? "剩余" : "已超支"} value={Math.abs(data.budget.remaining)} precision={2} prefix="¥" valueStyle={data.budget.remaining < 0 ? { color: "#c65f43" } : undefined} /></Col><Col xs={12} md={6}><Statistic title="状态" value={data.budget.status === "over" ? "已超支" : data.budget.status === "warning" ? "接近上限" : "正常"} /></Col></Row>
+      </Flex> : <Flex align="center" justify="space-between" gap={16} wrap><div><Typography.Text className="section-label">MONTHLY BUDGET</Typography.Text><Typography.Title level={4}>给本月支出设一个上限</Typography.Title><Typography.Text type="secondary">设置后会在这里显示已花、剩余和风险提醒。</Typography.Text></div><Button type="primary" onClick={() => navigate(`/budgets?month=${data.anchor.slice(0, 7)}`)}>设置本月预算</Button></Flex>}
+      {data.categoryBudgets.length > 0 && <div className="dashboard-category-budgets">
+        <Flex align="end" justify="space-between" gap={12} className="dashboard-category-budget-heading"><div><Typography.Text strong>分类预算</Typography.Text><Typography.Text type="secondary" className="block-text">优先显示接近上限和已经超支的分类</Typography.Text></div>{data.categoryBudgets.length > 6 && <Button type="link" onClick={() => navigate(`/budgets?month=${data.anchor.slice(0, 7)}`)}>查看全部 {data.categoryBudgets.length} 项</Button>}</Flex>
+        <Row gutter={[12, 12]}>{data.categoryBudgets.slice(0, 6).map((budget) => <Col xs={24} md={12} xl={8} key={budget.id}><DashboardCategoryBudget budget={budget} /></Col>)}</Row>
+      </div>}
+    </Card>
+
+    <Row gutter={[18, 18]}>
+      <Col xs={24} lg={12} xl={8}>
+        <Card className="category-overview-card" title="本月支出结构" extra={<Typography.Text type="secondary">{money(flow.expense)}</Typography.Text>}>
+          {pieData.length ? <Pie {...pieConfig} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月还没有支出" />}
+        </Card>
+      </Col>
+      <Col xs={24} lg={12} xl={10}>
+        <Card className="recent-card" title="最近入账" extra={<Button type="link" onClick={() => navigate("/transactions")}>全部账目</Button>}>
+          <List dataSource={recent?.records || []} locale={{ emptyText: "记下第一笔账目后会显示在这里" }} renderItem={(row) => <List.Item extra={<Typography.Text strong type={row.amount < 0 ? "danger" : "success"}>{row.amount < 0 ? "−" : "+"}{money(Math.abs(row.amount))}</Typography.Text>}><List.Item.Meta avatar={<Avatar shape="square" style={{ background: "#e4eeea", color: "#176b62", fontFamily: "Bahnschrift, monospace" }}>{row.date.slice(8)}</Avatar>} title={row.item} description={`${row.category1} · ${row.category2}`} /></List.Item>} />
+        </Card>
+      </Col>
+      <Col xs={24} xl={6}>
+        <Card className="ai-insight-card">
+          <Flex vertical className="ai-insight-content">
+            <Avatar size={42} icon={<RobotOutlined />} />
+            <Typography.Text className="statement-eyebrow">AI LEDGER NOTE</Typography.Text>
+            <Typography.Title level={3}>支出重心在<br />{data.breakdowns.month[0]?.category || "暂无分类"}</Typography.Title>
+            <Typography.Paragraph>占本月支出的 {((data.breakdowns.month[0]?.share || 0) * 100).toFixed(1)}%。可以继续询问具体账目、分类变化或节省建议。</Typography.Paragraph>
+            <Button type="primary" onClick={() => navigate("/ai")}>继续追问 <ArrowRightOutlined /></Button>
+          </Flex>
+        </Card>
+      </Col>
+    </Row>
   </div>;
 }
 
-function SpaceLabel({ label, value }: { label: string; value: string }) { return <Flex gap={8} align="center"><Typography.Text type="secondary">{label}</Typography.Text><Tag bordered>{value}</Tag></Flex>; }
+function DashboardCategoryBudget({ budget }: { budget: DashboardBudget }) {
+  const color = budget.status === "over" ? "#c65f43" : budget.status === "warning" ? "#c99748" : "#176b62";
+  const status = budget.status === "over" ? "已超支" : budget.status === "warning" ? "接近上限" : "正常";
+  return <div className={`dashboard-category-budget ${budget.status}`}><Flex align="center" justify="space-between" gap={10}><Typography.Text strong ellipsis>{budget.category1}</Typography.Text><Tag bordered={false} color={budget.status === "over" ? "error" : budget.status === "warning" ? "warning" : "success"}>{status}</Tag></Flex><Flex align="baseline" justify="space-between" gap={8}><Typography.Text type="secondary">已花 {money(budget.used)}</Typography.Text><Typography.Text strong>{money(budget.amount)}</Typography.Text></Flex><Progress percent={Math.min(100, Number((budget.usageRate * 100).toFixed(1)))} showInfo={false} size="small" strokeColor={color} trailColor="#e2e9e4" /><Flex justify="space-between" gap={8}><Typography.Text type="secondary">{budget.remaining >= 0 ? `剩余 ${money(budget.remaining)}` : `超出 ${money(Math.abs(budget.remaining))}`}</Typography.Text><Typography.Text style={{ color }}>{(budget.usageRate * 100).toFixed(1)}%</Typography.Text></Flex></div>;
+}

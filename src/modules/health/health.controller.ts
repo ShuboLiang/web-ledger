@@ -1,25 +1,23 @@
 import { Controller, Get } from "@nestjs/common";
-import { LedgerService } from "../../infrastructure/ledger/ledger.service.js";
-import { AiSettingsService } from "../ai/ai-settings.service.js";
+import { PrismaService } from "../../infrastructure/prisma/prisma.service.js";
+import { Public } from "../auth/public.decorator.js";
 
 @Controller("api/health")
 export class HealthController {
-  constructor(
-    private readonly ledger: LedgerService,
-    private readonly settings: AiSettingsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Get()
   async check() {
-    const ai = await this.settings.get();
+    await this.prisma.$queryRaw`SELECT 1`;
+    const databaseUrl = new URL(process.env.DATABASE_URL || "postgresql://localhost/qing_zhang");
+    databaseUrl.username = "";
+    databaseUrl.password = "";
     return {
       ok: true,
       service: "qing-zhang-api",
       architecture: "nestjs-modular-monolith",
-      aiConfigured: ai.configured === true,
-      aiProvider: "providerId" in ai ? ai.providerId : null,
-      aiModel: "modelId" in ai ? ai.modelId : null,
-      database: this.ledger.path,
+      database: databaseUrl.toString(),
     };
   }
 }

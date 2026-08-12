@@ -10,6 +10,7 @@ datasource db {
 
 model Ledger {
   id           String        @id @default(cuid())
+  userId       String?       @unique @map("user_id")
   name         String
   isDefault    Boolean       @default(false)
   createdAt    DateTime      @default(now()) @map("created_at")
@@ -20,6 +21,7 @@ model Ledger {
   accounts     Account[]
   budgets      Budget[]
   tags         Tag[]
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("ledgers")
 }
@@ -108,6 +110,7 @@ model Budget {
   updatedAt DateTime @updatedAt @map("updated_at")
   ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
 
+  @@unique([ledgerId, month, category1])
   @@index([ledgerId, month])
   @@map("budgets")
 }
@@ -128,19 +131,81 @@ model Tag {
 
 model AiModelProfile {
   id         String   @id @default(cuid())
-  name       String   @unique @db.VarChar(80)
+  userId     String?  @map("user_id")
+  name       String   @db.VarChar(80)
   providerId String   @map("provider_id") @db.VarChar(100)
   modelId    String   @map("model_id") @db.VarChar(100)
   baseUrl    String   @map("base_url") @db.VarChar(500)
   apiType    String   @map("api_type") @db.VarChar(50)
   authHeader Boolean  @default(true) @map("auth_header")
   apiKey     String?  @map("api_key") @db.Text
+  thinkingEnabled Boolean @default(false) @map("thinking_enabled")
+  thinkingLevel   String  @default("medium") @map("thinking_level") @db.VarChar(20)
   isDefault  Boolean  @default(false) @map("is_default")
   enabled    Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, name])
+  @@index([userId, isDefault])
   @@map("ai_model_profiles")
+}
+
+model AiConversation {
+  id               String      @id @db.VarChar(80)
+  userId           String?     @map("user_id")
+  title            String      @default("新对话") @db.VarChar(80)
+  pendingProposals Json        @default("[]") @map("pending_proposals")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  messages         AiMessage[]
+  user             User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("ai_conversations")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  username     String        @unique @db.VarChar(40)
+  displayName  String        @map("display_name") @db.VarChar(60)
+  passwordHash String        @map("password_hash") @db.Text
+  tokenVersion Int           @default(0) @map("token_version")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  ledger       Ledger?
+  sessions     AuthSession[]
+  aiProfiles   AiModelProfile[]
+  conversations AiConversation[]
+
+  @@map("users")
+}
+
+model AuthSession {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  tokenHash    String    @unique @map("token_hash") @db.VarChar(64)
+  tokenVersion Int       @map("token_version")
+  lastUsedAt   DateTime  @default(now()) @map("last_used_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("auth_sessions")
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String         @map("conversation_id") @db.VarChar(80)
+  role           String         @db.VarChar(20)
+  content        String         @db.Text
+  createdAt      DateTime       @default(now()) @map("created_at")
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
 }
 
 model AuditLog {

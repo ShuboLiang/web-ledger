@@ -12,6 +12,15 @@ export class AiController {
   @Get("settings")
   async getSettings() { return this.settings.get(); }
 
+  @Get("conversations")
+  listConversations() { return this.ai.listConversations(); }
+
+  @Post("conversations")
+  createConversation(@Body() body: { id?: string; title?: string }) { return this.ai.createConversation(body.id, body.title); }
+
+  @Get("conversations/:id")
+  getConversation(@Param("id") id: string) { return this.ai.getConversation(id); }
+
   @Put("settings")
   async saveSettings(@Body() body: Record<string, unknown>) { return this.ai.saveSettings(body); }
 
@@ -19,7 +28,7 @@ export class AiController {
   async createProfile(@Body() body: Record<string, unknown>) { return this.settings.create(body); }
 
   @Put("settings/profiles/:id")
-  async updateProfile(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.settings.update(id, body); }
+  async updateProfile(@Param("id") id: string, @Body() body: Record<string, unknown>) { const updated = await this.settings.update(id, body); if (updated.isDefault) this.ai.clear(); return updated; }
 
   @Post("settings/profiles/:id/default")
   async setDefaultProfile(@Param("id") id: string) { this.ai.clear(); return this.settings.setDefault(id); }
@@ -39,14 +48,14 @@ export class AiController {
   }
 
   @Post("conversations/:id/outcome")
-  setOutcome(@Param("id") id: string, @Body("outcome") outcome: "confirmed" | "cancelled") {
+  async setOutcome(@Param("id") id: string, @Body("outcome") outcome: "confirmed" | "cancelled") {
     if (!["confirmed", "cancelled"].includes(outcome)) throw new Error("操作结果无效");
-    return { ok: this.ai.outcome(id, outcome) };
+    await this.ai.outcome(id, outcome);
+    return { ok: true };
   }
 
   @Delete("conversations/:id")
-  removeConversation(@Param("id") id: string) {
-    this.ai.remove(id);
-    return { ok: true };
+  async removeConversation(@Param("id") id: string) {
+    return { ok: await this.ai.remove(id) };
   }
 }

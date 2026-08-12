@@ -1,12 +1,25 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service.js";
+import { CurrentUserService } from "../auth/current-user.service.js";
 
 @Injectable()
 export class ManagementService {
-  constructor(private readonly prisma: PrismaService) {}
-  private async ledgerId() { const ledger = await this.prisma.ledger.findFirst({ where: { isDefault: true } }); if (!ledger) throw new Error("默认账本不存在"); return ledger.id; }
+  constructor(private readonly prisma: PrismaService, private readonly currentUser: CurrentUserService) {}
+  private async ledgerId() { return this.currentUser.ledgerId; }
   private label(value: unknown) { return String(value || "").trim().slice(0, 40); }
+  private monthText(value: unknown) {
+    const month = String(value || "");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException("请填写有效月份");
+    return month;
+  }
+  private monthDate(month: string) { return new Date(`${month}-01T00:00:00.000Z`); }
+  private nextMonth(month: string) { const date = this.monthDate(month); date.setUTCMonth(date.getUTCMonth() + 1); return date; }
+  private previousMonth(month: string) { const date = this.monthDate(month); date.setUTCMonth(date.getUTCMonth() - 1); return date.toISOString().slice(0, 7); }
+  private budgetStatus(amount: number, used: number) {
+    const usageRate = amount > 0 ? used / amount : 0;
+    return { used: Number(used.toFixed(2)), remaining: Number((amount - used).toFixed(2)), usageRate, status: usageRate > 1 ? "over" : usageRate >= 0.8 ? "warning" : "normal" };
+  }
   private async category(id: string) {
     const ledgerId = await this.ledgerId();
     const row = await this.prisma.category.findFirst({ where: { id, ledgerId } });
@@ -41,13 +54,91 @@ export class ManagementService {
       tags,
     };
   }
+  async budgetOverview(value: unknown) {
+    const ledgerId = await this.ledgerId();
+    const month = this.monthText(value);
+    const start = this.monthDate(month);
+    const end = this.nextMonth(month);
+    const [budgets, totalExpense, categoryExpenses] = await Promise.all([
+      this.prisma.budget.findMany({ where: { ledgerId, month: start }, orderBy: [{ category1: "asc" }, { createdAt: "asc" }] }),
+      this.prisma.transaction.aggregate({ where: { ledgerId, date: { gte: start, lt: end }, amount: { lt: 0 } }, _sum: { amount: true } }),
+      this.prisma.transaction.groupBy({ by: ["category1"], where: { ledgerId, date: { gte: start, lt: end }, amount: { lt: 0 } }, _sum: { amount: true } }),
+    ]);
+    const monthExpense = Math.abs(Number(totalExpense._sum.amount || 0));
+    const expenseByCategory = new Map(categoryExpenses.map((row) => [row.category1, Math.abs(Number(row._sum.amount || 0))]));
+    const enriched = budgets.map((row) => {
+      const amount = Number(row.amount);
+      const used = row.category1 ? expenseByCategory.get(row.category1) || 0 : monthExpense;
+      return { ...row, month, amount, ...this.budgetStatus(amount, used) };
+    });
+    return { month, monthExpense: Number(monthExpense.toFixed(2)), totalBudget: enriched.find((row) => !row.category1) || null, categoryBudgets: enriched.filter((row) => row.category1) };
+  }
+  private async validateBudgetInput(input: any, excludeId?: string) {
+    const ledgerId = await this.ledgerId();
+    const month = this.monthText(input.month);
+    const category1 = this.label(input.category1) || null;
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("预算金额必须大于 0");
+    if (category1) {
+      const exists = await this.prisma.category.count({ where: { ledgerId, category1, enabled: true } });
+      if (!exists) throw new BadRequestException("所选一级分类不存在或已停用");
+    }
+    const duplicate = await this.prisma.budget.findFirst({ where: { ledgerId, month: this.monthDate(month), category1, ...(excludeId ? { id: { not: excludeId } } : {}) } });
+    if (duplicate) throw new BadRequestException(category1 ? `本月已经设置“${category1}”预算` : "本月总预算已经存在");
+    return { ledgerId, month, category1, amount };
+  }
+  async createBudget(input: any) {
+    const value = await this.validateBudgetInput(input);
+    return this.prisma.$transaction(async (database) => {
+      const budget = await database.budget.create({ data: { ledgerId: value.ledgerId, month: this.monthDate(value.month), category1: value.category1, amount: new Prisma.Decimal(value.amount) } });
+      await database.auditLog.create({ data: { action: "budget-create", entityType: "budget", entityId: budget.id, payload: { month: value.month, category1: value.category1, amount: value.amount } } });
+      return budget;
+    });
+  }
+  async updateBudget(id: string, input: any) {
+    const ledgerId = await this.ledgerId();
+    const current = await this.prisma.budget.findFirst({ where: { id, ledgerId } });
+    if (!current) throw new NotFoundException("预算不存在");
+    const value = await this.validateBudgetInput(input, id);
+    return this.prisma.$transaction(async (database) => {
+      const budget = await database.budget.update({ where: { id }, data: { month: this.monthDate(value.month), category1: value.category1, amount: new Prisma.Decimal(value.amount) } });
+      await database.auditLog.create({ data: { action: "budget-update", entityType: "budget", entityId: id, payload: { month: value.month, category1: value.category1, amount: value.amount } } });
+      return budget;
+    });
+  }
+  async deleteBudget(id: string) {
+    const ledgerId = await this.ledgerId();
+    const budget = await this.prisma.budget.findFirst({ where: { id, ledgerId } });
+    if (!budget) throw new NotFoundException("预算不存在");
+    await this.prisma.$transaction(async (database) => {
+      await database.budget.delete({ where: { id } });
+      await database.auditLog.create({ data: { action: "budget-delete", entityType: "budget", entityId: id, payload: { month: budget.month.toISOString().slice(0, 7), category1: budget.category1, amount: Number(budget.amount) } } });
+    });
+    return { ok: true };
+  }
+  async copyPreviousBudgets(value: unknown) {
+    const ledgerId = await this.ledgerId();
+    const month = this.monthText(value);
+    const previous = this.previousMonth(month);
+    const source = await this.prisma.budget.findMany({ where: { ledgerId, month: this.monthDate(previous) } });
+    if (!source.length) throw new BadRequestException(`${previous} 没有可复制的预算`);
+    const existing = await this.prisma.budget.findMany({ where: { ledgerId, month: this.monthDate(month) }, select: { category1: true } });
+    const keys = new Set(existing.map((row) => row.category1 || "__total__"));
+    const missing = source.filter((row) => !keys.has(row.category1 || "__total__"));
+    const created = await this.prisma.$transaction(async (database) => {
+      const result = await database.budget.createMany({ data: missing.map((row) => ({ ledgerId, month: this.monthDate(month), category1: row.category1, amount: row.amount })), skipDuplicates: true });
+      await database.auditLog.create({ data: { action: "budget-copy-previous", entityType: "budget", payload: { from: previous, to: month, copied: result.count, skipped: source.length - result.count } } });
+      return result.count;
+    });
+    return { from: previous, to: month, copied: created, skipped: source.length - created };
+  }
   async create(type: string, input: any) {
     const ledgerId = await this.ledgerId();
     const name = String(input.name || "").trim();
     if (type === "accounts") { if (!name) throw new BadRequestException("请填写账户名称"); return this.prisma.account.create({ data: { ledgerId, name, type: input.type || "cash", openingBalance: new Prisma.Decimal(Number(input.openingBalance) || 0) } }); }
     if (type === "projects") { if (!name) throw new BadRequestException("请填写项目名称"); return this.prisma.project.create({ data: { ledgerId, name } }); }
     if (type === "categories") { const category1 = String(input.category1 || "").trim(), category2 = String(input.category2 || "").trim(); if (!category1 || !category2) throw new BadRequestException("请填写一级分类和二级分类"); return this.prisma.category.create({ data: { ledgerId, category1, category2 } }); }
-    if (type === "budgets") { const amount = Number(input.amount); if (!/^\d{4}-\d{2}$/.test(String(input.month || "")) || !Number.isFinite(amount) || amount <= 0) throw new BadRequestException("请填写有效月份和预算金额"); return this.prisma.budget.create({ data: { ledgerId, month: new Date(`${input.month}-01T00:00:00.000Z`), category1: input.category1 || null, amount: new Prisma.Decimal(amount) } }); }
+    if (type === "budgets") return this.createBudget(input);
     if (type === "tags") { if (!name) throw new BadRequestException("请填写标签名称"); return this.prisma.tag.create({ data: { ledgerId, name, color: input.color || "#0f766e" } }); }
     throw new Error("不支持的管理类型");
   }

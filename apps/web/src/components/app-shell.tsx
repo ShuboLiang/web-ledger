@@ -1,26 +1,37 @@
 import {
   AppstoreOutlined, BarChartOutlined, BookOutlined, BookTwoTone, RobotOutlined, PlusOutlined,
-  SearchOutlined, SettingOutlined, TagsOutlined, UserOutlined,
+  MoreOutlined, SearchOutlined, SettingOutlined, TagsOutlined, WalletOutlined,
+  LogoutOutlined, UserOutlined,
 } from "@ant-design/icons";
-import { Button, Flex, Grid, Input, Layout, Menu, Modal, Space, Tag, Tooltip, Typography } from "antd";
-import { useMemo, useState } from "react";
+import { Avatar, Button, Divider, Dropdown, Flex, Grid, Input, Layout, Menu, Modal, Space, Tooltip, Typography } from "antd";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { TransactionDrawer } from "@/components/transaction-drawer";
+import { api, type AuthUser } from "@/lib/api";
 
 const { Header, Sider, Content } = Layout;
 const nav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
+  { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
   { key: "/ai", label: "AI 助手", icon: <RobotOutlined /> },
-  { key: "/management", label: "分类账户", icon: <TagsOutlined /> },
+  { key: "/management", label: "分类管理", icon: <TagsOutlined /> },
   { key: "/settings", label: "设置", icon: <SettingOutlined /> },
 ];
-const mobileNav = nav.filter((item) => ["/dashboard", "/transactions", "/analytics", "/settings"].includes(item.key));
+const mobileNav = [
+  { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
+  { key: "/transactions", label: "账目", icon: <BookOutlined /> },
+  { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
+  { key: "/more", label: "更多", icon: <MoreOutlined /> },
+];
+const morePaths = new Set(["/more", "/budgets", "/ai", "/management", "/settings"]);
 const titles: Record<string, [string, string]> = {
-  "/dashboard": ["财务概览", "关键财务数据与近期动态"], "/transactions": ["账目明细", "筛选、整理和维护全部账目"],
-  "/analytics": ["统计分析", "洞察支出结构与长期趋势"], "/ai": ["AI 助手", "用自然语言查询和管理账本"],
-  "/management": ["分类与账户", "管理账本基础资料与规则"], "/settings": ["系统设置", "模型、数据与安全配置"],
+  "/dashboard": ["财务概览", "本月结单与消费轨迹"], "/transactions": ["账目明细", "查找、核对和整理每一笔账目"],
+  "/analytics": ["统计分析", "比较周期、分类与长期变化"], "/ai": ["AI 助手", "用自然语言记账和查询"],
+  "/budgets": ["预算规划", "控制本月总支出与重点分类"], "/management": ["分类管理", "维护收支分类"],
+  "/settings": ["系统设置", "管理 AI 模型和数据设置"], "/more": ["更多功能", "管理预算、分类与应用设置"],
 };
 
 export function AppShell() {
@@ -31,34 +42,50 @@ export function AppShell() {
   const desktop = Boolean(screens.lg);
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data: auth } = useQuery({ queryKey: ["auth-me"], queryFn: () => api<{ user: AuthUser }>("/api/auth/me"), staleTime: Infinity });
+  const logout = useMutation({ mutationFn: () => api("/api/auth/logout", { method: "POST" }), onSuccess: () => { queryClient.clear(); window.location.assign("/login"); } });
   const [title, subtitle] = titles[location.pathname] || titles["/dashboard"];
-  const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", weekday: "short" }).format(new Date()), []);
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } };
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, []);
+  useEffect(() => {
+    if (location.pathname !== "/management") return;
+    const legacy = new URLSearchParams(location.search);
+    if (legacy.get("tab") === "budgets") navigate(`/budgets${legacy.get("month") ? `?month=${legacy.get("month")}` : ""}`, { replace: true });
+  }, [location.pathname, location.search, navigate]);
   const submitSearch = (value: string) => {
     const query = value.trim();
     setSearchOpen(false);
     setSearchValue("");
     navigate(query ? `/transactions?query=${encodeURIComponent(query)}` : "/transactions");
   };
+  const userMenu = { items: [{ key: "identity", label: <div className="user-menu-identity"><b>{auth?.user.displayName}</b><span>@{auth?.user.username}</span></div>, disabled: true }, { type: "divider" as const }, { key: "logout", icon: <LogoutOutlined />, label: "退出登录", danger: true }], onClick: ({ key }: { key: string }) => key === "logout" && logout.mutate() };
+  const userButton = <Dropdown menu={userMenu} trigger={["click"]}><Button className="user-menu-button" aria-label="用户菜单"><Avatar size={24} icon={<UserOutlined />} />{desktop && <span>{auth?.user.displayName}</span>}</Button></Dropdown>;
   return <Layout className="app-layout">
     {desktop && <Sider width={240} className="app-sider">
-      <Button type="text" className="brand" onClick={() => navigate("/dashboard")}><BookTwoTone twoToneColor="#14b8a6" className="brand-icon" /><span><b>轻账</b><small>FINANCE OS</small></span></Button>
+      <Button type="text" className="brand" onClick={() => navigate("/dashboard")}><BookTwoTone twoToneColor="#70d2bf" className="brand-icon" /><span><b>轻账</b><small>PERSONAL LEDGER</small></span></Button>
       <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={nav} onClick={({ key }) => navigate(key)} />
-      <div className="connection-card"><Tag color="success">本地账本已连接</Tag><Typography.Text type="secondary">数据与 AI 配置由服务端持久化</Typography.Text></div>
     </Sider>}
     <Layout>
       <Header className="app-header">
-        <div className="page-heading"><Typography.Title level={desktop ? 3 : 4}>{title}</Typography.Title>{desktop && <Typography.Text type="secondary">{subtitle}</Typography.Text>}</div>
-        <Space size={8} wrap={false}>
-          {screens.md && <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)}>全局搜索</Button>}
-          {screens.xl && <Button icon={<RobotOutlined />} onClick={() => navigate("/ai")}>AI 快速记账</Button>}
-          {screens.xl && <Typography.Text type="secondary">{today}</Typography.Text>}
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawer(true)}>{desktop ? "记一笔" : null}</Button>
-          <Tooltip title="系统设置"><Button icon={<UserOutlined />} aria-label="系统设置" onClick={() => navigate("/settings")} /></Tooltip>
-        </Space>
+        <div className="app-header-inner">
+          <div className="page-heading"><Typography.Title level={desktop ? 3 : 4}>{title}</Typography.Title>{desktop && <Typography.Text type="secondary">{subtitle}</Typography.Text>}</div>
+          {desktop ? <Space size={8} wrap={false} className="header-actions">
+            <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)}>搜索账目 <Typography.Text keyboard className="search-shortcut">Ctrl K</Typography.Text></Button>
+            {screens.xl && <Button icon={<RobotOutlined />} onClick={() => navigate("/ai")}>问 AI</Button>}
+            <Divider type="vertical" />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawer(true)}>记一笔</Button>
+            <Tooltip title="系统设置"><Button icon={<SettingOutlined />} aria-label="系统设置" onClick={() => navigate("/settings")} /></Tooltip>
+            {userButton}
+          </Space> : <Space size={6}><Tooltip title="搜索账目"><Button icon={<SearchOutlined />} aria-label="搜索账目" onClick={() => setSearchOpen(true)} /></Tooltip>{userButton}</Space>}
+        </div>
       </Header>
       <Content className="app-content"><Outlet /></Content>
     </Layout>
-    {!desktop && <div className="mobile-nav"><Flex align="center" justify="space-around">{mobileNav.slice(0, 2).map((item) => <Button type="text" key={item.key} className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>)}<Button type="primary" shape="circle" size="large" icon={<PlusOutlined />} className="mobile-add" aria-label="记一笔" onClick={() => setDrawer(true)} />{mobileNav.slice(2).map((item) => <Button type="text" key={item.key} className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>)}</Flex></div>}
+    {!desktop && <div className="mobile-nav"><Flex align="center" justify="space-around">{mobileNav.slice(0, 2).map((item) => <Button type="text" key={item.key} className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>)}<Button type="primary" shape="circle" size="large" icon={<PlusOutlined />} className="mobile-add" aria-label="记一笔" onClick={() => setDrawer(true)} />{mobileNav.slice(2).map((item) => { const active = item.key === "/more" ? morePaths.has(location.pathname) : location.pathname === item.key; return <Button type="text" key={item.key} className={`mobile-nav-item ${active ? "active" : ""}`} onClick={() => navigate(item.key)} icon={item.icon}><span>{item.label}</span></Button>; })}</Flex></div>}
     <Modal open={searchOpen} title="搜索全部账目" footer={null} destroyOnHidden onCancel={() => setSearchOpen(false)}>
       <Typography.Paragraph type="secondary">可搜索项目、备注、一级分类和二级分类，结果会在账目工作区中展示。</Typography.Paragraph>
       <Input.Search autoFocus allowClear size="large" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} onSearch={submitSearch} enterButton="搜索" placeholder="例如：午饭、饮品、出差" />
