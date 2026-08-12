@@ -56,8 +56,9 @@ export class AiService implements OnModuleDestroy {
     let conversation = await this.prisma.aiConversation.findFirst({ where: { id, userId: this.currentUser.userId }, include: { messages: { orderBy: { createdAt: "asc" } } } });
     if (!conversation) { await this.createConversation(id); conversation = await this.prisma.aiConversation.findFirst({ where: { id, userId: this.currentUser.userId }, include: { messages: { orderBy: { createdAt: "asc" } } } }); }
     const history = conversation!.messages.map((item) => ({ role: item.role, content: item.content }));
+    const pending = Array.isArray(conversation!.pendingProposals) ? conversation!.pendingProposals : [];
     await this.prisma.aiMessage.create({ data: { conversationId: id, role: "user", content: input } });
-    const result = await this.conversations.run({ conversationId: id, text: input, history });
+    const result = await this.conversations.run({ conversationId: id, text: input, history, pending });
     const title = conversation!.title === "新对话" ? input.slice(0, 24) || "账本对话" : conversation!.title;
     await this.prisma.$transaction([
       this.prisma.aiMessage.create({ data: { conversationId: id, role: "assistant", content: result.message } }),

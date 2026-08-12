@@ -42,6 +42,7 @@ type AiResponse = {
   message: string;
   conversationId: string;
   proposals: Proposal[];
+  warning?: string;
 };
 type Chat = {
   id: string;
@@ -137,7 +138,26 @@ export function AiPage() {
             : current,
       );
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      if (data.warning) {
+        queryClient.setQueryData<ChatDetail>(
+          ["ai-conversation", id],
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  messages: [
+                    ...current.messages,
+                    {
+                      id: `warning-${Date.now()}`,
+                      role: "assistant",
+                      content: `> ⚠️ ${data.warning}`,
+                    },
+                  ],
+                }
+              : current,
+        );
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
         queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
