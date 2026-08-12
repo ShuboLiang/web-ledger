@@ -1,0 +1,86 @@
+name: qing-zhang
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 256mb
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      # 账目、分类、账户、模型配置和审计日志都保存在这个固定命名卷中。
+      # 更新或重建容器不会删除它；不要执行 `docker compose down -v`。
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    image: qing-zhang-web:2.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    ports:
+      - "${QING_ZHANG_PORT:-3218}:3218"
+    environment:
+      TZ: Asia/Shanghai
+      PORT: 3218
+      HOST: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL_DOCKER}
+      DATA_DIR: /app/data
+      INITIAL_LEDGER_PATH: /app/seed/initial-ledger.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Pi SDK 生成的模型文件等运行数据，直接保存在宿主机目录中。
+      - type: bind
+        source: ${QING_ZHANG_DATA_DIR:-./data}
+        target: /app/data
+      # Pi 登录信息和 Agent 配置，直接保存在宿主机目录中。
+      - type: bind
+        source: ${PI_AGENT_DIR:-./pi}
+        target: /home/node/.pi/agent
+
+  # 一次性备份工具：docker compose run --rm backup
+  # 输出 PostgreSQL 自定义格式备份到宿主机 ./backups（可通过环境变量修改）。
+  backup:
+    image: postgres:17-alpine
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - type: bind
+        source: ${QING_ZHANG_BACKUP_DIR:-./backups}
+        target: /backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        umask 077;
+        target="/backups/qing-zhang-$$(date +%Y%m%d-%H%M%S).dump";
+        pg_dump -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "$$target";
+        echo "Backup created: $$target"
+
+volumes:
+  postgres_data:
+    # 固定名称保证即使更换项目目录，仍然连接同一份本机数据库。
+    name: qing-zhang-postgres-data

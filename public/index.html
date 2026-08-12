@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#172b3a" />
+    <title>轻账 · AI 记账</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#dashboard" aria-label="轻账首页">
+          <span class="brand-mark"><span></span><span></span><span></span></span>
+          <span><strong>轻账</strong><small>清楚每一笔</small></span>
+        </a>
+        <nav class="nav-list" aria-label="主要导航">
+          <a class="nav-item active" href="#dashboard" data-nav="dashboard"><span>◫</span>概览</a>
+          <a class="nav-item" href="#transactions" data-nav="transactions"><span>≡</span>账目</a>
+          <a class="nav-item" href="#analytics" data-nav="analytics"><span>◷</span>统计分析</a>
+          <a class="nav-item" href="#ai" data-nav="ai"><span>✦</span>AI 助手</a>
+          <a class="nav-item" href="#settings" data-nav="settings"><span>⚙</span>设置</a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <div><strong id="aiStatus">正在检测 AI</strong><small>解析后确认再入账</small></div>
+        </div>
+      </aside>
+
+      <main class="main" id="appMain">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="pageEyebrow">FINANCE OVERVIEW</p>
+            <h1 id="pageTitle">财务概览</h1>
+            <p class="topbar-subtitle" id="pageSubtitle">掌握当前收支状态和最近账目</p>
+          </div>
+          <div class="top-actions">
+            <button class="global-search" id="globalSearch" type="button" aria-label="搜索账目"><span>⌕</span><small>搜索账目</small></button>
+            <a class="current-period" id="currentPeriod" href="#analytics"><span>统计基准</span><strong id="currentPeriodDate">—</strong></a>
+            <button class="button primary" id="openManual">＋ 记一笔</button>
+          </div>
+        </header>
+
+        <section class="workspace-page active" id="workspace-dashboard" data-workspace="dashboard">
+          <section class="kpi-grid" aria-label="支出汇总">
+            <article class="kpi-card featured" data-summary-scope="day" role="button" tabindex="0" aria-label="查看日分类占比">
+              <div class="kpi-top"><span>今日支出</span><i>日</i></div>
+              <strong id="totalDay">¥0.00</strong><small id="dayRange">—</small>
+            </article>
+            <article class="kpi-card" data-summary-scope="week" role="button" tabindex="0" aria-label="查看周分类占比">
+              <div class="kpi-top"><span>本周支出</span><i>周</i></div>
+              <strong id="totalWeek">¥0.00</strong><small id="weekRange">—</small>
+            </article>
+            <article class="kpi-card" data-summary-scope="month" role="button" tabindex="0" aria-label="查看月分类占比">
+              <div class="kpi-top"><span>本月支出</span><i>月</i></div>
+              <strong id="totalMonth">¥0.00</strong><small id="monthRange">—</small>
+            </article>
+            <article class="kpi-card" data-summary-scope="year" role="button" tabindex="0" aria-label="查看年分类占比">
+              <div class="kpi-top"><span>本年支出</span><i>年</i></div>
+              <strong id="totalYear">¥0.00</strong><small id="yearRange">—</small>
+            </article>
+          </section>
+
+          <section class="dashboard-grid">
+            <article class="panel recent-panel">
+              <div class="section-heading compact">
+                <div><p class="eyebrow">RECENT ACTIVITY</p><h2>最近账目</h2></div>
+                <a class="text-link" href="#transactions">查看全部 <span>→</span></a>
+              </div>
+              <div class="recent-list" id="dashboardRecent"></div>
+            </article>
+            <aside class="dashboard-side">
+              <article class="insight-card">
+                <div class="insight-icon">↗</div>
+                <p>本月主要支出</p>
+                <strong id="dashboardTopCategory">—</strong>
+                <small id="dashboardTopCategoryMeta">正在计算分类占比</small>
+                <a href="#analytics">查看完整分析</a>
+              </article>
+              <article class="ai-launch-card">
+                <span>✦</span>
+                <div><strong>问问 AI 助手</strong><small>自然语言记账、查询和整理账本</small></div>
+                <a href="#ai" aria-label="打开 AI 助手">→</a>
+              </article>
+            </aside>
+          </section>
+        </section>
+
+        <section class="workspace-page" id="workspace-transactions" data-workspace="transactions">
+          <section class="panel records-panel" id="records">
+            <div class="section-heading">
+              <div><p class="eyebrow">ACCOUNT RECORDS</p><h2>账目明细</h2></div>
+              <div class="records-tools">
+                <div class="month-nav" aria-label="账目月份">
+                  <button type="button" data-month-shift="-1" aria-label="上个月">‹</button>
+                  <input id="recordMonth" type="month" aria-label="选择账目月份" />
+                  <button type="button" data-month-shift="1" aria-label="下个月">›</button>
+                </div>
+                <span class="muted" id="recordCount">共 0 笔</span>
+              </div>
+            </div>
+            <div class="record-filters" aria-label="账目筛选">
+              <label class="search-field"><span>⌕</span><input id="recordSearch" type="search" placeholder="搜索项目、备注或分类" autocomplete="off" /></label>
+              <select id="recordCategory" aria-label="筛选一级分类"><option value="">全部一级分类</option></select>
+              <button class="clear-filters hidden" id="clearRecordFilters" type="button">清除筛选</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>项目</th><th>分类</th><th>备注</th><th class="amount">金额</th><th class="actions-column">操作</th></tr></thead>
+                <tbody id="recordRows"></tbody>
+              </table>
+            </div>
+            <div class="pagination" id="recordsPagination">
+              <button class="button ghost" id="previousPage" type="button">上一页</button>
+              <span id="pageInfo">第 1 / 1 页</span>
+              <button class="button ghost" id="nextPage" type="button">下一页</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="workspace-page" id="workspace-analytics" data-workspace="analytics">
+          <section class="panel history-panel" id="statistics">
+            <div>
+              <p class="eyebrow">HISTORY CENTER</p>
+              <h2>统计时间范围</h2>
+              <p class="history-copy">选择任意日期后，日、周、月、年总额以及分类占比和趋势会同步更新。</p>
+            </div>
+            <div class="history-controls">
+              <label class="history-date-label">统计日期
+                <span class="date-stepper">
+                  <button type="button" data-day-shift="-1" aria-label="前一天" title="前一天">‹</button>
+                  <input id="historyDate" type="date" aria-label="统计日期" />
+                  <button type="button" data-day-shift="1" aria-label="后一天" title="后一天">›</button>
+                </span>
+              </label>
+              <label>快速跳转年份<span class="year-jump"><input id="historyYear" type="number" min="1900" max="9999" step="1" /><button id="applyHistoryYear" type="button">查看</button></span></label>
+              <button class="history-latest" id="showLatestStats" type="button">回到最新</button>
+            </div>
+          </section>
+
+          <section class="analytics-grid">
+            <article class="panel breakdown-panel">
+              <div class="section-heading">
+                <div><p class="eyebrow">CATEGORY SHARE</p><h2>各类花销占比</h2></div>
+              </div>
+              <div class="breakdown-controls">
+                <div class="segmented" id="breakdownLevelTabs" aria-label="分类层级">
+                  <button data-level="primary" class="active">一级</button>
+                  <button data-level="secondary">二级</button>
+                </div>
+                <div class="segmented" id="breakdownTabs" aria-label="统计周期">
+                    <button data-scope="day" class="active">日</button>
+                    <button data-scope="week">周</button>
+                    <button data-scope="month">月</button>
+                    <button data-scope="year">年</button>
+                </div>
+              </div>
+              <div class="donut-layout">
+                <div class="donut" id="donut"><div><strong id="donutTotal">¥0</strong><span id="donutLevelLabel">一级分类</span></div></div>
+                <div class="legend" id="breakdownLegend"></div>
+              </div>
+            </article>
+
+            <article class="panel trend-panel">
+              <div class="section-heading">
+                <div><p class="eyebrow">SPENDING TREND</p><h2>支出趋势</h2></div>
+                <div class="segmented" id="trendTabs">
+                  <button data-scope="day" class="active">近14日</button>
+                  <button data-scope="week">近8周</button>
+                  <button data-scope="month">近12月</button>
+                </div>
+              </div>
+              <div class="bar-chart" id="trendChart" aria-label="支出趋势柱状图"></div>
+            </article>
+          </section>
+        </section>
+
+        <section class="workspace-page" id="workspace-ai" data-workspace="ai">
+          <section class="ai-card ai-workspace" id="ai-entry">
+            <div class="ai-icon">✦</div>
+            <div class="ai-copy">
+              <div class="section-heading compact">
+                <div><p class="eyebrow">AI ASSISTED</p><h2>AI 记账与账本问答</h2></div>
+                <div class="ai-heading-actions">
+                  <span class="pill" id="parserMode">多轮对话已就绪</span>
+                  <button class="new-conversation" id="newAiConversation" type="button" title="清空当前上下文并开始新对话">＋ 新对话</button>
+                </div>
+              </div>
+              <div class="ai-preview hidden" id="aiPreview" aria-live="polite"></div>
+              <div class="ai-composer">
+                <textarea id="aiText" rows="3" placeholder="先说：中午酸奶 4.5，午饭 13.6；再问：那今天一共花了多少？"></textarea>
+                <button class="button accent" id="parseAi"><span>✦</span> 发送</button>
+              </div>
+              <p class="hint">支持连续追问与上下文指代。新增、修改、删除会先展示预览，确认后才执行；刷新页面会开始新会话。</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="workspace-page" id="workspace-settings" data-workspace="settings">
+          <section class="settings-grid">
+            <article class="panel settings-card primary-settings-card">
+              <div class="settings-card-icon">✦</div>
+              <div>
+                <p class="eyebrow">AI MODEL SERVICE</p>
+                <h2>AI 模型配置</h2>
+                <p>管理模型服务、接口协议和密钥。完整 API Key 只保存在服务端，不会返回浏览器。</p>
+                <div class="settings-summary"><span>当前配置</span><strong id="settingsAiMode">正在读取…</strong><small id="settingsAiStatus">等待服务状态</small></div>
+              </div>
+              <button class="button primary" id="openSettings" type="button">管理模型配置</button>
+            </article>
+            <article class="panel settings-card muted-settings-card">
+              <div class="settings-card-icon">↥</div>
+              <div><p class="eyebrow">DATA CONTROL</p><h2>数据与备份</h2><p>账本数据由本地数据库持久化。商业架构阶段将加入自动备份、恢复与审计记录。</p></div>
+              <span class="coming-badge">规划中</span>
+            </article>
+            <article class="panel settings-card muted-settings-card">
+              <div class="settings-card-icon">◎</div>
+              <div><p class="eyebrow">ACCOUNT SECURITY</p><h2>账户与安全</h2><p>下一阶段接入用户、权限和多账本隔离，为团队与商业部署准备。</p></div>
+              <span class="coming-badge">规划中</span>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="manualDialog">
+      <form method="dialog" class="dialog-card" id="manualForm">
+        <div class="dialog-head"><div><p class="eyebrow" id="manualEyebrow">NEW RECORD</p><h2 id="manualTitle">手动记一笔</h2></div><button class="icon-button" id="closeManual" type="button" aria-label="关闭">×</button></div>
+        <div class="form-grid">
+          <label>日期<input name="date" type="date" required /></label>
+          <label>收支<select name="direction"><option value="expense">支出</option><option value="income">收入</option></select></label>
+          <label>金额<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00" /></label>
+          <label>项目<input name="item" list="projectList" required placeholder="例如：午饭" /></label>
+          <label>一级分类<input name="category1" list="category1List" required placeholder="餐饮" /></label>
+          <label>二级分类<input name="category2" list="category2List" required placeholder="午餐" /></label>
+          <label class="wide">备注<input name="note" placeholder="可选" /></label>
+        </div>
+        <div class="dialog-actions"><button class="button ghost" id="cancelManual" type="button">取消</button><button class="button primary" id="saveManual" type="submit" value="default">保存账目</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="confirm-dialog" id="deleteDialog">
+      <div class="dialog-card">
+        <div class="danger-icon">!</div>
+        <h2>删除这笔账目？</h2>
+        <p id="deleteRecordSummary">删除后将重新计算相关统计。</p>
+        <div class="dialog-actions"><button class="button ghost" id="cancelDelete" type="button">取消</button><button class="button danger" id="confirmDelete" type="button">确认删除</button></div>
+      </div>
+    </dialog>
+
+    <dialog id="settingsDialog">
+      <form class="dialog-card" id="settingsForm">
+        <div class="dialog-head"><div><p class="eyebrow">AI MODEL</p><h2>AI 模型设置</h2></div><button class="icon-button" id="closeSettings" type="button" aria-label="关闭">×</button></div>
+        <div class="settings-intro">可以使用当前默认模型，也可以配置自定义模型服务。设置仅保存在这台电脑，完整 API Key 不会返回网页。</div>
+        <div class="form-grid">
+          <label class="wide">模型配置来源
+            <select name="mode" id="aiModeSelect">
+              <option value="default">使用当前默认模型配置</option>
+              <option value="custom">使用自定义模型服务</option>
+            </select>
+          </label>
+          <div class="compatible-fields wide" id="customModelFields">
+            <label>服务商标识<input name="providerId" placeholder="例如：my-provider" /></label>
+            <label>模型标识<input name="modelId" placeholder="例如：my-model" /></label>
+            <label class="wide">Base URL<input name="baseUrl" type="url" placeholder="https://api.example.com/v1" /></label>
+            <label>接口协议
+              <select name="apiType">
+                <option value="openai-completions">OpenAI Chat Completions</option>
+                <option value="openai-responses">OpenAI Responses</option>
+                <option value="anthropic-messages">Anthropic Messages</option>
+                <option value="google-generative-ai">Google Generative AI</option>
+              </select>
+            </label>
+            <label class="check-field"><input name="authHeader" type="checkbox" checked /> 使用 Authorization 请求头</label>
+            <label class="wide">API Key<input name="apiKey" type="password" autocomplete="new-password" placeholder="输入新密钥；留空则保留当前密钥" /></label>
+            <label class="clear-key"><input name="clearApiKey" type="checkbox" /> 清除已保存的 API Key</label>
+          </div>
+        </div>
+        <div class="settings-status" id="settingsStatus"></div>
+        <div class="dialog-actions"><button class="button ghost" id="cancelSettings" type="button">取消</button><button class="button primary" id="saveSettings" type="submit">保存设置</button></div>
+      </form>
+    </dialog>
+
+    <datalist id="projectList"></datalist>
+    <datalist id="category1List"></datalist>
+    <datalist id="category2List"></datalist>
+    <div class="toast" id="toast" role="status"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

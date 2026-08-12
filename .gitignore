@@ -1,0 +1,13 @@
+.env
+node_modules/
+dist/
+dist-web/
+data/*
+!data/initial-ledger.json
+pi/
+backups/
+tests/.tmp-*
+tests/models-store.json
+*.log
+*.tar
+*.tar.gz

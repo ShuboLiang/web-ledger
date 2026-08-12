@@ -1,0 +1,119 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #17202a;
+  background: #f3f6f6;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+body { min-width: 320px; background: #f3f6f6; }
+button, input, textarea, select { font: inherit; }
+
+.app-layout { min-height: 100vh; }
+.app-sider { position: fixed !important; inset: 0 auto 0 0; z-index: 30; padding: 24px 12px 18px; overflow: hidden; }
+.app-sider + .ant-layout { margin-left: 240px; min-width: 0; }
+.brand.ant-btn { width: 100%; height: auto; display: flex; align-items: center; justify-content: flex-start; gap: 12px; padding: 0 12px 24px; color: white; text-align: left; }
+.brand-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: rgba(20,184,166,.15); font-size: 24px; }
+.brand b { display: block; font-size: 20px; letter-spacing: .15em; }
+.brand small { display: block; margin-top: 3px; color: #64748b; font-size: 9px; letter-spacing: .2em; }
+.connection-card { position: absolute; right: 16px; bottom: 18px; left: 16px; display: flex; flex-direction: column; gap: 8px; padding: 13px; border: 1px solid rgba(255,255,255,.08); border-radius: 14px; background: rgba(255,255,255,.04); }
+.connection-card .ant-typography { color: #64748b; font-size: 11px; line-height: 1.5; }
+.app-header { position: sticky; top: 0; z-index: 20; display: flex; height: 80px; align-items: center; justify-content: space-between; gap: 20px; padding: 0 32px; border-bottom: 1px solid rgba(226,232,240,.8); backdrop-filter: blur(16px); }
+.page-heading { min-width: 0; }
+.page-heading .ant-typography { margin: 0 !important; }
+.page-heading > span { display: block; margin-top: 3px; font-size: 12px; }
+.app-content { width: 100%; max-width: 1600px; margin: 0 auto; padding: 24px 32px 40px; }
+.page-stack { display: flex; flex-direction: column; gap: 20px; }
+
+.metric-card { height: 100%; cursor: pointer; }
+.metric-hint { display: block; margin-top: 12px; font-size: 11px; }
+.ai-insight-card { height: 100%; overflow: hidden; border: 0 !important; background: linear-gradient(145deg, #0f766e, #064e4b) !important; }
+.ai-insight-card .ant-typography { color: white; }
+.ai-insight-card .ant-typography-secondary, .ai-insight-card p { color: rgba(255,255,255,.72) !important; }
+.ai-insight-content { min-height: 300px; gap: 12px; }
+.ai-insight-content .ant-btn { align-self: flex-start; margin-top: auto; }
+
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ai-entry-button { height: 52px !important; border-color: #99f6e4 !important; background: #f0fdfa !important; color: #0f766e !important; }
+.transaction-mobile-row { padding: 16px !important; cursor: pointer; }
+.analytics-toolbar { position: sticky; top: 92px; z-index: 10; box-shadow: 0 8px 28px rgba(15,23,42,.06); }
+.ranking-row { width: 100%; min-width: 0; padding-right: 10px; }
+
+.card-subtitle { margin: 3px 0 0 !important; font-size: 12px; font-weight: 400; }
+.category-card { height: 100%; }
+.category-icon { color: #0f766e; font-size: 20px; }
+.block-text { display: block; margin-top: 2px; font-size: 11px; }
+.model-card { height: 100%; }
+.model-card.active { border-color: #0f766e; background: #f0fdfa; box-shadow: 0 0 0 2px rgba(15,118,110,.1); }
+.model-card .ant-typography { margin-bottom: 4px; }
+.model-icon { padding: 10px; border-radius: 12px; background: #0f766e; color: white; font-size: 18px; }
+.model-default { color: #0f766e; font-size: 20px; }
+.settings-placeholder { min-height: 520px; display: grid; place-items: center; }
+
+.ai-workspace { overflow: hidden; }
+.ai-grid { display: grid; grid-template-columns: 250px minmax(0,1fr) 320px; height: 100%; }
+.ai-grid.compact { grid-template-columns: minmax(0,1fr) minmax(270px, 36%); }
+.ai-conversations, .ai-pending { min-width: 0; padding: 16px; overflow-y: auto; background: #f8fafc; }
+.ai-conversations { border-right: 1px solid #e7ecee; }
+.ai-pending { border-left: 1px solid #e7ecee; }
+.section-label { display: block; margin: 22px 8px 8px; font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.ai-pending .section-label { margin: 0; }
+.ai-pending h5 { margin: 4px 0 0 !important; }
+.ai-chat { display: flex; min-width: 0; flex-direction: column; background: white; }
+.ai-chat-header { min-height: 64px; padding: 12px 18px; border-bottom: 1px solid #eef2f3; }
+.ai-chat-header > .ant-flex:first-child > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.ai-messages { flex: 1; min-height: 0; padding: 20px !important; overflow-y: auto; }
+.ai-sender { padding: 14px 18px; border-top: 1px solid #eef2f3; }
+.ai-sender > .ant-typography { display: block; margin-top: 7px; text-align: center; font-size: 10px; }
+.proposal-card { width: 100%; }
+.proposal-card > .ant-card-body { display: flex; flex-direction: column; gap: 8px; }
+.markdown-body { max-width: 100%; overflow-wrap: anywhere; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+.markdown-body p, .markdown-body ul, .markdown-body ol { margin: 0 0 10px; }
+.markdown-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown-body th, .markdown-body td { padding: 6px 10px; border: 1px solid #dbe4e6; }
+.markdown-body code { padding: 2px 5px; border-radius: 5px; background: rgba(15,118,110,.08); }
+.markdown-body pre { max-width: 100%; padding: 12px; overflow-x: auto; border-radius: 10px; background: #0f172a; color: #e2e8f0; }
+.markdown-body pre code { padding: 0; background: transparent; }
+
+.mobile-nav { position: fixed; z-index: 50; right: 12px; bottom: 12px; left: 12px; height: 66px; padding: 0 8px; border-radius: 20px; background: #071317; box-shadow: 0 16px 40px rgba(2,6,23,.28); }
+.mobile-nav .ant-flex { height: 100%; }
+.mobile-nav .mobile-nav-item.ant-btn { width: 54px; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px; color: #94a3b8; font-size: 18px; }
+.mobile-nav .mobile-nav-item.ant-btn > span { margin-inline-start: 0; }
+.mobile-nav .mobile-nav-item.ant-btn > span:not(.anticon) { font-size: 9px; }
+.mobile-nav .mobile-nav-item.ant-btn .anticon { font-size: 18px; }
+.mobile-nav .mobile-nav-item.ant-btn.active { color: #5eead4; background: rgba(20, 184, 166, .12); }
+.mobile-add { margin-top: -28px; box-shadow: 0 0 0 5px #f3f6f6; }
+
+@media (max-width: 1199px) {
+  .ai-grid.compact { grid-template-columns: minmax(0,1fr) 300px; }
+}
+
+@media (max-width: 991px) {
+  .app-header { height: 68px; padding: 0 16px; }
+  .app-content { padding: 16px 16px 96px; }
+  .analytics-toolbar { top: 78px; }
+  .ai-workspace .ant-card-body { height: calc(100vh - 170px) !important; min-height: 620px !important; }
+}
+
+@media (max-width: 767px) {
+  .form-grid-2 { grid-template-columns: 1fr; gap: 0; }
+  .analytics-toolbar .ant-space { flex-wrap: wrap; }
+  .ai-grid.compact { grid-template-columns: 1fr; }
+  .ai-pending { max-height: 300px; border-top: 1px solid #e7ecee; border-left: 0; }
+  .ai-workspace .ant-card-body { height: auto !important; min-height: 780px !important; }
+  .ai-chat { min-height: 570px; }
+  .ai-chat-header { align-items: flex-start !important; }
+  .ai-chat-header > .ant-btn { max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-width: 480px) {
+  .app-header { padding: 0 10px; }
+  .page-heading h4 { font-size: 18px; }
+  .app-header .ant-space { gap: 5px !important; }
+  .app-content { padding: 12px 10px 94px; }
+  .page-stack { gap: 14px; }
+}

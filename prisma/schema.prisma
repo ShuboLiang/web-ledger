@@ -1,0 +1,156 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Ledger {
+  id           String        @id @default(cuid())
+  name         String
+  isDefault    Boolean       @default(false)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  transactions Transaction[]
+  projects     Project[]
+  categories   Category[]
+  accounts     Account[]
+  budgets      Budget[]
+  tags         Tag[]
+
+  @@map("ledgers")
+}
+
+model Transaction {
+  id        Int      @id @default(autoincrement())
+  ledgerId  String   @map("ledger_id")
+  date      DateTime @db.Date
+  amount    Decimal  @db.Decimal(14, 2)
+  item      String   @db.VarChar(80)
+  category1 String   @map("category1") @db.VarChar(40)
+  category2 String   @map("category2") @db.VarChar(40)
+  categoryId String  @map("category_id")
+  accountId String?  @map("account_id")
+  note      String   @default("") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([ledgerId, date(sort: Desc), id(sort: Desc)])
+  @@index([ledgerId, category1, category2])
+  @@index([categoryId])
+  @@map("transactions")
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  name      String   @db.VarChar(80)
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@unique([ledgerId, name])
+  @@map("projects")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  category1 String   @db.VarChar(40)
+  category2 String   @db.VarChar(40)
+  enabled   Boolean  @default(true)
+  mergedIntoId String? @map("merged_into_id")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  mergedInto Category? @relation("CategoryMerges", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom Category[] @relation("CategoryMerges")
+
+  @@unique([ledgerId, category1, category2])
+  @@index([mergedIntoId])
+  @@map("categories")
+}
+
+model Account {
+  id             String        @id @default(cuid())
+  ledgerId       String        @map("ledger_id")
+  name           String        @db.VarChar(80)
+  type           String        @default("cash") @db.VarChar(30)
+  openingBalance Decimal       @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  enabled        Boolean       @default(true)
+  sortOrder      Int           @default(0) @map("sort_order")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  ledger         Ledger        @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+
+  @@unique([ledgerId, name])
+  @@map("accounts")
+}
+
+model Budget {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  month     DateTime @db.Date
+  category1 String?  @db.VarChar(40)
+  amount    Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, month])
+  @@map("budgets")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  name      String   @db.VarChar(40)
+  color     String   @default("#0f766e") @db.VarChar(20)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@unique([ledgerId, name])
+  @@map("tags")
+}
+
+model AiModelProfile {
+  id         String   @id @default(cuid())
+  name       String   @unique @db.VarChar(80)
+  providerId String   @map("provider_id") @db.VarChar(100)
+  modelId    String   @map("model_id") @db.VarChar(100)
+  baseUrl    String   @map("base_url") @db.VarChar(500)
+  apiType    String   @map("api_type") @db.VarChar(50)
+  authHeader Boolean  @default(true) @map("auth_header")
+  apiKey     String?  @map("api_key") @db.Text
+  isDefault  Boolean  @default(false) @map("is_default")
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_model_profiles")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  action     String   @db.VarChar(60)
+  entityType String   @map("entity_type") @db.VarChar(60)
+  entityId   String?  @map("entity_id") @db.VarChar(100)
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
