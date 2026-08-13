@@ -2,7 +2,7 @@ import { CopyOutlined, DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined,
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Col, DatePicker, Drawer, Dropdown, Empty, Flex, Form, InputNumber, Progress, Row, Select, Space, Statistic, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 
@@ -10,15 +10,19 @@ type Category = { id: string; category1: string; category2: string; enabled: boo
 type ManagementData = { categories: Category[] };
 type Budget = { id: string; month: string; category1: string | null; amount: number; used: number; remaining: number; usageRate: number; status: "normal" | "warning" | "over" };
 type BudgetData = { month: string; monthExpense: number; totalBudget: Budget | null; categoryBudgets: Budget[] };
+const budgetMonthStorageKey = "qing-zhang-budget-month";
 
 export function BudgetsPage() {
   const [params, setParams] = useSearchParams();
-  const month = /^\d{4}-\d{2}$/.test(params.get("month") || "") ? params.get("month")! : dayjs().format("YYYY-MM");
+  const requestedMonth = params.get("month") || "";
+  const storedMonth = sessionStorage.getItem(budgetMonthStorageKey) || "";
+  const month = /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : /^\d{4}-\d{2}$/.test(storedMonth) ? storedMonth : dayjs().format("YYYY-MM");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Budget | null>(null);
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
+  useEffect(() => { sessionStorage.setItem(budgetMonthStorageKey, month); }, [month]);
   const { data: management } = useQuery({ queryKey: ["management"], queryFn: () => api<ManagementData>("/api/management") });
   const { data, isLoading } = useQuery({ queryKey: ["budgets", month], queryFn: () => api<BudgetData>(`/api/management/budgets?month=${month}`) });
   const categories = useMemo(() => [...new Set(management?.categories.filter((row) => row.enabled).map((row) => row.category1) || [])], [management?.categories]);

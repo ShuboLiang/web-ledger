@@ -26,6 +26,7 @@ export function AnalyticsPage() {
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
   const [customMode, setCustomMode] = useState(false);
+  const [mobileRangeDraft, setMobileRangeDraft] = useState<[string, string] | null>(null);
   const [selectedHeatDate, setSelectedHeatDate] = useState("");
   const scope: Scope = isScope(params.get("scope")) ? params.get("scope") as Scope : "month";
   const anchor = params.get("anchor") || "";
@@ -81,8 +82,16 @@ export function AnalyticsPage() {
   const picker = scope === "day" ? "date" : scope;
   const pickerFormat = scope === "day" ? "YYYY年M月D日" : scope === "month" ? "YYYY年M月" : scope === "year" ? "YYYY年" : "YYYY-MM-DD";
   const periodPicker = <DatePicker className="analytics-period-picker" picker={picker} format={pickerFormat} allowClear={false} value={dayjs(selected)} disabled={Boolean(customRange)} onChange={(value) => setAnchor(value?.format("YYYY-MM-DD") || "")} />;
-  const rangePicker = <DatePicker.RangePicker className="analytics-range-picker" onChange={(values) => { const startValue = values?.[0]; const endValue = values?.[1]; if (startValue && endValue) { setParams((current) => { const next = new URLSearchParams(current); next.set("start", startValue.format("YYYY-MM-DD")); next.set("end", endValue.format("YYYY-MM-DD")); return next; }); setCustomMode(false); } }} />;
-  const toggleCustom = () => { if (customRange) clearCustomRange(); else setCustomMode((value) => !value); };
+  const applyCustomRange = (startValue: string, endValue: string) => { setParams((current) => { const next = new URLSearchParams(current); next.set("start", startValue); next.set("end", endValue); return next; }); setCustomMode(false); };
+  const rangePicker = <DatePicker.RangePicker className="analytics-range-picker" onChange={(values) => { const startValue = values?.[0]; const endValue = values?.[1]; if (startValue && endValue) applyCustomRange(startValue.format("YYYY-MM-DD"), endValue.format("YYYY-MM-DD")); }} />;
+  const toggleCustom = () => { if (customRange) clearCustomRange(); else { setMobileRangeDraft(activeRange); setCustomMode((value) => !value); } };
+  const mobileRangePicker = mobileRangeDraft && <Flex vertical gap={16}>
+    <div className="analytics-mobile-date-fields">
+      <Flex vertical gap={6}><Typography.Text>开始日期</Typography.Text><DatePicker allowClear={false} value={dayjs(mobileRangeDraft[0])} maxDate={dayjs(mobileRangeDraft[1])} format="YYYY年M月D日" onChange={(value) => { if (!value) return; const start = value.format("YYYY-MM-DD"); setMobileRangeDraft([start, mobileRangeDraft[1] < start ? start : mobileRangeDraft[1]]); }} /></Flex>
+      <Flex vertical gap={6}><Typography.Text>结束日期</Typography.Text><DatePicker allowClear={false} value={dayjs(mobileRangeDraft[1])} minDate={dayjs(mobileRangeDraft[0])} format="YYYY年M月D日" onChange={(value) => { if (!value) return; const end = value.format("YYYY-MM-DD"); setMobileRangeDraft([mobileRangeDraft[0] > end ? end : mobileRangeDraft[0], end]); }} /></Flex>
+    </div>
+    <Button type="primary" onClick={() => applyCustomRange(mobileRangeDraft[0], mobileRangeDraft[1])}>应用范围</Button>
+  </Flex>;
   const previousCalendarMonth = dayjs(calendarMonthStart).subtract(1, "month").format("YYYY-MM");
   const nextCalendarMonth = dayjs(calendarMonthStart).add(1, "month").format("YYYY-MM");
   const canGoPreviousMonth = !customRange || previousCalendarMonth >= customRange[0].slice(0, 7);
@@ -98,7 +107,7 @@ export function AnalyticsPage() {
       <div className="analytics-period-nav"><Button icon={<ArrowLeftOutlined />} disabled={Boolean(customRange)} onClick={() => setAnchor(shiftPeriod(selected, scope, -1))} aria-label="上一周期" />{periodPicker}<Button icon={<ArrowRightOutlined />} disabled={Boolean(customRange)} onClick={() => setAnchor(shiftPeriod(selected, scope, 1))} aria-label="下一周期" /></div>
       <Flex align="end" justify="space-between" gap={12} className="analytics-mobile-range"><Flex vertical gap={2} style={{ minWidth: 0 }}><Typography.Text type="secondary">{customRange ? "自定义统计范围" : "当前统计范围"}</Typography.Text><Typography.Text strong className="analytics-range-value">{currentRange}</Typography.Text></Flex><Button type="link" icon={<CalendarOutlined />} onClick={toggleCustom}>{customRange ? "退出" : "自定义"}</Button></Flex>
     </Flex>}</Card>
-    {customMode && !customRange && (screens.md ? <Card className="analytics-custom-range"><Space wrap>{rangePicker}<Typography.Text type="secondary">选择起止日期后立即应用</Typography.Text></Space></Card> : <Drawer title="自定义统计范围" placement="bottom" height="auto" open onClose={() => setCustomMode(false)} destroyOnHidden><Flex vertical gap={12}>{rangePicker}<Typography.Text type="secondary">选择起止日期后立即应用到全部统计图表。</Typography.Text></Flex></Drawer>)}
+    {customMode && !customRange && (screens.md ? <Card className="analytics-custom-range"><Space wrap>{rangePicker}<Typography.Text type="secondary">选择起止日期后立即应用</Typography.Text></Space></Card> : <Drawer className="analytics-range-drawer" title="自定义统计范围" placement="bottom" height="auto" open onClose={() => setCustomMode(false)} destroyOnHidden>{mobileRangePicker}</Drawer>)}
     <Row gutter={[16, 16]}><Col xs={24} md={8}><Metric title="周期支出" value={activeFlow.expense} trend={change} trendLabel={change == null ? "暂无可比数据" : change === 0 ? "与上一周期持平" : `较上一周期${change > 0 ? "增加" : "减少"} ${Math.abs(change * 100).toFixed(1)}%`} /></Col><Col xs={24} md={8}><Metric title="周期收入" value={activeFlow.income} /></Col><Col xs={24} md={8}><Metric title="净结余" value={activeFlow.balance} valueStyle={{ color: activeFlow.balance < 0 ? "#c65f43" : "#176b62" }} /></Col></Row>
     <Card title="支出趋势" extra={<Typography.Text type="secondary">{customData ? customData.days > 120 ? "自定义范围按月" : "自定义范围按日" : scope === "year" ? "本年按月" : "当前范围按日"}</Typography.Text>}>{chartData.length === 1 ? <SinglePointSummary row={chartData[0]} /> : chartData.length ? <><Column {...columnConfig} /><ChartSummary rows={chartData} /></> : <Empty />}</Card>
     <Row gutter={[20, 20]}><Col xs={24} xl={12}><Card title="一级分类支出">{primaryRows.length ? <CategoryBreakdownBars rows={primaryRows} onCategoryClick={(row) => setParam("focusCategory", row.category)} /> : <Empty />}</Card></Col><Col xs={24} xl={12}><Card title={focusedCategory ? `${focusedCategory} · 二级分类` : "二级分类支出"}>{focusedSecondaryRows.length ? <CategoryBreakdownBars rows={focusedSecondaryRows} onCategoryClick={(row) => navigate(`/transactions?start=${activeRange[0]}&end=${activeRange[1]}&category1=${encodeURIComponent(row.parent || focusedCategory)}&category2=${encodeURIComponent(row.category)}`)} /> : <Empty description={focusedCategory ? "该分类暂无二级支出" : "暂无二级分类"} />}</Card></Col></Row>

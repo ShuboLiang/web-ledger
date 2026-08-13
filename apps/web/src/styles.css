@@ -116,31 +116,43 @@ button, input, textarea, select { font: inherit; }
 .ai-entry-button { height: 52px !important; border-color: #b8d5cc !important; background: #edf5f1 !important; color: #176b62 !important; }
 .transaction-filter-card .ant-card-body { padding: 14px 16px !important; }
 .transaction-filter-desktop { display: flex; flex-direction: column; gap: 12px; }
-.transaction-filter-primary { display: grid; min-width: 0; grid-template-columns: minmax(280px, 332px) minmax(0, 1fr); align-items: center; gap: 14px; }
-.transaction-period-control { display: grid; min-width: 0; grid-template-columns: auto auto minmax(126px, 1fr); align-items: center; gap: 8px; }
-.transaction-period-label { color: #5c6e6a; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.transaction-period-mode { min-width: 96px; }
-.transaction-period-mode .ant-segmented-item-label { min-width: 34px; padding-inline: 7px; }
-.transaction-period-picker { width: 100%; min-width: 0; }
+.transaction-filter-primary { display: grid; min-width: 0; grid-template-areas: "time direction category search"; grid-template-columns: minmax(150px, .8fr) 190px minmax(180px, 1fr) minmax(280px, 1.5fr); align-items: center; gap: 10px; }
+.transaction-time-trigger { grid-area: time; min-width: 0; justify-content: flex-start; }
+.transaction-time-trigger > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transaction-time-trigger.is-active { border-color: #8dbdb0; background: #f1f7f4; color: #176b62; }
+.transaction-direction-filter { grid-area: direction; }
+.transaction-category-filter { grid-area: category; width: 100%; min-width: 0; }
+.transaction-search { grid-area: search; width: 100%; min-width: 0; }
+.transaction-time-panel { width: 348px; padding: 4px; }
+.transaction-time-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.transaction-time-presets .ant-btn { width: 100%; }
+.transaction-custom-time { display: flex; margin-top: 12px; padding-top: 12px; flex-direction: column; gap: 7px; border-top: 1px solid #e7ece8; }
+.transaction-custom-time .ant-picker { width: 100%; }
+.transaction-mobile-date-fields { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .transaction-filter-secondary { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding-top: 10px; border-top: 1px solid #e7ece8; }
-.transaction-filter-tools { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 10px; }
-.transaction-filter-tools .ant-btn,
 .transaction-table-actions .ant-btn { min-width: 116px; }
-.transaction-search { width: 100%; }
+.transaction-filter-summary { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 7px; }
+.transaction-filter-summary .ant-tag { display: inline-flex; max-width: 260px; margin: 0; align-items: center; overflow: hidden; border-color: #c9ddd6; background: #f3f8f6; color: #285e57; text-overflow: ellipsis; white-space: nowrap; }
+.transaction-filter-summary .ant-tag-close-icon { flex: 0 0 auto; }
+.transaction-filter-summary .ant-btn { padding-inline: 4px; }
+.transaction-result-count { flex: 0 0 auto; margin-right: 3px; font-variant-numeric: tabular-nums; }
 .transaction-table-actions { justify-content: flex-end; margin-left: auto; }
 .advanced-filter-panel { width: 390px; padding: 4px; }
 .advanced-filter-panel .ant-select { width: 100%; }
+.transaction-category-popup { width: min(340px, calc(100vw - 32px)) !important; padding: 6px !important; }
+.transaction-category-popup .ant-select-item-group { height: auto; padding: 12px 10px 5px; color: #62736f; font-size: 12px; font-weight: 700; line-height: 18px; }
+.transaction-category-popup .ant-select-item-group:not(:first-child) { margin-top: 5px; border-top: 1px solid #e8eeea; }
+.transaction-category-popup .ant-select-item-option { min-height: 38px; padding: 8px 10px; border-radius: 5px; }
+.transaction-category-popup .ant-select-item-option-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transaction-category-popup .ant-select-item-option-selected:not(.ant-select-item-option-disabled) { background: #e7f1ed; color: #155f57; font-weight: 600; }
 .transaction-selection-alert { border-color: #b9d6cd; background: #edf5f1; }
 .transaction-mobile-row { padding: 16px !important; cursor: pointer; }
 .transaction-item-cell { min-width: 0; }
 .transaction-item-cell .ant-typography-secondary { max-width: 100%; font-size: 12px; }
 .transaction-filter-mobile-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
-.transaction-period-control-mobile .transaction-period-label { display: none; }
-.mobile-filter-summary { min-height: 24px; }
-.mobile-filter-summary .ant-btn { padding-inline: 0; }
 .mobile-filter-drawer .advanced-filter-panel { width: 100%; padding: 0; }
-.mobile-filter-drawer .ant-drawer-body { padding-top: 12px; }
-.mobile-filter-drawer .advanced-category-grid { flex-direction: column; }
+.mobile-filter-drawer .ant-drawer-body,
+.mobile-time-drawer .ant-drawer-body { padding-top: 12px; }
 .analytics-toolbar { position: sticky; top: 92px; z-index: 10; box-shadow: 0 8px 28px rgba(15,23,42,.06); }
 .analytics-period-picker { width: 160px; }
 .analytics-range-picker { width: 280px; }
@@ -149,6 +161,8 @@ button, input, textarea, select { font: inherit; }
 .analytics-mobile-range { padding-top: 12px; border-top: 1px solid #e4eae5; }
 .analytics-mobile-range .ant-btn { flex: 0 0 auto; height: auto; padding: 2px 0; }
 .analytics-range-value { font-family: Bahnschrift, "Microsoft YaHei", sans-serif; font-size: 15px; font-variant-numeric: tabular-nums; }
+.analytics-mobile-date-fields { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.analytics-mobile-date-fields .ant-picker { width: 100%; }
 .analytics-custom-range .ant-card-body { padding-block: 14px !important; }
 .expense-calendar-card .ant-card-body { padding-top: 18px; }
 .expense-calendar-layout { display: grid; width: min(100%, 1100px); margin: 0 auto; grid-template-columns: minmax(250px, 300px) minmax(480px, 680px); align-items: stretch; justify-content: center; gap: 48px; }
@@ -189,7 +203,7 @@ button, input, textarea, select { font: inherit; }
 .ranking-amount { display: inline-block; min-width: 82px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .large-expense-list { width: min(100%, 1100px); margin: 0 auto; }
 .large-expense-list .ant-spin-container { display: block; }
-.large-expense-list .ant-list-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+.large-expense-list .ant-list-items { display: grid; grid-template-rows: repeat(3, auto); grid-auto-flow: column; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
 .large-expense-item { display: grid !important; min-width: 0; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center !important; gap: 14px; padding-block: 16px !important; }
 .large-expense-rank { width: 20px; text-align: center; font-variant-numeric: tabular-nums; }
 .large-expense-main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
@@ -270,6 +284,9 @@ button, input, textarea, select { font: inherit; }
 .ai-sender > .ant-typography { display: block; margin-top: 7px; text-align: center; font-size: 10px; }
 .proposal-card { width: 100%; }
 .proposal-card > .ant-card-body { display: flex; flex-direction: column; gap: 8px; }
+.proposal-card .ant-tag { margin: 0; }
+.proposal-edit-drawer .ant-radio-group { display: grid; grid-template-columns: 1fr 1fr; }
+.proposal-edit-drawer .ant-radio-button-wrapper { text-align: center; }
 .markdown-body { max-width: 100%; overflow-wrap: anywhere; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > :last-child { margin-bottom: 0; }
@@ -303,13 +320,13 @@ button, input, textarea, select { font: inherit; }
 @media (max-width: 1199px) {
   .ai-grid.compact { grid-template-columns: minmax(0,1fr) 300px; }
   .expense-calendar-layout { width: min(100%, 900px); grid-template-columns: minmax(210px, 250px) minmax(420px, 560px); gap: 32px; }
+  .transaction-filter-primary { grid-template-areas: "time direction category" "search search search"; grid-template-columns: minmax(150px, .9fr) 190px minmax(180px, 1fr); }
 }
 
 @media (max-width: 991px) {
   .app-header { height: 68px; }
   .app-header-inner { padding: 0 16px; }
   .app-content { padding: 16px 16px 96px; }
-  .transaction-filter-primary { grid-template-columns: minmax(280px, 316px) minmax(0, 1fr); }
   .transaction-filter-secondary { flex-wrap: wrap; align-items: flex-start; }
   .transaction-table-actions { flex-wrap: wrap; }
   .analytics-toolbar { top: 78px; }
@@ -337,11 +354,17 @@ button, input, textarea, select { font: inherit; }
   .transaction-filter-mobile .ant-input-search { height: 40px; }
   .transaction-filter-mobile .ant-input-affix-wrapper,
   .transaction-filter-mobile .ant-input-search-button,
-  .transaction-filter-mobile .transaction-period-picker,
+  .transaction-filter-mobile .ant-segmented,
   .transaction-filter-mobile .ant-btn { height: 40px; }
-  .transaction-filter-mobile .transaction-period-control { grid-template-columns: 96px minmax(0, 1fr); gap: 6px; }
-  .transaction-filter-mobile .transaction-period-mode { min-width: 0; }
-  .transaction-filter-mobile .transaction-period-mode .ant-segmented-item-label { min-width: 0; padding-inline: 6px; }
+  .transaction-filter-mobile .transaction-direction-filter { width: 100%; }
+  .transaction-filter-mobile .transaction-direction-filter .ant-segmented-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .transaction-filter-mobile .transaction-time-trigger-mobile { grid-area: auto; width: 100%; }
+  .transaction-filter-mobile .transaction-filter-summary { min-height: 24px; }
+  .transaction-filter-mobile .transaction-filter-summary .ant-tag { max-width: min(240px, calc(100vw - 112px)); }
+  .transaction-time-panel { width: min(348px, calc(100vw - 48px)); }
+  .transaction-time-panel-mobile { width: 100%; padding: 0; }
+  .transaction-time-panel-mobile .transaction-custom-time { gap: 12px; }
+  .transaction-time-panel-mobile .transaction-custom-time > .ant-btn { align-self: flex-end; min-width: 96px; }
   .analytics-toolbar { position: relative; top: auto; z-index: auto; box-shadow: none; }
   .analytics-toolbar .ant-card-body { padding: 12px !important; }
   .analytics-mobile-controls .ant-segmented { width: 100%; }
@@ -350,6 +373,7 @@ button, input, textarea, select { font: inherit; }
   .analytics-period-nav > .ant-btn,
   .analytics-period-nav .ant-picker { height: 42px; }
   .analytics-range-picker { width: 100%; }
+  .analytics-range-drawer .ant-drawer-body { padding-top: 12px; }
   .expense-calendar-card .ant-card-body { padding: 14px !important; }
   .expense-calendar-layout { width: 100%; grid-template-columns: 1fr; gap: 18px; }
   .expense-calendar-side { padding: 14px; }
@@ -358,7 +382,7 @@ button, input, textarea, select { font: inherit; }
   .expense-calendar-pane { max-width: 560px; margin: 0 auto; }
   .expense-legend { width: 100%; justify-content: flex-end; }
   .expense-month.mobile .expense-day { min-height: 42px; aspect-ratio: auto; }
-  .large-expense-list .ant-list-items { grid-template-columns: 1fr; }
+  .large-expense-list .ant-list-items { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: 1fr; }
   .large-expense-item { gap: 12px; }
   .category-contribution-row { grid-template-columns: minmax(76px, 110px) minmax(0, 1fr) 82px; gap: 8px; }
   .ai-grid.compact { grid-template-columns: 1fr; }

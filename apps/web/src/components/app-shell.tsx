@@ -1,10 +1,10 @@
 import {
   AppstoreOutlined, BarChartOutlined, BookOutlined, BookTwoTone, RobotOutlined, PlusOutlined,
   MoreOutlined, SearchOutlined, SettingOutlined, TagsOutlined, WalletOutlined,
-  LogoutOutlined, UserOutlined,
+  LoadingOutlined, LogoutOutlined, UserOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Divider, Dropdown, Flex, Grid, Input, Layout, Menu, Modal, Space, Tooltip, Typography } from "antd";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { TransactionDrawer } from "@/components/transaction-drawer";
@@ -44,8 +44,10 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const aiAnswering = useIsMutating({ mutationKey: ["ai-command"] }) > 0;
+  const navItems = nav.map((item) => item.key === "/ai" && aiAnswering ? { ...item, icon: <LoadingOutlined spin />, label: "AI 回答中" } : item);
   const { data: auth } = useQuery({ queryKey: ["auth-me"], queryFn: () => api<{ user: AuthUser }>("/api/auth/me"), staleTime: Infinity });
-  const logout = useMutation({ mutationFn: () => api("/api/auth/logout", { method: "POST" }), onSuccess: () => { queryClient.clear(); window.location.assign("/login"); } });
+  const logout = useMutation({ mutationFn: () => api("/api/auth/logout", { method: "POST" }), onSuccess: () => { Object.keys(sessionStorage).filter((key) => key.startsWith("qing-zhang-")).forEach((key) => sessionStorage.removeItem(key)); queryClient.clear(); window.location.assign("/login"); } });
   const [title, subtitle] = titles[location.pathname] || titles["/dashboard"];
   const analyticsHref = () => { const saved = sessionStorage.getItem(analyticsFilterKey); return saved ? `/analytics${saved}` : "/analytics"; };
   useEffect(() => {
@@ -69,7 +71,7 @@ export function AppShell() {
   return <Layout className="app-layout">
     {desktop && <Sider width={240} className="app-sider">
       <Button type="text" className="brand" onClick={() => navigate("/dashboard")}><BookTwoTone twoToneColor="#70d2bf" className="brand-icon" /><span><b>轻账</b><small>PERSONAL LEDGER</small></span></Button>
-      <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={nav} onClick={({ key }) => navigate(key === "/analytics" ? analyticsHref() : key)} />
+      <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={navItems} onClick={({ key }) => navigate(key === "/analytics" ? analyticsHref() : key)} />
     </Sider>}
     <Layout>
       <Header className="app-header">
@@ -77,12 +79,12 @@ export function AppShell() {
           <div className="page-heading"><Typography.Title level={desktop ? 3 : 4}>{title}</Typography.Title>{desktop && <Typography.Text type="secondary">{subtitle}</Typography.Text>}</div>
           {desktop ? <Space size={8} wrap={false} className="header-actions">
             <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)}>搜索账目 <Typography.Text keyboard className="search-shortcut">Ctrl K</Typography.Text></Button>
-            {screens.xl && <Button icon={<RobotOutlined />} onClick={() => navigate("/ai")}>问 AI</Button>}
+            {screens.xl && <Button icon={aiAnswering ? <LoadingOutlined spin /> : <RobotOutlined />} onClick={() => navigate("/ai")}>{aiAnswering ? "AI 回答中" : "问 AI"}</Button>}
             <Divider type="vertical" />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setDrawer(true)}>记一笔</Button>
             <Tooltip title="系统设置"><Button icon={<SettingOutlined />} aria-label="系统设置" onClick={() => navigate("/settings")} /></Tooltip>
             {userButton}
-          </Space> : <Space size={6}><Tooltip title="搜索账目"><Button icon={<SearchOutlined />} aria-label="搜索账目" onClick={() => setSearchOpen(true)} /></Tooltip>{userButton}</Space>}
+          </Space> : <Space size={6}>{aiAnswering && <Tooltip title="AI 正在回答"><Button icon={<LoadingOutlined spin />} aria-label="AI 正在回答，返回 AI 助手" onClick={() => navigate("/ai")} /></Tooltip>}<Tooltip title="搜索账目"><Button icon={<SearchOutlined />} aria-label="搜索账目" onClick={() => setSearchOpen(true)} /></Tooltip>{userButton}</Space>}
         </div>
       </Header>
       <Content className="app-content"><Outlet /></Content>

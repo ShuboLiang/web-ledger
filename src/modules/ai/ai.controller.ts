@@ -21,6 +21,9 @@ export class AiController {
   @Get("conversations/:id")
   getConversation(@Param("id") id: string) { return this.ai.getConversation(id); }
 
+  @Put("conversations/:id/proposals")
+  updatePendingProposals(@Param("id") id: string, @Body("proposals") proposals: unknown) { return this.ai.updatePendingProposals(id, proposals); }
+
   @Put("settings")
   async saveSettings(@Body() body: Record<string, unknown>) { return this.ai.saveSettings(body); }
 
@@ -43,8 +46,8 @@ export class AiController {
   }
 
   @Post("execute")
-  execute(@Body() body: { conversationId?: string; proposals?: any[] }) {
-    return this.ai.execute(body.conversationId, body.proposals || []);
+  execute(@Body() body: { conversationId?: string }) {
+    return this.ai.execute(body.conversationId);
   }
 
   @Post("conversations/:id/outcome")

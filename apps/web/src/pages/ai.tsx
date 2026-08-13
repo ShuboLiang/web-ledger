@@ -1,32 +1,40 @@
 import {
   CheckOutlined,
   DeleteOutlined,
+  EditOutlined,
   MessageOutlined,
   PlusOutlined,
   RobotOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Bubble, Conversations, Sender } from "@ant-design/x";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   App,
   Avatar,
   Button,
   Card,
+  DatePicker,
   Drawer,
   Dropdown,
   Empty,
   Flex,
+  Form,
   Grid,
+  Input,
+  InputNumber,
   List,
+  Radio,
+  Select,
   Space,
   Tag,
   Typography,
 } from "antd";
+import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api } from "@/lib/api";
+import { api, type Dictionaries } from "@/lib/api";
 import { conversationId, money } from "@/lib/utils";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
@@ -37,6 +45,7 @@ type Proposal = {
   current?: any;
   changes?: any;
   reason?: string;
+  _humanEdited?: boolean;
 };
 type AiResponse = {
   message: string;
@@ -63,6 +72,10 @@ const welcome: Message = {
   content:
     "你好，我可以帮你**记账、查账、改账和分析消费**。\n\n例如：`今天午饭 18 元`，或者问我“这个月餐饮花了多少？”",
 };
+type SendCommand = { text: string; conversationId: string };
+type ProposalFormValues = { date: dayjs.Dayjs; direction: "expense" | "income"; amount: number; item: string; category1: string; category2: string; note?: string };
+type EditingProposal = { proposalIndex: number; recordIndex?: number; label: string };
+const aiConversationStorageKey = "qing-zhang-ai-conversation";
 
 export function AiPage() {
   const queryClient = useQueryClient();
@@ -71,11 +84,14 @@ export function AiPage() {
   const [id, setId] = useState<string>("");
   const [input, setInput] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editingProposal, setEditingProposal] = useState<EditingProposal | null>(null);
+  const [proposalForm] = Form.useForm<ProposalFormValues>();
   const creatingInitial = useRef(false);
   const { data: settings } = useQuery({
     queryKey: ["ai-settings"],
     queryFn: () => api<any>("/api/ai/settings"),
   });
+  const { data: dictionaries } = useQuery({ queryKey: ["dictionaries"], queryFn: () => api<Dictionaries>("/api/dictionaries") });
   const { data: history = [], isFetched: historyFetched } = useQuery({
     queryKey: ["ai-conversations"],
     queryFn: () => api<Chat[]>("/api/ai/conversations"),
@@ -87,8 +103,10 @@ export function AiPage() {
   });
   useEffect(() => {
     if (!historyFetched || id || creatingInitial.current) return;
-    if (history[0]) {
-      setId(history[0].id);
+    const savedId = sessionStorage.getItem(aiConversationStorageKey);
+    const initialChat = history.find((item) => item.id === savedId) || history[0];
+    if (initialChat) {
+      setId(initialChat.id);
       return;
     }
     creatingInitial.current = true;
@@ -106,8 +124,13 @@ export function AiPage() {
         creatingInitial.current = false;
       });
   }, [historyFetched, history, id]);
+  useEffect(() => {
+    if (id) sessionStorage.setItem(aiConversationStorageKey, id);
+    else if (historyFetched && !history.length) sessionStorage.removeItem(aiConversationStorageKey);
+  }, [id, historyFetched, history.length]);
   const messages = chat?.messages.length ? chat.messages : [welcome];
   const proposals = chat?.proposals || [];
+  const isCurrentConversationAnswering = useIsMutating({ mutationKey: ["ai-command", id], exact: true }) > 0;
   const selectModel = useMutation({
     mutationFn: (profileId: string) =>
       api(`/api/ai/settings/profiles/${profileId}/default`, { method: "POST" }),
@@ -117,15 +140,16 @@ export function AiPage() {
     },
   });
   const send = useMutation({
-    mutationFn: (text: string) =>
+    mutationKey: ["ai-command", id],
+    mutationFn: ({ text, conversationId }: SendCommand) =>
       api<AiResponse>("/api/ai/command", {
         method: "POST",
-        body: JSON.stringify({ text, conversationId: id }),
+        body: JSON.stringify({ text, conversationId }),
       }),
-    onMutate: async (text) => {
-      await queryClient.cancelQueries({ queryKey: ["ai-conversation", id] });
+    onMutate: async ({ text, conversationId }) => {
+      await queryClient.cancelQueries({ queryKey: ["ai-conversation", conversationId] });
       queryClient.setQueryData<ChatDetail>(
-        ["ai-conversation", id],
+        ["ai-conversation", conversationId],
         (current) =>
           current
             ? {
@@ -138,10 +162,10 @@ export function AiPage() {
             : current,
       );
     },
-    onSuccess: async (data) => {
+    onSuccess: async (data, { conversationId }) => {
       if (data.warning) {
         queryClient.setQueryData<ChatDetail>(
-          ["ai-conversation", id],
+          ["ai-conversation", conversationId],
           (current) =>
             current
               ? {
@@ -159,13 +183,13 @@ export function AiPage() {
         );
       }
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
+        queryClient.invalidateQueries({ queryKey: ["ai-conversation", conversationId] }),
         queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
       ]);
     },
-    onError: async (error: Error) => {
+    onError: async (error: Error, { conversationId }) => {
       await queryClient.invalidateQueries({
-        queryKey: ["ai-conversation", id],
+        queryKey: ["ai-conversation", conversationId],
       });
       message.error(error.message);
     },
@@ -174,7 +198,7 @@ export function AiPage() {
     mutationFn: () =>
       api("/api/ai/execute", {
         method: "POST",
-        body: JSON.stringify({ conversationId: id, proposals }),
+        body: JSON.stringify({ conversationId: id }),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries();
@@ -182,11 +206,20 @@ export function AiPage() {
     },
     onError: (error: Error) => message.error(error.message),
   });
+  const saveProposal = useMutation({
+    mutationFn: (nextProposals: Proposal[]) => api<{ proposals: Proposal[] }>(`/api/ai/conversations/${id}/proposals`, { method: "PUT", body: JSON.stringify({ proposals: nextProposals }) }),
+    onSuccess: (result) => {
+      queryClient.setQueryData<ChatDetail>(["ai-conversation", id], (current) => current ? { ...current, proposals: result.proposals } : current);
+      setEditingProposal(null);
+      message.success("待确认内容已更新");
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
   const submit = (text = input) => {
     const value = text.trim();
-    if (!value || !id || send.isPending) return;
+    if (!value || !id || isCurrentConversationAnswering) return;
     setInput("");
-    send.mutate(value);
+    send.mutate({ text: value, conversationId: id });
   };
   const newChat = async () => {
     const next = conversationId();
@@ -225,38 +258,66 @@ export function AiPage() {
       cancelText: "取消",
       onOk: async () => {
         await api(`/api/ai/conversations/${id}`, { method: "DELETE" });
-        queryClient.setQueryData<Chat[]>(["ai-conversations"], (old) =>
-          (old || []).filter((c) => c.id !== id),
-        );
-        setId("");
+        const remaining = history.filter((chat) => chat.id !== id);
+        queryClient.setQueryData<Chat[]>(["ai-conversations"], remaining);
+        setId(remaining[0]?.id || "");
         await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
         message.success("对话已删除");
       },
     });
   const proposalRows = useMemo(
     () =>
-      proposals.flatMap((proposal) =>
+      proposals.flatMap((proposal, proposalIndex) =>
         proposal.type === "create"
-          ? (proposal.records || []).map((record) => ({
+          ? (proposal.records || []).map((record, recordIndex) => ({
               ...record,
               label: "新增",
+              proposalIndex,
+              recordIndex,
+              editable: true,
+              humanEdited: proposal._humanEdited,
             }))
           : [
               {
                 ...(proposal.current || {}),
                 ...(proposal.changes || {}),
+                direction: proposal.changes?.direction || proposal.current?.direction || (Number(proposal.current?.amount) > 0 ? "income" : "expense"),
                 label: proposal.type === "update" ? "修改" : "删除",
+                proposalIndex,
+                editable: proposal.type === "update",
+                humanEdited: proposal._humanEdited,
               },
             ],
       ),
     [proposals],
   );
+  const primaryCategories = useMemo(() => [...new Set((dictionaries?.categories || []).map((row) => row.category1))], [dictionaries?.categories]);
+  const selectedProposalCategory = Form.useWatch("category1", proposalForm);
+  const selectedProposalSubcategory = Form.useWatch("category2", proposalForm);
+  const secondaryCategories = useMemo(() => [...new Set((dictionaries?.categories || []).filter((row) => row.category1 === selectedProposalCategory).map((row) => row.category2))], [dictionaries?.categories, selectedProposalCategory]);
+  const proposalPrimaryChoices = [...primaryCategories, ...(selectedProposalCategory && !primaryCategories.includes(selectedProposalCategory) ? [selectedProposalCategory] : [])].map((value) => ({ label: value, value }));
+  const proposalSecondaryChoices = [...secondaryCategories, ...(selectedProposalSubcategory && !secondaryCategories.includes(selectedProposalSubcategory) ? [selectedProposalSubcategory] : [])].map((value) => ({ label: value, value }));
+  const openProposalEditor = (row: any) => {
+    setEditingProposal({ proposalIndex: row.proposalIndex, recordIndex: row.recordIndex, label: row.label });
+    proposalForm.setFieldsValue({ date: dayjs(row.date), direction: row.direction || (Number(row.amount) > 0 ? "income" : "expense"), amount: Math.abs(Number(row.amount)), item: row.item || "", category1: row.category1 || "", category2: row.category2 || "", note: row.note || "" });
+  };
+  const submitProposalEdit = (values: ProposalFormValues) => {
+    if (!editingProposal) return;
+    const record = { ...values, date: values.date.format("YYYY-MM-DD") };
+    const next = proposals.map((proposal, proposalIndex) => {
+      if (proposalIndex !== editingProposal.proposalIndex) return proposal;
+      if (proposal.type === "create") return { ...proposal, records: (proposal.records || []).map((existing, recordIndex) => recordIndex === editingProposal.recordIndex ? record : existing) };
+      if (proposal.type === "update") return { ...proposal, changes: record };
+      return proposal;
+    });
+    saveProposal.mutate(next);
+  };
   const bubbleItems: any[] = messages.map((item) => ({
     key: item.id,
     role: item.role === "assistant" ? "ai" : "user",
     content: item.content,
   }));
-  if (send.isPending)
+  if (isCurrentConversationAnswering)
     bubbleItems.push({
       key: "loading",
       role: "ai",
@@ -375,7 +436,7 @@ export function AiPage() {
               value={input}
               onChange={setInput}
               onSubmit={(value) => submit(value)}
-              loading={send.isPending}
+              loading={isCurrentConversationAnswering}
               onCancel={() => {}}
               placeholder="输入消息，Enter 发送…"
               autoSize={{ minRows: 1, maxRows: 5 }}
@@ -410,11 +471,17 @@ export function AiPage() {
               renderItem={(row) => (
                 <List.Item>
                   <Card size="small" className="proposal-card">
-                    <Flex justify="space-between">
-                      <Tag color="cyan">{row.label}</Tag>
-                      <Typography.Text strong type="danger">
-                        {row.amount ? money(Math.abs(row.amount)) : "—"}
-                      </Typography.Text>
+                    <Flex justify="space-between" align="center" gap={8}>
+                      <Flex align="center" gap={4}>
+                        <Tag color="cyan">{row.label}</Tag>
+                        {row.humanEdited && <Tag color="gold">已微调</Tag>}
+                      </Flex>
+                      <Flex align="center" gap={4}>
+                        <Typography.Text strong type={row.direction === "income" ? "success" : "danger"}>
+                          {row.amount ? money(Math.abs(row.amount)) : "—"}
+                        </Typography.Text>
+                        {row.editable && <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑${row.item || "待确认账目"}`} onClick={() => openProposalEditor(row)} />}
+                      </Flex>
                     </Flex>
                     <Typography.Text strong>
                       {row.item || `账目 #${row.id}`}
@@ -496,6 +563,29 @@ export function AiPage() {
           )}
         </Drawer>
       )}
+      <Drawer
+        className="responsive-drawer proposal-edit-drawer"
+        title={`编辑${editingProposal?.label || "待确认"}账目`}
+        width={520}
+        open={Boolean(editingProposal)}
+        destroyOnHidden
+        onClose={() => setEditingProposal(null)}
+        footer={<Flex justify="flex-end" gap={8}><Button onClick={() => setEditingProposal(null)}>取消</Button><Button type="primary" loading={saveProposal.isPending} onClick={() => proposalForm.submit()}>保存调整</Button></Flex>}
+      >
+        <Form form={proposalForm} layout="vertical" requiredMark="optional" onFinish={submitProposalEdit}>
+          <div className="form-grid-2">
+            <Form.Item label="日期" name="date" rules={[{ required: true, message: "请选择日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="收支" name="direction" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" options={[{ label: "支出", value: "expense" }, { label: "收入", value: "income" }]} /></Form.Item>
+          </div>
+          <Form.Item label="金额" name="amount" rules={[{ required: true, message: "请输入金额" }, { type: "number", min: 0.01, message: "金额必须大于 0" }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: "100%" }} /></Form.Item>
+          <Form.Item label="项目" name="item" rules={[{ required: true, whitespace: true, max: 80 }]}><Input /></Form.Item>
+          <div className="form-grid-2">
+            <Form.Item label="一级分类" name="category1" rules={[{ required: true }]}><Select options={proposalPrimaryChoices} onChange={(category1) => proposalForm.setFieldValue("category2", dictionaries?.categories.find((row) => row.category1 === category1)?.category2)} /></Form.Item>
+            <Form.Item label="二级分类" name="category2" rules={[{ required: true }]}><Select disabled={!selectedProposalCategory} options={proposalSecondaryChoices} /></Form.Item>
+          </div>
+          <Form.Item label="备注" name="note" rules={[{ max: 500 }]}><Input.TextArea rows={4} showCount maxLength={500} /></Form.Item>
+        </Form>
+      </Drawer>
     </Card>
   );
 }

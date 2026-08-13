@@ -97,6 +97,24 @@ try {
   const parsed = parseLocally("今天午饭吃了13.6", "2026-08-11");
   assert.equal(parsed[0].category1, "餐饮");
 
+  const editConversationId = "smoke-edit-proposal";
+  await request("/api/ai/conversations", { method: "POST", body: JSON.stringify({ id: editConversationId }) });
+  const testDatabase = new PrismaClient();
+  const currentRecord = (await request(`/api/transactions?query=测试午饭&page=1&pageSize=20`)).records[0];
+  await testDatabase.aiConversation.update({ where: { id: editConversationId }, data: { pendingProposals: [{ type: "update", id, current: currentRecord, changes: { amount: 14 } }] } });
+  const rejectedProposalEdit = await requestError(`/api/ai/conversations/${editConversationId}/proposals`, { method: "PUT", body: JSON.stringify({ proposals: [{ type: "delete", id }] }) });
+  assert.equal(rejectedProposalEdit.status, 400);
+  const editedProposal = await request(`/api/ai/conversations/${editConversationId}/proposals`, { method: "PUT", body: JSON.stringify({ proposals: [{ type: "update", id, changes: { amount: 15, item: "人工微调午饭" } }] }) });
+  assert.equal(editedProposal.proposals[0].changes.amount, 15);
+  assert.equal(editedProposal.proposals[0].changes.direction, "expense");
+  await request("/api/ai/execute", { method: "POST", body: JSON.stringify({ conversationId: editConversationId }) });
+  const manuallyEdited = (await request("/api/transactions?query=人工微调午饭&page=1&pageSize=20")).records[0];
+  assert.equal(manuallyEdited.amount, -15);
+  const editedConversation = await request(`/api/ai/conversations/${editConversationId}`);
+  assert.match(editedConversation.messages.at(-1).content, /执行前人工调整/);
+  assert.match(editedConversation.messages.at(-1).content, /金额.*14.*15/);
+  await testDatabase.$disconnect();
+
   await request(`/api/transactions/${id}`, { method: "DELETE" });
   assert.equal((await request("/api/dashboard?anchor=2026-08-11")).totals.day, 0);
   const batch = await request("/api/transactions", {
