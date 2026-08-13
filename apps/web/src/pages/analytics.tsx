@@ -37,7 +37,7 @@ import {
   type Dashboard,
   type Transaction,
 } from "@/lib/api"
-import { money } from "@/lib/utils"
+import { compactMoney, money } from "@/lib/utils"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 
 type Scope = "day" | "week" | "month" | "year"
@@ -260,17 +260,36 @@ export function AnalyticsPage() {
     yField: "amount",
     height: 300,
     autoFit: true,
-    style: { radiusTopLeft: 5, radiusTopRight: 5, fill: "#176b62" },
-    axis: { y: { labelFormatter: (value: number) => `¥${value}` } },
-    tooltip: {
-      title: { field: "period" },
-      items: [
-        {
-          field: "amount",
-          name: "支出金额",
-          valueFormatter: (value: number) => money(value),
-        },
-      ],
+    paddingTop: 30,
+    paddingRight: 48,
+    style: {
+      radiusTopLeft: 5,
+      radiusTopRight: 5,
+      fill: "#176b62",
+      shadowColor: "transparent",
+      shadowBlur: 0,
+    },
+    label: {
+      text: (row: { amount: number }) =>
+        row.amount ? compactMoney(row.amount) : "",
+      position: "top",
+      textBaseline: "bottom",
+      dy: -5,
+      fontSize: 11,
+      fill: "#56635e",
+      transform: [{ type: "overlapHide" }],
+    },
+    axis: {
+      y: { labelFormatter: (value: number) => compactMoney(value) },
+    },
+    tooltip: false,
+    interaction: {
+      tooltip: false,
+      elementHighlight: false,
+    },
+    state: {
+      active: { fillOpacity: 1, shadowColor: "transparent", shadowBlur: 0 },
+      inactive: { fillOpacity: 1, opacity: 1 },
     },
   }
   const requestedCategory = params.get("focusCategory") || ""
@@ -306,20 +325,25 @@ export function AnalyticsPage() {
     colorField: "series",
     height: 280,
     autoFit: true,
+    paddingTop: 30,
+    paddingRight: 64,
     scale: { color: { range: ["#176b62", "#c99748"] } },
     style: { lineWidth: 2 },
-    axis: { y: { labelFormatter: (value: number) => `¥${value}` } },
-    legend: { color: { position: "top" } },
-    tooltip: {
-      title: { field: "period" },
-      items: [
-        {
-          field: "amount",
-          name: "金额",
-          valueFormatter: (value: number) => money(value),
-        },
-      ],
+    label: {
+      text: (row: { amount: number }, index: number) =>
+        index >= budgetChartData.length - 2 ? compactMoney(row.amount) : "",
+      position: "top",
+      dy: -7,
+      fontSize: 10,
+      fill: "#56635e",
+      transform: [{ type: "overlapHide" }],
     },
+    axis: {
+      y: { labelFormatter: (value: number) => compactMoney(value) },
+    },
+    legend: { color: { position: "top" } },
+    tooltip: false,
+    interaction: { tooltip: false },
   }
   const currentRange = rangeText(activeRange)
   const picker = scope === "day" ? "date" : scope

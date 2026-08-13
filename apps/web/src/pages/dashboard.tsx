@@ -34,7 +34,7 @@ import {
   type Transaction,
 } from "@/lib/api"
 import { useQuickStore, type QuickResult } from "@/lib/quick-store"
-import { money } from "@/lib/utils"
+import { compactMoney, money } from "@/lib/utils"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 
 export function DashboardPage() {
@@ -94,24 +94,27 @@ export function DashboardPage() {
     height: 260,
     smooth: true,
     autoFit: true,
+    paddingTop: 30,
+    paddingRight: 64,
     style: { lineWidth: 2.5, stroke: "#2a8277" },
+    label: {
+      text: (row: { amount: number }) =>
+        row.amount ? compactMoney(row.amount) : "",
+      position: "top",
+      dy: -8,
+      fontSize: 11,
+      fill: "#56635e",
+      transform: [{ type: "overlapHide" }],
+    },
     axis: {
       x: { tick: false },
       y: {
-        labelFormatter: (value: number) => `¥${value}`,
+        labelFormatter: (value: number) => compactMoney(value),
         gridStroke: "#e3e9e4",
       },
     },
-    tooltip: {
-      title: { field: "label" },
-      items: [
-        {
-          field: "amount",
-          name: "支出金额",
-          valueFormatter: (value: number) => money(value),
-        },
-      ],
-    },
+    tooltip: false,
+    interaction: { tooltip: false },
   }
 
   return (
