@@ -27,7 +27,7 @@ execFileSync(
   { cwd: path.join(here, ".."), env: process.env, stdio: "ignore" },
 )
 const { startServer } = await import("../dist/src/main.js")
-const { parseLocally } = await import("../lib/ai.mjs")
+const { parseLocally, pendingRecordMatches } = await import("../lib/ai.mjs")
 const { app, server } = await startServer({ port: 0 })
 const port = server.address().port
 const base = `http://127.0.0.1:${port}`
@@ -180,6 +180,9 @@ try {
 
   const parsed = parseLocally("今天午饭吃了13.6", "2026-08-11")
   assert.equal(parsed[0].category1, "餐饮")
+  assert.equal(pendingRecordMatches({ item: "新增记录" }, { id: 5 }), false)
+  assert.equal(pendingRecordMatches({ id: 5 }, { id: 5 }), true)
+  assert.equal(pendingRecordMatches({ item: "新增记录" }, { item: "" }), false)
 
   const editConversationId = "smoke-edit-proposal"
   await request("/api/ai/conversations", {
@@ -247,6 +250,159 @@ try {
   )
   assert.match(editedConversation.messages.at(-1).content, /执行前人工调整/)
   assert.match(editedConversation.messages.at(-1).content, /金额.*14.*15/)
+
+  const removeIndexConversationId = "smoke-remove-index"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: removeIndexConversationId }),
+  })
+  const originalCreateRecords = [
+    {
+      date: "2026-08-11",
+      amount: 11,
+      direction: "expense",
+      item: "待移除第一笔",
+      category1: "其他",
+      category2: "测试",
+      note: "",
+    },
+    {
+      date: "2026-08-11",
+      amount: 22,
+      direction: "expense",
+      item: "应保留第二笔",
+      category1: "其他",
+      category2: "测试",
+      note: "",
+    },
+  ]
+  await testDatabase.aiConversation.update({
+    where: { id: removeIndexConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "create",
+          records: originalCreateRecords,
+          _originalRecords: originalCreateRecords,
+          _humanEdited: true,
+        },
+      ],
+    },
+  })
+  await request(
+    `/api/ai/conversations/${removeIndexConversationId}/proposals/remove`,
+    {
+      method: "POST",
+      body: JSON.stringify({ proposalIndex: 0, recordIndex: 0 }),
+    },
+  )
+  const removedIndexState = await testDatabase.aiConversation.findUnique({
+    where: { id: removeIndexConversationId },
+  })
+  assert.equal(removedIndexState.pendingProposals[0].records.length, 1)
+  assert.equal(
+    removedIndexState.pendingProposals[0]._originalRecords[0].item,
+    "应保留第二笔",
+  )
+  assert.equal(
+    removedIndexState.removedNotices[0].proposal.records[0].item,
+    "待移除第一笔",
+  )
+
+  const rollbackConversationId = "smoke-atomic-rollback"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: rollbackConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: rollbackConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "create",
+          records: [
+            {
+              date: "2026-08-11",
+              amount: 88,
+              direction: "expense",
+              item: "原子回滚测试",
+              category1: "其他",
+              category2: "测试",
+              note: "",
+            },
+          ],
+        },
+        { type: "unknown" },
+      ],
+    },
+  })
+  await requestError("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: rollbackConversationId }),
+  })
+  assert.equal(
+    (await request("/api/transactions?query=原子回滚测试&page=1&pageSize=20"))
+      .total,
+    0,
+  )
+  assert.equal(
+    (await request(`/api/ai/conversations/${rollbackConversationId}`)).proposals
+      .length,
+    2,
+  )
+
+  const idempotentConversationId = "smoke-idempotent-execute"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: idempotentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: idempotentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "create",
+          records: [
+            {
+              date: "2026-08-11",
+              amount: 66,
+              direction: "expense",
+              item: "防重复确认测试",
+              category1: "其他",
+              category2: "测试",
+              note: "",
+            },
+          ],
+        },
+      ],
+    },
+  })
+  const concurrentExecution = await Promise.allSettled([
+    request("/api/ai/execute", {
+      method: "POST",
+      body: JSON.stringify({ conversationId: idempotentConversationId }),
+    }),
+    request("/api/ai/execute", {
+      method: "POST",
+      body: JSON.stringify({ conversationId: idempotentConversationId }),
+    }),
+  ])
+  assert.equal(
+    concurrentExecution.filter((result) => result.status === "fulfilled")
+      .length,
+    1,
+  )
+  assert.equal(
+    (await request("/api/transactions?query=防重复确认测试&page=1&pageSize=20"))
+      .total,
+    1,
+  )
+  const idempotentRecord = (
+    await request("/api/transactions?query=防重复确认测试&page=1&pageSize=20")
+  ).records[0]
+  await request(`/api/transactions/${idempotentRecord.id}`, {
+    method: "DELETE",
+  })
   await testDatabase.$disconnect()
 
   await request(`/api/transactions/${id}`, { method: "DELETE" })

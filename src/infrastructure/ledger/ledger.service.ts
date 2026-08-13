@@ -10,6 +10,7 @@ const clean = (value: unknown, max = 80) =>
   String(value ?? "")
     .trim()
     .slice(0, max)
+type LedgerDatabase = Prisma.TransactionClient
 
 @Injectable({ scope: Scope.REQUEST })
 export class LedgerService {
@@ -28,12 +29,16 @@ export class LedgerService {
   }
 
   async context() {
+    return this.contextWith(this.prisma)
+  }
+
+  private async contextWith(database: PrismaService | LedgerDatabase) {
     const ledgerId = this.currentUser.ledgerId
-    let account = await this.prisma.account.findFirst({
+    let account = await database.account.findFirst({
       where: { ledgerId },
       orderBy: { sortOrder: "asc" },
     })
-    account ||= await this.prisma.account.create({
+    account ||= await database.account.create({
       data: { ledgerId, name: "默认账户", type: "cash" },
     })
     return { ledgerId, accountId: account.id }
@@ -220,7 +225,8 @@ export class LedgerService {
     }
   }
 
-  private async addManyInternal(
+  private async addManyWithDatabase(
+    database: LedgerDatabase,
     ledgerId: string,
     defaultAccountId: string,
     records: any[],
@@ -229,64 +235,79 @@ export class LedgerService {
       ...normalizeRecord(record),
       accountId: clean(record?.accountId, 100),
     }))
-    return this.prisma.$transaction(async (database) => {
-      const created: any[] = []
-      for (const record of normalized) {
-        await database.project.upsert({
-          where: { ledgerId_name: { ledgerId, name: record.item } },
-          update: { enabled: true },
-          create: { ledgerId, name: record.item },
-        })
-        const category = await database.category.upsert({
-          where: {
-            ledgerId_category1_category2: {
-              ledgerId,
-              category1: record.category1,
-              category2: record.category2,
-            },
-          },
-          update: { enabled: true },
-          create: {
+    const created: any[] = []
+    for (const record of normalized) {
+      await database.project.upsert({
+        where: { ledgerId_name: { ledgerId, name: record.item } },
+        update: { enabled: true },
+        create: { ledgerId, name: record.item },
+      })
+      const category = await database.category.upsert({
+        where: {
+          ledgerId_category1_category2: {
             ledgerId,
             category1: record.category1,
             category2: record.category2,
           },
-        })
-        const row = await database.transaction.create({
-          data: {
-            ledgerId,
-            categoryId: category.id,
-            accountId: record.accountId || defaultAccountId,
-            date: asDate(record.date),
-            amount: new Prisma.Decimal(record.amount),
-            item: record.item,
-            category1: record.category1,
-            category2: record.category2,
-            note: record.note,
-          },
-        })
-        created.push(this.serialize(row))
-        await database.auditLog.create({
-          data: {
-            action: "create",
-            entityType: "transaction",
-            entityId: String(row.id),
-            payload: record,
-          },
-        })
-      }
-      return created
-    })
+        },
+        update: { enabled: true },
+        create: {
+          ledgerId,
+          category1: record.category1,
+          category2: record.category2,
+        },
+      })
+      const row = await database.transaction.create({
+        data: {
+          ledgerId,
+          categoryId: category.id,
+          accountId: record.accountId || defaultAccountId,
+          date: asDate(record.date),
+          amount: new Prisma.Decimal(record.amount),
+          item: record.item,
+          category1: record.category1,
+          category2: record.category2,
+          note: record.note,
+        },
+      })
+      created.push(this.serialize(row))
+      await database.auditLog.create({
+        data: {
+          action: "create",
+          entityType: "transaction",
+          entityId: String(row.id),
+          payload: record,
+        },
+      })
+    }
+    return created
   }
 
   async addMany(records: unknown[]) {
     const { ledgerId, accountId } = await this.context()
-    return this.addManyInternal(ledgerId, accountId, records as any[])
+    return this.prisma.$transaction((database) =>
+      this.addManyWithDatabase(database, ledgerId, accountId, records as any[]),
+    )
   }
 
   async update(id: string | number, changes: any) {
     const { ledgerId } = await this.context()
-    const existing = await this.get(id)
+    return this.prisma.$transaction((database) =>
+      this.updateWithDatabase(database, ledgerId, id, changes),
+    )
+  }
+
+  private async updateWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: string | number,
+    changes: any,
+  ) {
+    const existingRow = await database.transaction.findFirst({
+      where: { id: Number(id), ledgerId },
+      include: { account: { select: { name: true } } },
+    })
+    const existing = existingRow ? this.serialize(existingRow) : null
     if (!existing) throw new Error(`未找到编号为 ${id} 的账目`)
     const merged = normalizeRecord({
       ...existing,
@@ -295,50 +316,48 @@ export class LedgerService {
       direction:
         changes.direction ?? (existing.amount > 0 ? "income" : "expense"),
     })
-    return this.prisma.$transaction(async (database) => {
-      await database.project.upsert({
-        where: { ledgerId_name: { ledgerId, name: merged.item } },
-        update: { enabled: true },
-        create: { ledgerId, name: merged.item },
-      })
-      const category = await database.category.upsert({
-        where: {
-          ledgerId_category1_category2: {
-            ledgerId,
-            category1: merged.category1,
-            category2: merged.category2,
-          },
-        },
-        update: { enabled: true },
-        create: {
+    await database.project.upsert({
+      where: { ledgerId_name: { ledgerId, name: merged.item } },
+      update: { enabled: true },
+      create: { ledgerId, name: merged.item },
+    })
+    const category = await database.category.upsert({
+      where: {
+        ledgerId_category1_category2: {
           ledgerId,
           category1: merged.category1,
           category2: merged.category2,
         },
-      })
-      const row = await database.transaction.update({
-        where: { id: Number(id) },
-        data: {
-          categoryId: category.id,
-          date: asDate(merged.date),
-          amount: new Prisma.Decimal(merged.amount),
-          item: merged.item,
-          category1: merged.category1,
-          category2: merged.category2,
-          note: merged.note,
-          ...(changes.accountId ? { accountId: changes.accountId } : {}),
-        },
-      })
-      await database.auditLog.create({
-        data: {
-          action: "update",
-          entityType: "transaction",
-          entityId: String(id),
-          payload: changes,
-        },
-      })
-      return this.serialize(row)
+      },
+      update: { enabled: true },
+      create: {
+        ledgerId,
+        category1: merged.category1,
+        category2: merged.category2,
+      },
     })
+    const row = await database.transaction.update({
+      where: { id: Number(id) },
+      data: {
+        categoryId: category.id,
+        date: asDate(merged.date),
+        amount: new Prisma.Decimal(merged.amount),
+        item: merged.item,
+        category1: merged.category1,
+        category2: merged.category2,
+        note: merged.note,
+        ...(changes.accountId ? { accountId: changes.accountId } : {}),
+      },
+    })
+    await database.auditLog.create({
+      data: {
+        action: "update",
+        entityType: "transaction",
+        entityId: String(id),
+        payload: changes,
+      },
+    })
+    return this.serialize(row)
   }
 
   async bulkCategorize(
@@ -375,19 +394,71 @@ export class LedgerService {
 
   async delete(id: string | number) {
     const { ledgerId } = await this.context()
-    return this.prisma.$transaction(async (database) => {
-      const result = await database.transaction.deleteMany({
-        where: { id: Number(id), ledgerId },
-      })
-      if (result.count)
-        await database.auditLog.create({
-          data: {
-            action: "delete",
-            entityType: "transaction",
-            entityId: String(id),
-          },
-        })
-      return result.count
+    return this.prisma.$transaction((database) =>
+      this.deleteWithDatabase(database, ledgerId, id),
+    )
+  }
+
+  private async deleteWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: string | number,
+  ) {
+    const result = await database.transaction.deleteMany({
+      where: { id: Number(id), ledgerId },
     })
+    if (result.count)
+      await database.auditLog.create({
+        data: {
+          action: "delete",
+          entityType: "transaction",
+          entityId: String(id),
+        },
+      })
+    return result.count
+  }
+
+  async executeAiOperations(
+    operations: any[],
+    database?: LedgerDatabase,
+  ): Promise<any[]> {
+    if (!database)
+      return this.prisma.$transaction((transaction) =>
+        this.executeAiOperations(operations, transaction),
+      )
+    const { ledgerId, accountId } = await this.contextWith(database)
+    const results: any[] = []
+    for (const proposal of operations) {
+      if (proposal?.type === "create")
+        results.push({
+          type: "create",
+          records: await this.addManyWithDatabase(
+            database,
+            ledgerId,
+            accountId,
+            proposal.records || [],
+          ),
+        })
+      else if (proposal?.type === "update")
+        results.push({
+          type: "update",
+          record: await this.updateWithDatabase(
+            database,
+            ledgerId,
+            proposal.id,
+            proposal.changes || {},
+          ),
+        })
+      else if (proposal?.type === "delete")
+        results.push({
+          type: "delete",
+          id: proposal.id,
+          deleted: Boolean(
+            await this.deleteWithDatabase(database, ledgerId, proposal.id),
+          ),
+        })
+      else throw new Error("包含未知操作")
+    }
+    return results
   }
 }

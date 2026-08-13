@@ -70,20 +70,16 @@ export class AiController {
     @Param("id") id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const updated = await this.settings.update(id, body)
-    if (updated.isDefault) this.ai.clear()
-    return updated
+    return this.settings.update(id, body)
   }
 
   @Post("settings/profiles/:id/default")
   async setDefaultProfile(@Param("id") id: string) {
-    this.ai.clear()
     return this.settings.setDefault(id)
   }
 
   @Delete("settings/profiles/:id")
   async deleteProfile(@Param("id") id: string) {
-    this.ai.clear()
     return { ok: await this.settings.remove(id) }
   }
 
@@ -103,8 +99,15 @@ export class AiController {
     response.setHeader("Connection", "keep-alive")
     response.setHeader("X-Accel-Buffering", "no")
     response.flushHeaders()
-    const send = (type: string, data: unknown = {}) =>
-      response.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
+    const abortController = new AbortController()
+    const onClose = () => {
+      if (!response.writableEnded) abortController.abort()
+    }
+    response.once("close", onClose)
+    const send = (type: string, data: unknown = {}) => {
+      if (response.writableEnded || response.destroyed) return false
+      return response.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
+    }
     try {
       if (!String(body.text || "").trim()) {
         send("error", { message: "请输入要处理的内容" })
@@ -115,13 +118,16 @@ export class AiController {
         body.conversationId,
         String(body.text),
         (event) => send(event.type, event.data),
+        abortController.signal,
       )
     } catch (error) {
-      send("error", {
-        message: error instanceof Error ? error.message : "AI 服务出错",
-      })
+      if (!abortController.signal.aborted)
+        send("error", {
+          message: error instanceof Error ? error.message : "AI 服务出错",
+        })
     } finally {
-      response.end()
+      response.off("close", onClose)
+      if (!response.writableEnded && !response.destroyed) response.end()
     }
   }
 

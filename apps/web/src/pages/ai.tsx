@@ -110,6 +110,7 @@ export function AiPage() {
     useState<EditingProposal | null>(null)
   const [proposalForm] = Form.useForm<ProposalFormValues>()
   const creatingInitial = useRef(false)
+  const streamAbortRef = useRef<AbortController | null>(null)
   const { data: settings } = useQuery({
     queryKey: ["ai-settings"],
     queryFn: () => api<any>("/api/ai/settings"),
@@ -178,10 +179,14 @@ export function AiPage() {
   const send = useMutation({
     mutationKey: ["ai-command", id],
     mutationFn: async ({ text, conversationId }: SendCommand) => {
+      const controller = new AbortController()
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = controller
       const response = await fetch("/api/ai/command/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, conversationId }),
+        signal: controller.signal,
       })
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}))
@@ -234,6 +239,17 @@ export function AiPage() {
             setStream((current) =>
               current ? { ...current, tool: null } : current,
             )
+          } else if (type === "reset") {
+            setStream((current) =>
+              current
+                ? {
+                    ...current,
+                    text: data?.text ? "" : current.text,
+                    thinking: data?.thinking ? "" : current.thinking,
+                    tool: null,
+                  }
+                : current,
+            )
           } else if (type === "error") {
             throw new Error(data?.message || "AI 服务出错")
           }
@@ -275,7 +291,10 @@ export function AiPage() {
       if (detail)
         queryClient.setQueryData(["ai-conversation", conversationId], detail)
       setStream(null)
-      message.error(error.message)
+      if (error.name !== "AbortError") message.error(error.message)
+    },
+    onSettled: () => {
+      streamAbortRef.current = null
     },
   })
   const execute = useMutation({
@@ -349,15 +368,19 @@ export function AiPage() {
     setHistoryOpen(false)
   }
   const cancel = async () => {
-    await api(`/api/ai/conversations/${id}/outcome`, {
-      method: "POST",
-      body: JSON.stringify({ outcome: "cancelled" }),
-    })
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
-      queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
-    ])
-    message.info("已取消待确认操作")
+    try {
+      await api(`/api/ai/conversations/${id}/outcome`, {
+        method: "POST",
+        body: JSON.stringify({ outcome: "cancelled" }),
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
+        queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
+      ])
+      message.info("已取消待确认操作")
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "取消失败")
+    }
   }
   const canDelete =
     Boolean(id) &&
@@ -664,7 +687,7 @@ export function AiPage() {
               onChange={setInput}
               onSubmit={(value) => submit(value)}
               loading={isCurrentConversationAnswering}
-              onCancel={() => {}}
+              onCancel={() => streamAbortRef.current?.abort()}
               placeholder="输入消息，Enter 发送…"
               autoSize={{ minRows: 1, maxRows: 5 }}
             />
@@ -688,6 +711,8 @@ export function AiPage() {
                 type="text"
                 danger
                 icon={<DeleteOutlined />}
+                aria-label="全部取消待确认操作"
+                disabled={isCurrentConversationAnswering}
                 onClick={cancel}
               />
             )}
@@ -717,6 +742,7 @@ export function AiPage() {
                             type="text"
                             size="small"
                             icon={<EditOutlined />}
+                            disabled={isCurrentConversationAnswering}
                             aria-label={`编辑${row.item || "待确认账目"}`}
                             onClick={() => openProposalEditor(row)}
                           />
@@ -726,6 +752,7 @@ export function AiPage() {
                           size="small"
                           danger
                           icon={<DeleteOutlined />}
+                          disabled={isCurrentConversationAnswering}
                           aria-label={`移除${row.item || "待确认账目"}`}
                           onClick={() => removeProposal.mutate(row)}
                         />
@@ -750,7 +777,11 @@ export function AiPage() {
           )}{" "}
           {proposalRows.length > 0 && (
             <Flex gap={8}>
-              <Button block onClick={cancel}>
+              <Button
+                block
+                disabled={isCurrentConversationAnswering}
+                onClick={cancel}
+              >
                 全部取消
               </Button>
               <Button
@@ -758,6 +789,7 @@ export function AiPage() {
                 type="primary"
                 icon={<CheckOutlined />}
                 loading={execute.isPending}
+                disabled={isCurrentConversationAnswering}
                 onClick={() => execute.mutate()}
               >
                 确认执行

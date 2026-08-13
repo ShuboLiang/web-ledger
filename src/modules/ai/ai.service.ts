@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  OnModuleDestroy,
 } from "@nestjs/common"
 import {
   createLedgerAiConversationManager,
@@ -17,6 +16,7 @@ import {
 import { AiSettingsService } from "./ai-settings.service.js"
 import { CurrentUserService } from "../auth/current-user.service.js"
 import { normalizeRecord } from "../../../lib/db.mjs"
+import { AiConversationCoordinator } from "./ai-conversation-coordinator.service.js"
 
 const EDITABLE_FIELDS = [
   "date",
@@ -47,24 +47,28 @@ const displayFieldValue = (
     : String(value || "空")
 
 @Injectable()
-export class AiService implements OnModuleDestroy {
-  private readonly conversations: ReturnType<
-    typeof createLedgerAiConversationManager
-  >
-
+export class AiService {
   constructor(
     private readonly ledger: LedgerService,
     private readonly dashboard: DashboardService,
     private readonly settings: AiSettingsService,
     private readonly prisma: PrismaService,
     private readonly currentUser: CurrentUserService,
-  ) {
-    this.conversations = createLedgerAiConversationManager({
+    private readonly coordinator: AiConversationCoordinator,
+  ) {}
+
+  private conversationManager() {
+    return createLedgerAiConversationManager({
       ledger: this.ledger,
       dashboard: (anchor: string) => this.dashboard.build(anchor),
       getToday: currentDate,
       getConfig: () => this.settings.runtime(),
+      maxConversations: 1,
     })
+  }
+
+  private conversationKey(id: string) {
+    return `${this.currentUser.userId}:${id}`
   }
 
   private conversationId(value: unknown) {
@@ -199,6 +203,47 @@ export class AiService implements OnModuleDestroy {
     return changes
   }
 
+  private pendingSnapshot(proposals: any[]) {
+    let displayIndex = 0
+    const rows = proposals.flatMap((proposal) => {
+      if (proposal?.type === "create")
+        return (proposal.records || []).map((record: any) => ({
+          序号: ++displayIndex,
+          操作: "新增",
+          日期: record.date,
+          收支: record.direction === "income" ? "收入" : "支出",
+          金额: Math.abs(Number(record.amount) || 0),
+          项目: record.item,
+          一级分类: record.category1,
+          二级分类: record.category2,
+          备注: record.note || "",
+          人工微调: Boolean(proposal._humanEdited),
+        }))
+      const current = proposal?.current || {}
+      const changes = proposal?.changes || {}
+      return [
+        {
+          序号: ++displayIndex,
+          操作: proposal?.type === "update" ? "修改" : "删除",
+          账目编号: proposal?.id,
+          当前内容: current,
+          ...(proposal?.type === "update" ? { 修改为: changes } : {}),
+          人工微调: Boolean(proposal?._humanEdited),
+        },
+      ]
+    })
+    return rows.length ? JSON.stringify(rows) : "（空）"
+  }
+
+  private removedNotice(value: any) {
+    return typeof value === "string"
+      ? { label: value, proposal: null }
+      : {
+          label: String(value?.label || "已移除一项待确认操作"),
+          proposal: value?.proposal || null,
+        }
+  }
+
   async listConversations() {
     const rows = await this.prisma.aiConversation.findMany({
       where: { userId: this.currentUser.userId },
@@ -265,8 +310,9 @@ export class AiService implements OnModuleDestroy {
     conversationId: string | undefined,
     text: string,
     onEvent?: (event: { type: string; data?: unknown }) => void,
+    signal?: AbortSignal,
   ) {
-    const result = await this.processTurn(conversationId, text, onEvent)
+    const result = await this.processTurn(conversationId, text, onEvent, signal)
     onEvent?.({ type: "done", data: { ok: true } })
     return result
   }
@@ -275,79 +321,101 @@ export class AiService implements OnModuleDestroy {
     conversationId: string | undefined,
     text: string,
     onEvent?: (event: { type: string; data?: unknown }) => void,
+    signal?: AbortSignal,
   ) {
     const id = this.conversationId(conversationId)
     const input = String(text || "").trim()
-    let conversation = await this.prisma.aiConversation.findFirst({
-      where: { id, userId: this.currentUser.userId },
-      include: { messages: { orderBy: { createdAt: "asc" } } },
-    })
-    if (!conversation) {
-      await this.createConversation(id)
-      conversation = await this.prisma.aiConversation.findFirst({
+    if (!input) throw new BadRequestException("请输入要处理的内容")
+    return this.coordinator.run(this.conversationKey(id), async () => {
+      let conversation = await this.prisma.aiConversation.findFirst({
         where: { id, userId: this.currentUser.userId },
         include: { messages: { orderBy: { createdAt: "asc" } } },
       })
-    }
-    const history = conversation!.messages.map((item) => ({
-      role: item.role,
-      content: item.content,
-    }))
-    const pending = Array.isArray(conversation!.pendingProposals)
-      ? conversation!.pendingProposals
-      : []
-    const pendingEdits = this.editSummary(pending as any[])
-    const removedNotices = Array.isArray(conversation!.removedNotices)
-      ? (conversation!.removedNotices as string[])
-      : []
-    const pendingNotice = [
-      pendingEdits.length
-        ? `用户已在界面中手动微调待确认操作，请以调整后的内容为准。相对你最初提案的变化：\n${pendingEdits.map((item) => `- ${item}`).join("\n")}`
-        : "",
-      removedNotices.length
-        ? `用户已在界面中移除了以下待确认操作（它们不会被执行，请勿再提及或重新生成）：\n${removedNotices.map((item) => `- ${item}`).join("\n")}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n")
-    await this.prisma.aiMessage.create({
-      data: { conversationId: id, role: "user", content: input },
-    })
-    const result = await this.conversations.run({
-      conversationId: id,
-      text: input,
-      history,
-      pending,
-      pendingNotice,
-      onEvent,
-    })
-    const title =
-      conversation!.title === "新对话"
-        ? input.slice(0, 24) || "账本对话"
-        : conversation!.title
-    await this.prisma.$transaction([
-      this.prisma.aiMessage.create({
-        data: {
+      if (!conversation) {
+        await this.createConversation(id)
+        conversation = await this.prisma.aiConversation.findFirst({
+          where: { id, userId: this.currentUser.userId },
+          include: { messages: { orderBy: { createdAt: "asc" } } },
+        })
+      }
+      const history = conversation!.messages.map((item) => ({
+        role: item.role,
+        content: item.content,
+      }))
+      const pending = Array.isArray(conversation!.pendingProposals)
+        ? conversation!.pendingProposals
+        : []
+      const pendingEdits = this.editSummary(pending as any[])
+      const removedNotices = Array.isArray(conversation!.removedNotices)
+        ? (conversation!.removedNotices as any[]).map((item) =>
+            this.removedNotice(item),
+          )
+        : []
+      const pendingNotice = [
+        `当前待确认列表的完整真实状态如下。用户提到“第几笔”时，以序号字段为准；标记为人工微调的内容优先级高于你此前的建议，不得自行覆盖：\n${this.pendingSnapshot(pending as any[])}`,
+        pendingEdits.length
+          ? `用户已在界面中手动微调待确认操作，请以调整后的内容为准。相对你最初提案的变化：\n${pendingEdits.map((item) => `- ${item}`).join("\n")}`
+          : "",
+        removedNotices.length
+          ? `用户已在界面中移除了以下待确认操作（它们不会被执行，不得自行重新生成）：\n${removedNotices.map((item) => `- ${item.label}`).join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+      const manager = this.conversationManager()
+      let result: Awaited<ReturnType<typeof manager.run>>
+      try {
+        result = await manager.run({
           conversationId: id,
-          role: "assistant",
-          content: result.message,
-          thinking: result.thinking || null,
-        },
-      }),
-      this.prisma.aiConversation.update({
-        where: { id },
-        data: {
-          title,
-          pendingProposals: result.proposals || [],
-          removedNotices: [],
-        },
-      }),
-    ])
-    return result
+          text: input,
+          history,
+          pending,
+          removed: removedNotices.map((item) => item.proposal).filter(Boolean),
+          pendingNotice,
+          onEvent,
+          signal,
+        })
+      } finally {
+        manager.clear()
+      }
+      if (signal?.aborted) throw new Error("请求已取消")
+      const title =
+        conversation!.title === "新对话"
+          ? input.slice(0, 24) || "账本对话"
+          : conversation!.title
+      await this.prisma.$transaction([
+        this.prisma.aiMessage.create({
+          data: { conversationId: id, role: "user", content: input },
+        }),
+        this.prisma.aiMessage.create({
+          data: {
+            conversationId: id,
+            role: "assistant",
+            content: result.message,
+            thinking: result.thinking || null,
+          },
+        }),
+        this.prisma.aiConversation.update({
+          where: { id },
+          data: {
+            title,
+            pendingProposals: result.proposals || [],
+            removedNotices: [],
+          },
+        }),
+      ])
+      return result
+    })
   }
 
   async updatePendingProposals(value: string, proposals: unknown) {
     const id = this.conversationId(value)
+    return this.coordinator.run(this.conversationKey(id), () =>
+      this.updatePendingProposalsLocked(id, proposals),
+    )
+  }
+
+  private async updatePendingProposalsLocked(id: string, proposals: unknown) {
     const conversation = await this.prisma.aiConversation.findFirst({
       where: { id, userId: this.currentUser.userId },
     })
@@ -369,6 +437,15 @@ export class AiService implements OnModuleDestroy {
     input: { proposalIndex?: number; recordIndex?: number },
   ) {
     const id = this.conversationId(value)
+    return this.coordinator.run(this.conversationKey(id), () =>
+      this.removePendingProposalLocked(id, input),
+    )
+  }
+
+  private async removePendingProposalLocked(
+    id: string,
+    input: { proposalIndex?: number; recordIndex?: number },
+  ) {
     const conversation = await this.prisma.aiConversation.findFirst({
       where: { id, userId: this.currentUser.userId },
     })
@@ -387,7 +464,7 @@ export class AiService implements OnModuleDestroy {
     const next = [...pending]
     const target = next[proposalIndex]
     const recordIndex = Number(input?.recordIndex)
-    let removedLabel: string
+    let removedNotice: { label: string; proposal: any }
     if (
       target?.type === "create" &&
       Array.isArray(target.records) &&
@@ -403,20 +480,33 @@ export class AiService implements OnModuleDestroy {
         records: target.records.filter(
           (_record: unknown, index: number) => index !== recordIndex,
         ),
+        ...(Array.isArray(target._originalRecords)
+          ? {
+              _originalRecords: target._originalRecords.filter(
+                (_record: unknown, index: number) => index !== recordIndex,
+              ),
+            }
+          : {}),
       }
-      removedLabel = this.removedRecordLabel(removed)
+      removedNotice = {
+        label: this.removedRecordLabel(removed),
+        proposal: { type: "create", records: [removed] },
+      }
     } else {
       next.splice(proposalIndex, 1)
-      removedLabel = this.removedProposalLabel(target)
+      removedNotice = {
+        label: this.removedProposalLabel(target),
+        proposal: target,
+      }
     }
     const removedNotices = Array.isArray(conversation.removedNotices)
-      ? (conversation.removedNotices as string[])
+      ? (conversation.removedNotices as any[])
       : []
     await this.prisma.aiConversation.update({
       where: { id },
       data: {
         pendingProposals: next as any,
-        removedNotices: [...removedNotices, removedLabel],
+        removedNotices: [...removedNotices, removedNotice],
       },
     })
     return { proposals: next }
@@ -442,116 +532,97 @@ export class AiService implements OnModuleDestroy {
     const input = String(text || "").trim()
     if (!input) throw new BadRequestException("请输入要记账的内容")
     const piConfig = await this.settings.runtime()
-    const result = await runPiLedgerDirectCommand({
-      text: input,
-      ledger: this.ledger,
-      dashboard: (anchor: string) => this.dashboard.build(anchor),
-      today: currentDate(),
-      piConfig,
-    })
+    const result = await this.coordinator.run(
+      `${this.currentUser.userId}:quick`,
+      () =>
+        runPiLedgerDirectCommand({
+          text: input,
+          ledger: this.ledger,
+          dashboard: (anchor: string) => this.dashboard.build(anchor),
+          today: currentDate(),
+          piConfig,
+        }),
+    )
     return {
       message: result.message,
-      executed: (result.proposals || []).length,
+      executed: (result.execution || []).length,
       warning: result.warning,
     }
   }
 
   async execute(conversationId: string | undefined) {
     const id = this.conversationId(conversationId)
-    const stored = await this.prisma.aiConversation.findFirst({
-      where: { id, userId: this.currentUser.userId },
-    })
-    if (!stored) throw new NotFoundException("对话不存在")
-    const pending = Array.isArray(stored.pendingProposals)
-      ? (stored.pendingProposals as any[])
-      : []
-    const operations = pending
-    if (!operations.length) throw new Error("没有待执行操作")
-    const humanEdits = this.editSummary(operations)
-    const results: any[] = []
-    for (const proposal of operations) {
-      if (proposal.type === "create")
-        results.push({
-          type: "create",
-          records: await this.ledger.addMany(proposal.records || []),
+    return this.coordinator.run(this.conversationKey(id), () =>
+      this.prisma.$transaction(async (database) => {
+        const lockKey = this.conversationKey(id)
+        await database.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`
+        const stored = await database.aiConversation.findFirst({
+          where: { id, userId: this.currentUser.userId },
         })
-      else if (proposal.type === "update")
-        results.push({
-          type: "update",
-          record: await this.ledger.update(proposal.id, proposal.changes || {}),
+        if (!stored) throw new NotFoundException("对话不存在")
+        const operations = Array.isArray(stored.pendingProposals)
+          ? (stored.pendingProposals as any[])
+          : []
+        if (!operations.length) throw new BadRequestException("没有待执行操作")
+        const humanEdits = this.editSummary(operations)
+        const results = await this.ledger.executeAiOperations(
+          operations,
+          database,
+        )
+        const editNotice = humanEdits.length
+          ? `\n执行前人工调整：\n${humanEdits.map((item) => `- ${item}`).join("\n")}`
+          : ""
+        await database.aiMessage.create({
+          data: {
+            conversationId: id,
+            role: "assistant",
+            content: `待确认操作已执行，相关统计也已更新。${editNotice}`,
+          },
         })
-      else if (proposal.type === "delete")
-        results.push({
-          type: "delete",
-          id: proposal.id,
-          deleted: Boolean(await this.ledger.delete(proposal.id)),
+        await database.aiConversation.update({
+          where: { id },
+          data: { pendingProposals: [], removedNotices: [] },
         })
-      else throw new Error("包含未知操作")
-    }
-    const editNotice = humanEdits.length
-      ? `\n执行前人工调整：\n${humanEdits.map((item) => `- ${item}`).join("\n")}`
-      : ""
-    this.conversations.notifyOutcome(id, "confirmed", editNotice)
-    await this.prisma.$transaction([
-      this.prisma.aiMessage.create({
-        data: {
-          conversationId: id,
-          role: "assistant",
-          content: `待确认操作已执行，相关统计也已更新。${editNotice}`,
-        },
+        return { results }
       }),
-      this.prisma.aiConversation.update({
-        where: { id },
-        // 已确认执行：待确认区清空后，此前记录的“已移除”通知一并作废，
-        // 避免下一轮对话把旧的移除通知再告诉 agent，让它误以为还有未确认操作。
-        data: { pendingProposals: [], removedNotices: [] },
-      }),
-    ])
-    return { results }
+    )
   }
 
   async saveSettings(input: Record<string, unknown>) {
-    const saved = await this.settings.save(input)
-    this.conversations.clear()
-    return saved
+    return this.settings.save(input)
   }
 
   async outcome(value: string, outcome: "confirmed" | "cancelled") {
     const id = this.conversationId(value)
-    const exists = await this.prisma.aiConversation.findFirst({
-      where: { id, userId: this.currentUser.userId },
+    return this.coordinator.run(this.conversationKey(id), async () => {
+      const exists = await this.prisma.aiConversation.findFirst({
+        where: { id, userId: this.currentUser.userId },
+      })
+      if (!exists) throw new NotFoundException("对话不存在")
+      if (outcome === "cancelled")
+        await this.prisma.$transaction([
+          this.prisma.aiMessage.create({
+            data: {
+              conversationId: id,
+              role: "assistant",
+              content: "已取消待确认操作，没有修改账本。",
+            },
+          }),
+          this.prisma.aiConversation.update({
+            where: { id },
+            data: { pendingProposals: [], removedNotices: [] },
+          }),
+        ])
+      return true
     })
-    if (!exists) throw new NotFoundException("对话不存在")
-    const notified = this.conversations.notifyOutcome(id, outcome)
-    if (outcome === "cancelled")
-      await this.prisma.$transaction([
-        this.prisma.aiMessage.create({
-          data: {
-            conversationId: id,
-            role: "assistant",
-            content: "已取消待确认操作，没有修改账本。",
-          },
-        }),
-        this.prisma.aiConversation.update({
-          where: { id },
-          // 全部取消：待确认区清空后，移除通知一并作废
-          data: { pendingProposals: [], removedNotices: [] },
-        }),
-      ])
-    return notified
   }
   async remove(value: string) {
     const id = this.conversationId(value)
-    this.conversations.remove(id)
-    await this.prisma.aiConversation.deleteMany({
-      where: { id, userId: this.currentUser.userId },
+    return this.coordinator.run(this.conversationKey(id), async () => {
+      await this.prisma.aiConversation.deleteMany({
+        where: { id, userId: this.currentUser.userId },
+      })
+      return true
     })
-    return true
-  }
-  clear() {
-    this.conversations.clear()
-  }
-  onModuleDestroy() {
-    this.clear()
   }
 }
