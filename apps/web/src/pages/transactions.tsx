@@ -1,7 +1,7 @@
 import { ClearOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FilterOutlined, FolderOpenOutlined, MoreOutlined, SaveOutlined, SettingOutlined, TagsOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Badge, Button, Card, Checkbox, DatePicker, Drawer, Dropdown, Empty, Flex, Form, Grid, Input, List, Popover, Select, Space, Table, Tag, Typography, type MenuProps, type TableColumnsType } from "antd";
-import dayjs from "dayjs";
+import { Alert, App, Badge, Button, Card, Checkbox, DatePicker, Drawer, Dropdown, Empty, Flex, Form, Grid, Input, List, Popover, Segmented, Select, Space, Table, Tag, Typography, type MenuProps, type TableColumnsType } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { TransactionDrawer } from "@/components/transaction-drawer";
@@ -9,6 +9,7 @@ import { api, type Dictionaries, type Transaction } from "@/lib/api";
 import { money } from "@/lib/utils";
 
 type Page = { records: Transaction[]; total: number; page: number; pageSize: number; totalPages: number };
+type DateFilterMode = "month" | "date";
 const columnLabels: Record<string, string> = { date: "日期", item: "项目", category: "分类", amount: "金额" };
 
 export function TransactionsPage() {
@@ -22,6 +23,7 @@ export function TransactionsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [searchValue, setSearchValue] = useState(params.get("query") || "");
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>(() => params.get("date") ? "date" : "month");
   const [hasSavedFilter, setHasSavedFilter] = useState(() => Boolean(localStorage.getItem("ledger-saved-filter")));
   const [bulkForm] = Form.useForm();
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -29,7 +31,11 @@ export function TransactionsPage() {
   const page = Number(params.get("page") || 1);
   const pageSize = Number(params.get("pageSize") || 20);
   const set = (key: string, value: string) => setParams((current) => { const next = new URLSearchParams(current); value ? next.set(key, value) : next.delete(key); if (key !== "page") next.set("page", "1"); if (key === "category1") next.delete("category2"); return next; });
-  useEffect(() => { setSearchValue(params.get("query") || ""); if (params.get("focus") === "search") searchRef.current?.focus(); }, [params]);
+  useEffect(() => {
+    setSearchValue(params.get("query") || "");
+    setDateFilterMode(params.get("date") ? "date" : "month");
+    if (params.get("focus") === "search") searchRef.current?.focus();
+  }, [params]);
   const queryString = useMemo(() => { const q = new URLSearchParams(params); q.delete("focus"); if (!q.has("page")) q.set("page", "1"); if (!q.has("pageSize")) q.set("pageSize", "20"); return q.toString(); }, [params]);
   const { data, isLoading } = useQuery({ queryKey: ["transactions", queryString], queryFn: () => api<Page>(`/api/transactions?${queryString}`) });
   const { data: dictionaries } = useQuery({ queryKey: ["dictionaries"], queryFn: () => api<Dictionaries>("/api/dictionaries") });
@@ -67,6 +73,67 @@ export function TransactionsPage() {
   const activeFilterCount = ["date", "month", "start", "end", "direction", "category1", "category2", "query"].filter((key) => params.has(key)).length;
   const advancedFilterCount = ["direction", "category1", "category2"].filter((key) => params.has(key)).length;
   const clearAdvancedFilters = () => setParams((current) => { const next = new URLSearchParams(current); ["direction", "category1", "category2"].forEach((key) => next.delete(key)); next.set("page", "1"); return next; });
+  const setMonthFilter = (value: Dayjs | null) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    value ? next.set("month", value.format("YYYY-MM")) : next.delete("month");
+    next.delete("date");
+    next.delete("start");
+    next.delete("end");
+    next.set("page", "1");
+    return next;
+  });
+  const setDateFilter = (value: Dayjs | null) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value) {
+      next.set("date", value.format("YYYY-MM-DD"));
+      next.delete("month");
+    } else {
+      next.delete("date");
+    }
+    next.delete("start");
+    next.delete("end");
+    next.set("page", "1");
+    return next;
+  });
+  const changeDateFilterMode = (mode: DateFilterMode) => {
+    setDateFilterMode(mode);
+    if (mode !== "month" || !params.get("date")) return;
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("month", String(current.get("date")).slice(0, 7));
+      next.delete("date");
+      next.delete("start");
+      next.delete("end");
+      next.set("page", "1");
+      return next;
+    });
+  };
+  const renderDateFilter = (className = "") => {
+    const value = dateFilterMode === "month"
+      ? (params.get("month") ? dayjs(params.get("month")) : null)
+      : (params.get("date") ? dayjs(params.get("date")) : null);
+    const defaultPickerValue = dateFilterMode === "date" && params.get("month") ? dayjs(params.get("month")) : undefined;
+    return <div className={`transaction-period-control ${className}`}>
+      <Typography.Text className="transaction-period-label">账目时间</Typography.Text>
+      <Segmented
+        className="transaction-period-mode"
+        size="small"
+        value={dateFilterMode}
+        onChange={(mode) => changeDateFilterMode(mode as DateFilterMode)}
+        options={[{ label: "按月", value: "month" }, { label: "按日", value: "date" }]}
+      />
+      <DatePicker
+        className="transaction-period-picker"
+        picker={dateFilterMode === "month" ? "month" : undefined}
+        allowClear
+        value={value}
+        defaultPickerValue={defaultPickerValue}
+        onChange={dateFilterMode === "month" ? setMonthFilter : setDateFilter}
+        placeholder={dateFilterMode === "month" ? "选择月份" : "选择日期"}
+        format={dateFilterMode === "month" ? "YYYY年M月" : "YYYY年M月D日"}
+      />
+    </div>;
+  };
   const renderAdvancedFilters = (inDrawer = false) => <div className="advanced-filter-panel">
     <Flex vertical gap={14}>
       {!inDrawer && <Flex align="center" justify="space-between"><Typography.Text strong>更多筛选</Typography.Text>{advancedFilterCount > 0 && <Typography.Text type="secondary">已启用 {advancedFilterCount} 项</Typography.Text>}</Flex>}
@@ -78,25 +145,29 @@ export function TransactionsPage() {
   const sorter = params.get("sortBy") ? { field: params.get("sortBy"), order: params.get("sortOrder") === "asc" ? "ascend" : "descend" } : null;
   return <div className="page-stack">
     {params.get("start") && params.get("end") && <Alert type="info" showIcon message={`当前账目范围：${params.get("start")} 至 ${params.get("end")}`} />}
-    {screens.md ? <Card size="small" className="transaction-filter-card"><Flex align="center" justify="space-between" wrap gap={12}>
-      <Flex align="center" wrap gap={8} className="transaction-filter-main">
-      <DatePicker picker="month" allowClear value={params.get("month") ? dayjs(params.get("month")) : null} onChange={(value) => { setParams((current) => { const next = new URLSearchParams(current); value ? next.set("month", value.format("YYYY-MM")) : next.delete("month"); next.delete("date"); next.delete("start"); next.delete("end"); next.set("page", "1"); return next; }); }} placeholder="全部月份" />
-      <DatePicker allowClear value={params.get("date") ? dayjs(params.get("date")) : null} onChange={(value) => { setParams((current) => { const next = new URLSearchParams(current); value ? next.set("date", value.format("YYYY-MM-DD")) : next.delete("date"); next.delete("month"); next.delete("start"); next.delete("end"); next.set("page", "1"); return next; }); }} placeholder="具体日期" />
-      <Input.Search ref={searchRef} allowClear placeholder="搜索项目、备注或分类" value={searchValue} onChange={(event) => { setSearchValue(event.target.value); if (!event.target.value) set("query", ""); }} onSearch={(value) => set("query", value.trim())} className="transaction-search" />
-      <Popover open={filterOpen} onOpenChange={setFilterOpen} trigger="click" placement="bottomLeft" content={renderAdvancedFilters()}><Badge count={advancedFilterCount} size="small" offset={[-2, 2]}><Button icon={<FilterOutlined />}>更多筛选</Button></Badge></Popover>
-      <Dropdown menu={savedFilterMenu} trigger={["click"]}><Badge dot={hasSavedFilter} offset={[-2, 3]}><Button icon={<FolderOpenOutlined />}>筛选方案</Button></Badge></Dropdown>
-      {activeFilterCount > 0 && <Button type="text" icon={<ClearOutlined />} onClick={() => setParams(new URLSearchParams())}>清除全部</Button>}
-      </Flex>
-      <Flex align="center" wrap gap={8} className="transaction-table-actions"><Typography.Text type="secondary">{data?.total || 0} 笔账目</Typography.Text><Button icon={<DownloadOutlined />} onClick={() => exportCsv().catch((error) => message.error(error.message))}>导出结果</Button><Dropdown menu={columnMenu} trigger={["click"]}><Button icon={<SettingOutlined />}>显示列</Button></Dropdown></Flex>
-    </Flex></Card> : <Card size="small" className="transaction-filter-card transaction-filter-mobile">
+    {screens.md ? <Card size="small" className="transaction-filter-card">
+      <div className="transaction-filter-desktop">
+        <div className="transaction-filter-primary">
+          {renderDateFilter()}
+          <Input.Search ref={searchRef} allowClear placeholder="搜索项目、备注或分类" value={searchValue} onChange={(event) => { setSearchValue(event.target.value); if (!event.target.value) set("query", ""); }} onSearch={(value) => set("query", value.trim())} className="transaction-search" />
+        </div>
+        <div className="transaction-filter-secondary">
+          <div className="transaction-filter-tools">
+            <Popover open={filterOpen} onOpenChange={setFilterOpen} trigger="click" placement="bottomLeft" content={renderAdvancedFilters()}><Badge count={advancedFilterCount} size="small" offset={[-2, 2]}><Button icon={<FilterOutlined />}>更多筛选</Button></Badge></Popover>
+            <Dropdown menu={savedFilterMenu} trigger={["click"]}><Badge dot={hasSavedFilter} offset={[-2, 3]}><Button icon={<FolderOpenOutlined />}>筛选方案</Button></Badge></Dropdown>
+            {activeFilterCount > 0 && <Button type="text" icon={<ClearOutlined />} onClick={() => setParams(new URLSearchParams())}>清除全部</Button>}
+          </div>
+          <Flex align="center" wrap gap={8} className="transaction-table-actions"><Typography.Text type="secondary">{data?.total || 0} 笔账目</Typography.Text><Button icon={<DownloadOutlined />} onClick={() => exportCsv().catch((error) => message.error(error.message))}>导出结果</Button><Dropdown menu={columnMenu} trigger={["click"]}><Button icon={<SettingOutlined />}>显示列</Button></Dropdown></Flex>
+        </div>
+      </div>
+    </Card> : <Card size="small" className="transaction-filter-card transaction-filter-mobile">
       <Flex vertical gap={10}>
         <Input.Search ref={searchRef} allowClear placeholder="搜索项目、备注或分类" value={searchValue} onChange={(event) => { setSearchValue(event.target.value); if (!event.target.value) set("query", ""); }} onSearch={(value) => set("query", value.trim())} className="transaction-search" />
-        <Flex gap={8} align="center">
-          <DatePicker className="mobile-month-picker" picker="month" allowClear value={params.get("month") ? dayjs(params.get("month")) : null} onChange={(value) => { setParams((current) => { const next = new URLSearchParams(current); value ? next.set("month", value.format("YYYY-MM")) : next.delete("month"); next.delete("date"); next.delete("start"); next.delete("end"); next.set("page", "1"); return next; }); }} placeholder="全部月份" />
-          <DatePicker className="mobile-date-picker" allowClear value={params.get("date") ? dayjs(params.get("date")) : null} onChange={(value) => { setParams((current) => { const next = new URLSearchParams(current); value ? next.set("date", value.format("YYYY-MM-DD")) : next.delete("date"); next.delete("month"); next.delete("start"); next.delete("end"); next.set("page", "1"); return next; }); }} placeholder="具体日期" />
+        <div className="transaction-filter-mobile-toolbar">
+          {renderDateFilter("transaction-period-control-mobile")}
           <Badge count={advancedFilterCount} size="small" offset={[-2, 2]}><Button icon={<FilterOutlined />} onClick={() => setFilterOpen(true)}>筛选</Button></Badge>
           <Dropdown menu={mobileActionMenu} trigger={["click"]}><Badge dot={hasSavedFilter} offset={[-2, 3]}><Button icon={<MoreOutlined />} aria-label="更多账目操作" /></Badge></Dropdown>
-        </Flex>
+        </div>
         <Flex align="center" justify="space-between" className="mobile-filter-summary">
           <Typography.Text type="secondary">共 {data?.total || 0} 笔账目{activeFilterCount > 0 ? ` · 已筛选 ${activeFilterCount} 项` : ""}</Typography.Text>
           {activeFilterCount > 0 && <Button type="link" size="small" icon={<ClearOutlined />} onClick={() => setParams(new URLSearchParams())}>清除筛选</Button>}

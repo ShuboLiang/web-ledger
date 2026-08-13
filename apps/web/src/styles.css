@@ -115,16 +115,27 @@ button, input, textarea, select { font: inherit; }
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .ai-entry-button { height: 52px !important; border-color: #b8d5cc !important; background: #edf5f1 !important; color: #176b62 !important; }
 .transaction-filter-card .ant-card-body { padding: 14px 16px !important; }
-.transaction-filter-main { min-width: 0; }
-.transaction-search { width: min(420px, 34vw); }
-.transaction-table-actions { margin-left: auto; }
+.transaction-filter-desktop { display: flex; flex-direction: column; gap: 12px; }
+.transaction-filter-primary { display: grid; min-width: 0; grid-template-columns: minmax(280px, 332px) minmax(0, 1fr); align-items: center; gap: 14px; }
+.transaction-period-control { display: grid; min-width: 0; grid-template-columns: auto auto minmax(126px, 1fr); align-items: center; gap: 8px; }
+.transaction-period-label { color: #5c6e6a; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.transaction-period-mode { min-width: 96px; }
+.transaction-period-mode .ant-segmented-item-label { min-width: 34px; padding-inline: 7px; }
+.transaction-period-picker { width: 100%; min-width: 0; }
+.transaction-filter-secondary { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding-top: 10px; border-top: 1px solid #e7ece8; }
+.transaction-filter-tools { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 10px; }
+.transaction-filter-tools .ant-btn,
+.transaction-table-actions .ant-btn { min-width: 116px; }
+.transaction-search { width: 100%; }
+.transaction-table-actions { justify-content: flex-end; margin-left: auto; }
 .advanced-filter-panel { width: 390px; padding: 4px; }
 .advanced-filter-panel .ant-select { width: 100%; }
 .transaction-selection-alert { border-color: #b9d6cd; background: #edf5f1; }
 .transaction-mobile-row { padding: 16px !important; cursor: pointer; }
 .transaction-item-cell { min-width: 0; }
 .transaction-item-cell .ant-typography-secondary { max-width: 100%; font-size: 12px; }
-.mobile-month-picker, .mobile-date-picker { flex: 1; min-width: 0; }
+.transaction-filter-mobile-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.transaction-period-control-mobile .transaction-period-label { display: none; }
 .mobile-filter-summary { min-height: 24px; }
 .mobile-filter-summary .ant-btn { padding-inline: 0; }
 .mobile-filter-drawer .advanced-filter-panel { width: 100%; padding: 0; }
@@ -177,8 +188,8 @@ button, input, textarea, select { font: inherit; }
 .ranking-row { width: 100%; min-width: 0; padding-right: 10px; }
 .ranking-amount { display: inline-block; min-width: 82px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .large-expense-list { width: min(100%, 1100px); margin: 0 auto; }
-.large-expense-list .ant-spin-container { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
-.large-expense-list .ant-list-empty-text { grid-column: 1 / -1; }
+.large-expense-list .ant-spin-container { display: block; }
+.large-expense-list .ant-list-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
 .large-expense-item { display: grid !important; min-width: 0; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center !important; gap: 14px; padding-block: 16px !important; }
 .large-expense-rank { width: 20px; text-align: center; font-variant-numeric: tabular-nums; }
 .large-expense-main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
@@ -186,7 +197,7 @@ button, input, textarea, select { font: inherit; }
 .analytics-insight-grid { display: grid; gap: 18px; }
 .analytics-insight-grid.has-budget { grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); align-items: stretch; }
 .analytics-insight-grid.has-budget > .ant-card { min-width: 0; }
-.analytics-insight-grid.has-budget .large-expense-list .ant-spin-container { grid-template-columns: 1fr; }
+.analytics-insight-grid.has-budget .large-expense-list .ant-list-items { grid-template-columns: 1fr; }
 .category-contribution-list { display: flex; max-width: 980px; margin: 0 auto; flex-direction: column; gap: 10px; }
 .category-contribution-row { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 96px; align-items: center; gap: 12px; }
 .category-contribution-label { min-width: 0; }
@@ -298,6 +309,9 @@ button, input, textarea, select { font: inherit; }
   .app-header { height: 68px; }
   .app-header-inner { padding: 0 16px; }
   .app-content { padding: 16px 16px 96px; }
+  .transaction-filter-primary { grid-template-columns: minmax(280px, 316px) minmax(0, 1fr); }
+  .transaction-filter-secondary { flex-wrap: wrap; align-items: flex-start; }
+  .transaction-table-actions { flex-wrap: wrap; }
   .analytics-toolbar { top: 78px; }
   .ai-workspace .ant-card-body { height: calc(100vh - 170px) !important; min-height: 620px !important; }
 }
@@ -316,7 +330,6 @@ button, input, textarea, select { font: inherit; }
   .auth-card { width: 100%; }
   .auth-card h3 { font-size: 26px; }
   .form-grid-2 { grid-template-columns: 1fr; gap: 0; }
-  .transaction-filter-main { width: 100%; }
   .transaction-search { width: 100%; }
   .transaction-table-actions { width: 100%; margin-left: 0; }
   .advanced-filter-panel { width: min(340px, calc(100vw - 48px)); }
@@ -324,9 +337,11 @@ button, input, textarea, select { font: inherit; }
   .transaction-filter-mobile .ant-input-search { height: 40px; }
   .transaction-filter-mobile .ant-input-affix-wrapper,
   .transaction-filter-mobile .ant-input-search-button,
-  .transaction-filter-mobile .mobile-month-picker,
-  .transaction-filter-mobile .mobile-date-picker,
+  .transaction-filter-mobile .transaction-period-picker,
   .transaction-filter-mobile .ant-btn { height: 40px; }
+  .transaction-filter-mobile .transaction-period-control { grid-template-columns: 96px minmax(0, 1fr); gap: 6px; }
+  .transaction-filter-mobile .transaction-period-mode { min-width: 0; }
+  .transaction-filter-mobile .transaction-period-mode .ant-segmented-item-label { min-width: 0; padding-inline: 6px; }
   .analytics-toolbar { position: relative; top: auto; z-index: auto; box-shadow: none; }
   .analytics-toolbar .ant-card-body { padding: 12px !important; }
   .analytics-mobile-controls .ant-segmented { width: 100%; }
@@ -343,7 +358,7 @@ button, input, textarea, select { font: inherit; }
   .expense-calendar-pane { max-width: 560px; margin: 0 auto; }
   .expense-legend { width: 100%; justify-content: flex-end; }
   .expense-month.mobile .expense-day { min-height: 42px; aspect-ratio: auto; }
-  .large-expense-list .ant-spin-container { grid-template-columns: 1fr; }
+  .large-expense-list .ant-list-items { grid-template-columns: 1fr; }
   .large-expense-item { gap: 12px; }
   .category-contribution-row { grid-template-columns: minmax(76px, 110px) minmax(0, 1fr) 82px; gap: 8px; }
   .ai-grid.compact { grid-template-columns: 1fr; }
