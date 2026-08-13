@@ -1,6 +1,6 @@
-import { Global, Module } from "@nestjs/common";
-import { LedgerService } from "./ledger.service.js";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { Global, Module } from "@nestjs/common"
+import { LedgerService } from "./ledger.service.js"
+import { PrismaService } from "../prisma/prisma.service.js"
 
 @Global()
 @Module({

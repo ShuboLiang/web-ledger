@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-web
+data
+backups
+pgdata
+*.tar
+*.tar.gz
+package-lock.json
+*.prisma

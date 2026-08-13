@@ -1,8 +1,8 @@
-import { Module } from "@nestjs/common";
-import { DashboardModule } from "../dashboard/dashboard.module.js";
-import { AiController } from "./ai.controller.js";
-import { AiService } from "./ai.service.js";
-import { AiSettingsService } from "./ai-settings.service.js";
+import { Module } from "@nestjs/common"
+import { DashboardModule } from "../dashboard/dashboard.module.js"
+import { AiController } from "./ai.controller.js"
+import { AiService } from "./ai.service.js"
+import { AiSettingsService } from "./ai-settings.service.js"
 
 @Module({
   imports: [DashboardModule],

@@ -6,9 +6,14 @@ import {
   PlusOutlined,
   RobotOutlined,
   UserOutlined,
-} from "@ant-design/icons";
-import { Bubble, Conversations, Sender } from "@ant-design/x";
-import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+} from "@ant-design/icons"
+import { Bubble, Conversations, Sender } from "@ant-design/x"
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   App,
   Avatar,
@@ -29,116 +34,135 @@ import {
   Space,
   Tag,
   Typography,
-} from "antd";
-import dayjs from "dayjs";
-import { useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { api, type Dictionaries } from "@/lib/api";
-import { conversationId, money } from "@/lib/utils";
+} from "antd"
+import dayjs from "dayjs"
+import { useEffect, useMemo, useRef, useState } from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { api, type Dictionaries } from "@/lib/api"
+import { conversationId, money } from "@/lib/utils"
 
-type Message = { id: string; role: "user" | "assistant"; content: string };
+type Message = { id: string; role: "user" | "assistant"; content: string }
 type Proposal = {
-  type: "create" | "update" | "delete";
-  id?: number;
-  records?: any[];
-  current?: any;
-  changes?: any;
-  reason?: string;
-  _humanEdited?: boolean;
-};
+  type: "create" | "update" | "delete"
+  id?: number
+  records?: any[]
+  current?: any
+  changes?: any
+  reason?: string
+  _humanEdited?: boolean
+}
 type AiResponse = {
-  message: string;
-  conversationId: string;
-  proposals: Proposal[];
-  warning?: string;
-};
+  message: string
+  conversationId: string
+  proposals: Proposal[]
+  warning?: string
+}
 type Chat = {
-  id: string;
-  title: string;
-  messageCount: number;
-  updatedAt: string;
-};
+  id: string
+  title: string
+  messageCount: number
+  updatedAt: string
+}
 type ChatDetail = {
-  id: string;
-  title: string;
-  messages: Message[];
-  proposals: Proposal[];
-};
+  id: string
+  title: string
+  messages: Message[]
+  proposals: Proposal[]
+}
 
 const welcome: Message = {
   id: "welcome",
   role: "assistant",
   content:
     "你好，我可以帮你**记账、查账、改账和分析消费**。\n\n例如：`今天午饭 18 元`，或者问我“这个月餐饮花了多少？”",
-};
-type SendCommand = { text: string; conversationId: string };
-type ProposalFormValues = { date: dayjs.Dayjs; direction: "expense" | "income"; amount: number; item: string; category1: string; category2: string; note?: string };
-type EditingProposal = { proposalIndex: number; recordIndex?: number; label: string };
-const aiConversationStorageKey = "qing-zhang-ai-conversation";
+}
+type SendCommand = { text: string; conversationId: string }
+type ProposalFormValues = {
+  date: dayjs.Dayjs
+  direction: "expense" | "income"
+  amount: number
+  item: string
+  category1: string
+  category2: string
+  note?: string
+}
+type EditingProposal = {
+  proposalIndex: number
+  recordIndex?: number
+  label: string
+}
+const aiConversationStorageKey = "qing-zhang-ai-conversation"
 
 export function AiPage() {
-  const queryClient = useQueryClient();
-  const screens = Grid.useBreakpoint();
-  const { message, modal } = App.useApp();
-  const [id, setId] = useState<string>("");
-  const [input, setInput] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [editingProposal, setEditingProposal] = useState<EditingProposal | null>(null);
-  const [proposalForm] = Form.useForm<ProposalFormValues>();
-  const creatingInitial = useRef(false);
+  const queryClient = useQueryClient()
+  const screens = Grid.useBreakpoint()
+  const { message, modal } = App.useApp()
+  const [id, setId] = useState<string>("")
+  const [input, setInput] = useState("")
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [editingProposal, setEditingProposal] =
+    useState<EditingProposal | null>(null)
+  const [proposalForm] = Form.useForm<ProposalFormValues>()
+  const creatingInitial = useRef(false)
   const { data: settings } = useQuery({
     queryKey: ["ai-settings"],
     queryFn: () => api<any>("/api/ai/settings"),
-  });
-  const { data: dictionaries } = useQuery({ queryKey: ["dictionaries"], queryFn: () => api<Dictionaries>("/api/dictionaries") });
+  })
+  const { data: dictionaries } = useQuery({
+    queryKey: ["dictionaries"],
+    queryFn: () => api<Dictionaries>("/api/dictionaries"),
+  })
   const { data: history = [], isFetched: historyFetched } = useQuery({
     queryKey: ["ai-conversations"],
     queryFn: () => api<Chat[]>("/api/ai/conversations"),
-  });
+  })
   const { data: chat } = useQuery({
     queryKey: ["ai-conversation", id],
     queryFn: () => api<ChatDetail>(`/api/ai/conversations/${id}`),
     enabled: Boolean(id),
-  });
+  })
   useEffect(() => {
-    if (!historyFetched || id || creatingInitial.current) return;
-    const savedId = sessionStorage.getItem(aiConversationStorageKey);
-    const initialChat = history.find((item) => item.id === savedId) || history[0];
+    if (!historyFetched || id || creatingInitial.current) return
+    const savedId = sessionStorage.getItem(aiConversationStorageKey)
+    const initialChat =
+      history.find((item) => item.id === savedId) || history[0]
     if (initialChat) {
-      setId(initialChat.id);
-      return;
+      setId(initialChat.id)
+      return
     }
-    creatingInitial.current = true;
-    const next = conversationId();
+    creatingInitial.current = true
+    const next = conversationId()
     api<ChatDetail>("/api/ai/conversations", {
       method: "POST",
       body: JSON.stringify({ id: next }),
     })
       .then(async () => {
-        setId(next);
-        await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+        setId(next)
+        await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] })
       })
       .catch((error) => message.error(error.message))
       .finally(() => {
-        creatingInitial.current = false;
-      });
-  }, [historyFetched, history, id]);
+        creatingInitial.current = false
+      })
+  }, [historyFetched, history, id])
   useEffect(() => {
-    if (id) sessionStorage.setItem(aiConversationStorageKey, id);
-    else if (historyFetched && !history.length) sessionStorage.removeItem(aiConversationStorageKey);
-  }, [id, historyFetched, history.length]);
-  const messages = chat?.messages.length ? chat.messages : [welcome];
-  const proposals = chat?.proposals || [];
-  const isCurrentConversationAnswering = useIsMutating({ mutationKey: ["ai-command", id], exact: true }) > 0;
+    if (id) sessionStorage.setItem(aiConversationStorageKey, id)
+    else if (historyFetched && !history.length)
+      sessionStorage.removeItem(aiConversationStorageKey)
+  }, [id, historyFetched, history.length])
+  const messages = chat?.messages.length ? chat.messages : [welcome]
+  const proposals = chat?.proposals || []
+  const isCurrentConversationAnswering =
+    useIsMutating({ mutationKey: ["ai-command", id], exact: true }) > 0
   const selectModel = useMutation({
     mutationFn: (profileId: string) =>
       api(`/api/ai/settings/profiles/${profileId}/default`, { method: "POST" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ai-settings"] });
-      message.success("当前模型已切换，新会话起生效");
+      await queryClient.invalidateQueries({ queryKey: ["ai-settings"] })
+      message.success("当前模型已切换，新会话起生效")
     },
-  });
+  })
   const send = useMutation({
     mutationKey: ["ai-command", id],
     mutationFn: ({ text, conversationId }: SendCommand) =>
@@ -147,7 +171,9 @@ export function AiPage() {
         body: JSON.stringify({ text, conversationId }),
       }),
     onMutate: async ({ text, conversationId }) => {
-      await queryClient.cancelQueries({ queryKey: ["ai-conversation", conversationId] });
+      await queryClient.cancelQueries({
+        queryKey: ["ai-conversation", conversationId],
+      })
       queryClient.setQueryData<ChatDetail>(
         ["ai-conversation", conversationId],
         (current) =>
@@ -160,7 +186,7 @@ export function AiPage() {
                 ],
               }
             : current,
-      );
+      )
     },
     onSuccess: async (data, { conversationId }) => {
       if (data.warning) {
@@ -180,20 +206,22 @@ export function AiPage() {
                   ],
                 }
               : current,
-        );
+        )
       }
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["ai-conversation", conversationId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["ai-conversation", conversationId],
+        }),
         queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
-      ]);
+      ])
     },
     onError: async (error: Error, { conversationId }) => {
       await queryClient.invalidateQueries({
         queryKey: ["ai-conversation", conversationId],
-      });
-      message.error(error.message);
+      })
+      message.error(error.message)
     },
-  });
+  })
   const execute = useMutation({
     mutationFn: () =>
       api("/api/ai/execute", {
@@ -201,54 +229,62 @@ export function AiPage() {
         body: JSON.stringify({ conversationId: id }),
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
-      message.success("账目操作已执行");
+      await queryClient.invalidateQueries()
+      message.success("账目操作已执行")
     },
     onError: (error: Error) => message.error(error.message),
-  });
+  })
   const saveProposal = useMutation({
-    mutationFn: (nextProposals: Proposal[]) => api<{ proposals: Proposal[] }>(`/api/ai/conversations/${id}/proposals`, { method: "PUT", body: JSON.stringify({ proposals: nextProposals }) }),
+    mutationFn: (nextProposals: Proposal[]) =>
+      api<{ proposals: Proposal[] }>(`/api/ai/conversations/${id}/proposals`, {
+        method: "PUT",
+        body: JSON.stringify({ proposals: nextProposals }),
+      }),
     onSuccess: (result) => {
-      queryClient.setQueryData<ChatDetail>(["ai-conversation", id], (current) => current ? { ...current, proposals: result.proposals } : current);
-      setEditingProposal(null);
-      message.success("待确认内容已更新");
+      queryClient.setQueryData<ChatDetail>(
+        ["ai-conversation", id],
+        (current) =>
+          current ? { ...current, proposals: result.proposals } : current,
+      )
+      setEditingProposal(null)
+      message.success("待确认内容已更新")
     },
     onError: (error: Error) => message.error(error.message),
-  });
+  })
   const submit = (text = input) => {
-    const value = text.trim();
-    if (!value || !id || isCurrentConversationAnswering) return;
-    setInput("");
-    send.mutate({ text: value, conversationId: id });
-  };
+    const value = text.trim()
+    if (!value || !id || isCurrentConversationAnswering) return
+    setInput("")
+    send.mutate({ text: value, conversationId: id })
+  }
   const newChat = async () => {
-    const next = conversationId();
+    const next = conversationId()
     await api("/api/ai/conversations", {
       method: "POST",
       body: JSON.stringify({ id: next }),
-    });
-    setId(next);
-    await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
-  };
+    })
+    setId(next)
+    await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] })
+  }
   const switchChat = (key: string) => {
-    if (key !== id) setId(key);
-    setHistoryOpen(false);
-  };
+    if (key !== id) setId(key)
+    setHistoryOpen(false)
+  }
   const cancel = async () => {
     await api(`/api/ai/conversations/${id}/outcome`, {
       method: "POST",
       body: JSON.stringify({ outcome: "cancelled" }),
-    });
+    })
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
       queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
-    ]);
-    message.info("已取消待确认操作");
-  };
+    ])
+    message.info("已取消待确认操作")
+  }
   const canDelete =
     Boolean(id) &&
     (history.length > 1 ||
-      (history.find((c) => c.id === id)?.messageCount ?? 0) > 0);
+      (history.find((c) => c.id === id)?.messageCount ?? 0) > 0)
   const deleteChat = () =>
     modal.confirm({
       title: "删除当前对话",
@@ -257,14 +293,14 @@ export function AiPage() {
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: async () => {
-        await api(`/api/ai/conversations/${id}`, { method: "DELETE" });
-        const remaining = history.filter((chat) => chat.id !== id);
-        queryClient.setQueryData<Chat[]>(["ai-conversations"], remaining);
-        setId(remaining[0]?.id || "");
-        await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
-        message.success("对话已删除");
+        await api(`/api/ai/conversations/${id}`, { method: "DELETE" })
+        const remaining = history.filter((chat) => chat.id !== id)
+        queryClient.setQueryData<Chat[]>(["ai-conversations"], remaining)
+        setId(remaining[0]?.id || "")
+        await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] })
+        message.success("对话已删除")
       },
-    });
+    })
   const proposalRows = useMemo(
     () =>
       proposals.flatMap((proposal, proposalIndex) =>
@@ -281,7 +317,10 @@ export function AiPage() {
               {
                 ...(proposal.current || {}),
                 ...(proposal.changes || {}),
-                direction: proposal.changes?.direction || proposal.current?.direction || (Number(proposal.current?.amount) > 0 ? "income" : "expense"),
+                direction:
+                  proposal.changes?.direction ||
+                  proposal.current?.direction ||
+                  (Number(proposal.current?.amount) > 0 ? "income" : "expense"),
                 label: proposal.type === "update" ? "修改" : "删除",
                 proposalIndex,
                 editable: proposal.type === "update",
@@ -290,40 +329,85 @@ export function AiPage() {
             ],
       ),
     [proposals],
-  );
-  const primaryCategories = useMemo(() => [...new Set((dictionaries?.categories || []).map((row) => row.category1))], [dictionaries?.categories]);
-  const selectedProposalCategory = Form.useWatch("category1", proposalForm);
-  const selectedProposalSubcategory = Form.useWatch("category2", proposalForm);
-  const secondaryCategories = useMemo(() => [...new Set((dictionaries?.categories || []).filter((row) => row.category1 === selectedProposalCategory).map((row) => row.category2))], [dictionaries?.categories, selectedProposalCategory]);
-  const proposalPrimaryChoices = [...primaryCategories, ...(selectedProposalCategory && !primaryCategories.includes(selectedProposalCategory) ? [selectedProposalCategory] : [])].map((value) => ({ label: value, value }));
-  const proposalSecondaryChoices = [...secondaryCategories, ...(selectedProposalSubcategory && !secondaryCategories.includes(selectedProposalSubcategory) ? [selectedProposalSubcategory] : [])].map((value) => ({ label: value, value }));
+  )
+  const primaryCategories = useMemo(
+    () => [
+      ...new Set((dictionaries?.categories || []).map((row) => row.category1)),
+    ],
+    [dictionaries?.categories],
+  )
+  const selectedProposalCategory = Form.useWatch("category1", proposalForm)
+  const selectedProposalSubcategory = Form.useWatch("category2", proposalForm)
+  const secondaryCategories = useMemo(
+    () => [
+      ...new Set(
+        (dictionaries?.categories || [])
+          .filter((row) => row.category1 === selectedProposalCategory)
+          .map((row) => row.category2),
+      ),
+    ],
+    [dictionaries?.categories, selectedProposalCategory],
+  )
+  const proposalPrimaryChoices = [
+    ...primaryCategories,
+    ...(selectedProposalCategory &&
+    !primaryCategories.includes(selectedProposalCategory)
+      ? [selectedProposalCategory]
+      : []),
+  ].map((value) => ({ label: value, value }))
+  const proposalSecondaryChoices = [
+    ...secondaryCategories,
+    ...(selectedProposalSubcategory &&
+    !secondaryCategories.includes(selectedProposalSubcategory)
+      ? [selectedProposalSubcategory]
+      : []),
+  ].map((value) => ({ label: value, value }))
   const openProposalEditor = (row: any) => {
-    setEditingProposal({ proposalIndex: row.proposalIndex, recordIndex: row.recordIndex, label: row.label });
-    proposalForm.setFieldsValue({ date: dayjs(row.date), direction: row.direction || (Number(row.amount) > 0 ? "income" : "expense"), amount: Math.abs(Number(row.amount)), item: row.item || "", category1: row.category1 || "", category2: row.category2 || "", note: row.note || "" });
-  };
+    setEditingProposal({
+      proposalIndex: row.proposalIndex,
+      recordIndex: row.recordIndex,
+      label: row.label,
+    })
+    proposalForm.setFieldsValue({
+      date: dayjs(row.date),
+      direction:
+        row.direction || (Number(row.amount) > 0 ? "income" : "expense"),
+      amount: Math.abs(Number(row.amount)),
+      item: row.item || "",
+      category1: row.category1 || "",
+      category2: row.category2 || "",
+      note: row.note || "",
+    })
+  }
   const submitProposalEdit = (values: ProposalFormValues) => {
-    if (!editingProposal) return;
-    const record = { ...values, date: values.date.format("YYYY-MM-DD") };
+    if (!editingProposal) return
+    const record = { ...values, date: values.date.format("YYYY-MM-DD") }
     const next = proposals.map((proposal, proposalIndex) => {
-      if (proposalIndex !== editingProposal.proposalIndex) return proposal;
-      if (proposal.type === "create") return { ...proposal, records: (proposal.records || []).map((existing, recordIndex) => recordIndex === editingProposal.recordIndex ? record : existing) };
-      if (proposal.type === "update") return { ...proposal, changes: record };
-      return proposal;
-    });
-    saveProposal.mutate(next);
-  };
+      if (proposalIndex !== editingProposal.proposalIndex) return proposal
+      if (proposal.type === "create")
+        return {
+          ...proposal,
+          records: (proposal.records || []).map((existing, recordIndex) =>
+            recordIndex === editingProposal.recordIndex ? record : existing,
+          ),
+        }
+      if (proposal.type === "update") return { ...proposal, changes: record }
+      return proposal
+    })
+    saveProposal.mutate(next)
+  }
   const bubbleItems: any[] = messages.map((item) => ({
     key: item.id,
     role: item.role === "assistant" ? "ai" : "user",
     content: item.content,
-  }));
+  }))
   if (isCurrentConversationAnswering)
     bubbleItems.push({
       key: "loading",
       role: "ai",
       content: "正在查询账本并思考…",
       loading: true,
-    });
+    })
   const roles: any = {
     ai: {
       placement: "start",
@@ -345,14 +429,14 @@ export function AiPage() {
       shape: "corner",
       variant: "filled",
     },
-  };
+  }
   const modelMenu = {
     items: (settings?.profiles || []).map((profile: any) => ({
       key: profile.id,
       label: `${profile.isDefault ? "✓ " : ""}${profile.name}`,
       onClick: () => selectModel.mutate(profile.id),
     })),
-  };
+  }
   return (
     <Card
       className="ai-workspace"
@@ -477,10 +561,23 @@ export function AiPage() {
                         {row.humanEdited && <Tag color="gold">已微调</Tag>}
                       </Flex>
                       <Flex align="center" gap={4}>
-                        <Typography.Text strong type={row.direction === "income" ? "success" : "danger"}>
+                        <Typography.Text
+                          strong
+                          type={
+                            row.direction === "income" ? "success" : "danger"
+                          }
+                        >
                           {row.amount ? money(Math.abs(row.amount)) : "—"}
                         </Typography.Text>
-                        {row.editable && <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑${row.item || "待确认账目"}`} onClick={() => openProposalEditor(row)} />}
+                        {row.editable && (
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            aria-label={`编辑${row.item || "待确认账目"}`}
+                            onClick={() => openProposalEditor(row)}
+                          />
+                        )}
                       </Flex>
                     </Flex>
                     <Typography.Text strong>
@@ -570,22 +667,104 @@ export function AiPage() {
         open={Boolean(editingProposal)}
         destroyOnHidden
         onClose={() => setEditingProposal(null)}
-        footer={<Flex justify="flex-end" gap={8}><Button onClick={() => setEditingProposal(null)}>取消</Button><Button type="primary" loading={saveProposal.isPending} onClick={() => proposalForm.submit()}>保存调整</Button></Flex>}
+        footer={
+          <Flex justify="flex-end" gap={8}>
+            <Button onClick={() => setEditingProposal(null)}>取消</Button>
+            <Button
+              type="primary"
+              loading={saveProposal.isPending}
+              onClick={() => proposalForm.submit()}
+            >
+              保存调整
+            </Button>
+          </Flex>
+        }
       >
-        <Form form={proposalForm} layout="vertical" requiredMark="optional" onFinish={submitProposalEdit}>
+        <Form
+          form={proposalForm}
+          layout="vertical"
+          requiredMark="optional"
+          onFinish={submitProposalEdit}
+        >
           <div className="form-grid-2">
-            <Form.Item label="日期" name="date" rules={[{ required: true, message: "请选择日期" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item label="收支" name="direction" rules={[{ required: true }]}><Radio.Group optionType="button" buttonStyle="solid" options={[{ label: "支出", value: "expense" }, { label: "收入", value: "income" }]} /></Form.Item>
+            <Form.Item
+              label="日期"
+              name="date"
+              rules={[{ required: true, message: "请选择日期" }]}
+            >
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item
+              label="收支"
+              name="direction"
+              rules={[{ required: true }]}
+            >
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                options={[
+                  { label: "支出", value: "expense" },
+                  { label: "收入", value: "income" },
+                ]}
+              />
+            </Form.Item>
           </div>
-          <Form.Item label="金额" name="amount" rules={[{ required: true, message: "请输入金额" }, { type: "number", min: 0.01, message: "金额必须大于 0" }]}><InputNumber min={0.01} precision={2} prefix="¥" style={{ width: "100%" }} /></Form.Item>
-          <Form.Item label="项目" name="item" rules={[{ required: true, whitespace: true, max: 80 }]}><Input /></Form.Item>
+          <Form.Item
+            label="金额"
+            name="amount"
+            rules={[
+              { required: true, message: "请输入金额" },
+              { type: "number", min: 0.01, message: "金额必须大于 0" },
+            ]}
+          >
+            <InputNumber
+              min={0.01}
+              precision={2}
+              prefix="¥"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+          <Form.Item
+            label="项目"
+            name="item"
+            rules={[{ required: true, whitespace: true, max: 80 }]}
+          >
+            <Input />
+          </Form.Item>
           <div className="form-grid-2">
-            <Form.Item label="一级分类" name="category1" rules={[{ required: true }]}><Select options={proposalPrimaryChoices} onChange={(category1) => proposalForm.setFieldValue("category2", dictionaries?.categories.find((row) => row.category1 === category1)?.category2)} /></Form.Item>
-            <Form.Item label="二级分类" name="category2" rules={[{ required: true }]}><Select disabled={!selectedProposalCategory} options={proposalSecondaryChoices} /></Form.Item>
+            <Form.Item
+              label="一级分类"
+              name="category1"
+              rules={[{ required: true }]}
+            >
+              <Select
+                options={proposalPrimaryChoices}
+                onChange={(category1) =>
+                  proposalForm.setFieldValue(
+                    "category2",
+                    dictionaries?.categories.find(
+                      (row) => row.category1 === category1,
+                    )?.category2,
+                  )
+                }
+              />
+            </Form.Item>
+            <Form.Item
+              label="二级分类"
+              name="category2"
+              rules={[{ required: true }]}
+            >
+              <Select
+                disabled={!selectedProposalCategory}
+                options={proposalSecondaryChoices}
+              />
+            </Form.Item>
           </div>
-          <Form.Item label="备注" name="note" rules={[{ max: 500 }]}><Input.TextArea rows={4} showCount maxLength={500} /></Form.Item>
+          <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
+            <Input.TextArea rows={4} showCount maxLength={500} />
+          </Form.Item>
         </Form>
       </Drawer>
     </Card>
-  );
+  )
 }

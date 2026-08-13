@@ -1,5 +1,5 @@
-import { Controller, Get, Query } from "@nestjs/common";
-import { DashboardService } from "./dashboard.service.js";
+import { Controller, Get, Query } from "@nestjs/common"
+import { DashboardService } from "./dashboard.service.js"
 
 @Controller("api/dashboard")
 export class DashboardController {
@@ -7,11 +7,11 @@ export class DashboardController {
 
   @Get("range")
   getRange(@Query("start") start: string, @Query("end") end: string) {
-    return this.dashboard.buildRange(start, end);
+    return this.dashboard.buildRange(start, end)
   }
 
   @Get()
   async getDashboard(@Query("anchor") anchor?: string) {
-    return this.dashboard.build(anchor);
+    return this.dashboard.build(anchor)
   }
 }
