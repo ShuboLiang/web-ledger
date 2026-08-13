@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common"
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Res,
+} from "@nestjs/common"
+import type { Response } from "express"
 import { AiService } from "./ai.service.js"
 import { AiSettingsService } from "./ai-settings.service.js"
 
@@ -37,6 +47,14 @@ export class AiController {
     return this.ai.updatePendingProposals(id, proposals)
   }
 
+  @Post("conversations/:id/proposals/remove")
+  removePendingProposal(
+    @Param("id") id: string,
+    @Body() body: { proposalIndex?: number; recordIndex?: number },
+  ) {
+    return this.ai.removePendingProposal(id, body)
+  }
+
   @Put("settings")
   async saveSettings(@Body() body: Record<string, unknown>) {
     return this.ai.saveSettings(body)
@@ -73,6 +91,38 @@ export class AiController {
   command(@Body() body: { conversationId?: string; text?: string }) {
     if (!String(body.text || "").trim()) throw new Error("请输入要处理的内容")
     return this.ai.run(body.conversationId, String(body.text))
+  }
+
+  @Post("command/stream")
+  async commandStream(
+    @Body() body: { conversationId?: string; text?: string },
+    @Res() response: Response,
+  ) {
+    response.setHeader("Content-Type", "text/event-stream; charset=utf-8")
+    response.setHeader("Cache-Control", "no-cache, no-transform")
+    response.setHeader("Connection", "keep-alive")
+    response.setHeader("X-Accel-Buffering", "no")
+    response.flushHeaders()
+    const send = (type: string, data: unknown = {}) =>
+      response.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
+    try {
+      if (!String(body.text || "").trim()) {
+        send("error", { message: "请输入要处理的内容" })
+        response.end()
+        return
+      }
+      await this.ai.runStreaming(
+        body.conversationId,
+        String(body.text),
+        (event) => send(event.type, event.data),
+      )
+    } catch (error) {
+      send("error", {
+        message: error instanceof Error ? error.message : "AI 服务出错",
+      })
+    } finally {
+      response.end()
+    }
   }
 
   @Post("quick")

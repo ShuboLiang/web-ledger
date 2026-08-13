@@ -42,7 +42,12 @@ import remarkGfm from "remark-gfm"
 import { api, type Dictionaries } from "@/lib/api"
 import { conversationId, money } from "@/lib/utils"
 
-type Message = { id: string; role: "user" | "assistant"; content: string }
+type Message = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  thinking?: string | null
+}
 type Proposal = {
   type: "create" | "update" | "delete"
   id?: number
@@ -109,6 +114,8 @@ export function AiPage() {
     queryKey: ["ai-settings"],
     queryFn: () => api<any>("/api/ai/settings"),
   })
+  // 模型配置里是否开启了思考：只有开启时才有真正的思考文本可展示
+  const thinkingEnabled = Boolean(settings?.thinkingEnabled)
   const { data: dictionaries } = useQuery({
     queryKey: ["dictionaries"],
     queryFn: () => api<Dictionaries>("/api/dictionaries"),
@@ -163,14 +170,79 @@ export function AiPage() {
       message.success("当前模型已切换，新会话起生效")
     },
   })
+  const [stream, setStream] = useState<{
+    thinking: string
+    text: string
+    tool: { label: string } | null
+  } | null>(null)
   const send = useMutation({
     mutationKey: ["ai-command", id],
-    mutationFn: ({ text, conversationId }: SendCommand) =>
-      api<AiResponse>("/api/ai/command", {
+    mutationFn: async ({ text, conversationId }: SendCommand) => {
+      const response = await fetch("/api/ai/command/stream", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, conversationId }),
-      }),
+      })
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || "请求失败")
+      }
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let finished = false
+      while (!finished) {
+        const { value, done } = await reader.read()
+        finished = done
+        buffer += decoder.decode(value || new Uint8Array(), {
+          stream: !done,
+        })
+        const frames = buffer.split("\n\n")
+        buffer = frames.pop() || ""
+        for (const frame of frames) {
+          const eventLine = frame
+            .split("\n")
+            .find((line) => line.startsWith("event:"))
+          const dataLine = frame
+            .split("\n")
+            .find((line) => line.startsWith("data:"))
+          if (!eventLine || !dataLine) continue
+          const type = eventLine.slice(6).trim()
+          let data: any = {}
+          try {
+            data = JSON.parse(dataLine.slice(5).trim())
+          } catch {
+            continue
+          }
+          if (type === "thinking" && typeof data?.delta === "string") {
+            setStream((current) =>
+              current
+                ? { ...current, thinking: current.thinking + data.delta }
+                : current,
+            )
+          } else if (type === "text" && typeof data?.delta === "string") {
+            setStream((current) =>
+              current
+                ? { ...current, text: current.text + data.delta }
+                : current,
+            )
+          } else if (type === "tool" && data?.label) {
+            setStream((current) =>
+              current ? { ...current, tool: { label: data.label } } : current,
+            )
+          } else if (type === "tool_done") {
+            setStream((current) =>
+              current ? { ...current, tool: null } : current,
+            )
+          } else if (type === "error") {
+            throw new Error(data?.message || "AI 服务出错")
+          }
+        }
+      }
+      return { ok: true } as unknown as AiResponse
+    },
     onMutate: async ({ text, conversationId }) => {
+      setStream({ thinking: "", text: "", tool: null })
       await queryClient.cancelQueries({
         queryKey: ["ai-conversation", conversationId],
       })
@@ -188,37 +260,21 @@ export function AiPage() {
             : current,
       )
     },
-    onSuccess: async (data, { conversationId }) => {
-      if (data.warning) {
-        queryClient.setQueryData<ChatDetail>(
-          ["ai-conversation", conversationId],
-          (current) =>
-            current
-              ? {
-                  ...current,
-                  messages: [
-                    ...current.messages,
-                    {
-                      id: `warning-${Date.now()}`,
-                      role: "assistant",
-                      content: `> ⚠️ ${data.warning}`,
-                    },
-                  ],
-                }
-              : current,
-        )
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["ai-conversation", conversationId],
-        }),
+    onSuccess: async (_data, { conversationId }) => {
+      const [detail] = await Promise.all([
+        api<ChatDetail>(`/api/ai/conversations/${conversationId}`),
         queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
       ])
+      queryClient.setQueryData(["ai-conversation", conversationId], detail)
+      setStream(null)
     },
     onError: async (error: Error, { conversationId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["ai-conversation", conversationId],
-      })
+      const detail = await api<ChatDetail>(
+        `/api/ai/conversations/${conversationId}`,
+      ).catch(() => null)
+      if (detail)
+        queryClient.setQueryData(["ai-conversation", conversationId], detail)
+      setStream(null)
       message.error(error.message)
     },
   })
@@ -248,6 +304,28 @@ export function AiPage() {
       )
       setEditingProposal(null)
       message.success("待确认内容已更新")
+    },
+    onError: (error: Error) => message.error(error.message),
+  })
+  const removeProposal = useMutation({
+    mutationFn: (row: { proposalIndex: number; recordIndex?: number }) =>
+      api<{ proposals: Proposal[] }>(
+        `/api/ai/conversations/${id}/proposals/remove`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            proposalIndex: row.proposalIndex,
+            recordIndex: row.recordIndex,
+          }),
+        },
+      ),
+    onSuccess: (result) => {
+      queryClient.setQueryData<ChatDetail>(
+        ["ai-conversation", id],
+        (current) =>
+          current ? { ...current, proposals: result.proposals } : current,
+      )
+      message.success("已移除该待确认操作")
     },
     onError: (error: Error) => message.error(error.message),
   })
@@ -396,18 +474,69 @@ export function AiPage() {
     })
     saveProposal.mutate(next)
   }
-  const bubbleItems: any[] = messages.map((item) => ({
-    key: item.id,
-    role: item.role === "assistant" ? "ai" : "user",
-    content: item.content,
-  }))
-  if (isCurrentConversationAnswering)
+  const bubbleItems: any[] = messages.map((item) =>
+    item.role === "assistant" && thinkingEnabled && item.thinking
+      ? {
+          key: item.id,
+          role: "ai-persisted",
+          content: (
+            <div className="markdown-body">
+              <details className="ai-thinking">
+                <summary>思考过程</summary>
+                <div className="ai-thinking-text">{item.thinking}</div>
+              </details>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {item.content}
+              </ReactMarkdown>
+            </div>
+          ),
+        }
+      : {
+          key: item.id,
+          role: item.role === "assistant" ? "ai" : "user",
+          content: item.content,
+        },
+  )
+  if (isCurrentConversationAnswering && stream) {
     bubbleItems.push({
-      key: "loading",
-      role: "ai",
-      content: "正在查询账本并思考…",
-      loading: true,
+      key: "streaming",
+      role: "ai-streaming",
+      content: (
+        <div className="markdown-body">
+          {thinkingEnabled && stream.thinking ? (
+            <details open={!stream.text} className="ai-thinking">
+              <summary>思考过程</summary>
+              {stream.tool ? (
+                <div className="ai-thinking-tool">
+                  正在调用工具：{stream.tool.label} …
+                </div>
+              ) : null}
+              <div className="ai-thinking-text">{stream.thinking}</div>
+            </details>
+          ) : stream.tool ? (
+            <div className="ai-thinking-tool">
+              正在调用工具：{stream.tool.label} …
+            </div>
+          ) : null}
+          {stream.text ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {stream.text}
+            </ReactMarkdown>
+          ) : (
+            <Typography.Text type="secondary">
+              {stream.tool || stream.thinking
+                ? thinkingEnabled
+                  ? "正在思考…"
+                  : "正在处理…"
+                : thinkingEnabled
+                  ? "正在查询账本并思考…"
+                  : "正在查询账本…"}
+            </Typography.Text>
+          )}
+        </div>
+      ),
     })
+  }
   const roles: any = {
     ai: {
       placement: "start",
@@ -422,6 +551,20 @@ export function AiPage() {
           </ReactMarkdown>
         </div>
       ),
+    },
+    "ai-streaming": {
+      placement: "start",
+      avatar: (
+        <Avatar icon={<RobotOutlined />} style={{ background: "#176b62" }} />
+      ),
+      shape: "corner",
+    },
+    "ai-persisted": {
+      placement: "start",
+      avatar: (
+        <Avatar icon={<RobotOutlined />} style={{ background: "#176b62" }} />
+      ),
+      shape: "corner",
     },
     user: {
       placement: "end",
@@ -578,6 +721,14 @@ export function AiPage() {
                             onClick={() => openProposalEditor(row)}
                           />
                         )}
+                        <Button
+                          type="text"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          aria-label={`移除${row.item || "待确认账目"}`}
+                          onClick={() => removeProposal.mutate(row)}
+                        />
                       </Flex>
                     </Flex>
                     <Typography.Text strong>

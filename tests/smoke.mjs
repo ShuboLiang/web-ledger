@@ -123,6 +123,33 @@ try {
   assert.equal(publicSettings.hasApiKey, true)
   assert.equal("apiKey" in publicSettings, false)
   assert.ok(publicSettings.profiles.length >= 1)
+  const defaultThinkingSettings = await request(
+    `/api/ai/settings/profiles/${publicSettings.id}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        ...publicSettings,
+        apiKey: "",
+        thinkingEnabled: true,
+        thinkingLevel: "default",
+      }),
+    },
+  )
+  assert.equal(defaultThinkingSettings.thinkingEnabled, true)
+  assert.equal(defaultThinkingSettings.thinkingLevel, "default")
+  const disabledThinkingSettings = await request(
+    `/api/ai/settings/profiles/${publicSettings.id}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        ...publicSettings,
+        apiKey: "",
+        thinkingEnabled: false,
+        thinkingLevel: "default",
+      }),
+    },
+  )
+  assert.equal(disabledThinkingSettings.thinkingEnabled, false)
   const created = await request("/api/transactions", {
     method: "POST",
     body: JSON.stringify({
@@ -160,6 +187,21 @@ try {
     body: JSON.stringify({ id: editConversationId }),
   })
   const testDatabase = new PrismaClient()
+  await testDatabase.aiMessage.create({
+    data: {
+      conversationId: editConversationId,
+      role: "assistant",
+      content: "思考持久化测试",
+      thinking: "这段思考应在对话完成后继续存在",
+    },
+  })
+  const conversationWithThinking = await request(
+    `/api/ai/conversations/${editConversationId}`,
+  )
+  assert.equal(
+    conversationWithThinking.messages.at(-1).thinking,
+    "这段思考应在对话完成后继续存在",
+  )
   const currentRecord = (
     await request(`/api/transactions?query=测试午饭&page=1&pageSize=20`)
   ).records[0]

@@ -93,7 +93,14 @@ export function BudgetsPage() {
     ],
     [management?.categories],
   )
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["budgets"] })
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+      // 分析页（预算曲线）与首页（预算卡片）都读取预算数据，
+      // 设置/删除预算后同步失效，避免需要刷新浏览器才能看到新曲线。
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ])
   const save = useMutation({
     mutationFn: (values: any) =>
       editing

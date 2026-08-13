@@ -4,7 +4,7 @@ import {
   RobotOutlined,
 } from "@ant-design/icons"
 import { Line } from "@ant-design/plots"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   App,
   Avatar,
@@ -15,6 +15,7 @@ import {
   Flex,
   Input,
   List,
+  Modal,
   Progress,
   Row,
   Skeleton,
@@ -22,14 +23,17 @@ import {
   Tag,
   Typography,
 } from "antd"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import {
   api,
   type Dashboard,
   type DashboardBudget,
   type Transaction,
 } from "@/lib/api"
+import { useQuickStore, type QuickResult } from "@/lib/quick-store"
 import { money } from "@/lib/utils"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 
@@ -38,6 +42,13 @@ export function DashboardPage() {
   const queryClient = useQueryClient()
   const { message } = App.useApp()
   const [quickText, setQuickText] = useState("")
+  const [quickModalOpen, setQuickModalOpen] = useState(false)
+  const [quickModalData, setQuickModalData] = useState<QuickResult | null>(null)
+  const quickPending = useQuickStore((state) => state.pending)
+  const quickResult = useQuickStore((state) => state.result)
+  const quickError = useQuickStore((state) => state.error)
+  const runQuick = useQuickStore((state) => state.run)
+  const consumeQuick = useQuickStore((state) => state.consume)
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => api<Dashboard>("/api/dashboard"),
@@ -46,25 +57,30 @@ export function DashboardPage() {
     queryKey: ["transactions", "recent"],
     queryFn: () => api<{ records: Transaction[] }>("/api/transactions?limit=6"),
   })
-  const quick = useMutation({
-    mutationFn: (text: string) =>
-      api<{ message: string; executed: number; warning?: string }>(
-        "/api/ai/quick",
-        { method: "POST", body: JSON.stringify({ text }) },
-      ),
-    onSuccess: async (result) => {
-      setQuickText("")
-      await queryClient.invalidateQueries()
-      message.success(
-        result.warning ||
-          `AI 已记账${result.executed ? `（${result.executed} 笔）` : ""}`,
-      )
-    },
-    onError: (error: Error) => message.error(error.message),
-  })
+  // 快捷记账完成（含切到其他页面期间完成）后弹出模型总结
+  useEffect(() => {
+    if (quickResult) {
+      setQuickModalData(quickResult)
+      setQuickModalOpen(true)
+      consumeQuick()
+      queryClient.invalidateQueries()
+    }
+  }, [quickResult, consumeQuick, queryClient])
+  useEffect(() => {
+    if (quickError) {
+      message.error(quickError)
+      consumeQuick()
+    }
+  }, [quickError, consumeQuick, message])
+  const closeQuickModal = () => {
+    setQuickModalOpen(false)
+    queryClient.invalidateQueries()
+  }
   const submitQuick = (value: string) => {
     const text = value.trim()
-    if (text && !quick.isPending) quick.mutate(text)
+    if (!text || quickPending) return
+    setQuickText("")
+    runQuick(text)
   }
   if (isLoading || !data) return <Skeleton active paragraph={{ rows: 12 }} />
 
@@ -202,7 +218,7 @@ export function DashboardPage() {
           <Input.Search
             className="dashboard-ai-quick-input"
             enterButton="记账"
-            loading={quick.isPending}
+            loading={quickPending}
             allowClear
             value={quickText}
             onChange={(event) => setQuickText(event.target.value)}
@@ -449,6 +465,35 @@ export function DashboardPage() {
           </Card>
         </Col>
       </Row>
+      <Modal
+        className="quick-result-modal"
+        open={quickModalOpen}
+        onCancel={closeQuickModal}
+        centered
+        title={
+          <Flex align="center" gap={8}>
+            <RobotOutlined style={{ color: "#176b62" }} />
+            AI 快捷记账已完成
+          </Flex>
+        }
+        width="min(640px, calc(100vw - 24px))"
+        footer={
+          <Button type="primary" onClick={closeQuickModal}>
+            知道了
+          </Button>
+        }
+      >
+        <div className="markdown-body quick-result-content">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {quickModalData?.message || ""}
+          </ReactMarkdown>
+        </div>
+        {quickModalData?.warning && (
+          <Typography.Text type="warning">
+            ⚠️ {quickModalData.warning}
+          </Typography.Text>
+        )}
+      </Modal>
     </div>
   )
 }

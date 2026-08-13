@@ -248,6 +248,7 @@ export class AiService implements OnModuleDestroy {
         id: item.id,
         role: item.role,
         content: item.content,
+        thinking: item.thinking,
         createdAt: item.createdAt,
       })),
       proposals: Array.isArray(row.pendingProposals)
@@ -257,6 +258,24 @@ export class AiService implements OnModuleDestroy {
   }
 
   async run(conversationId: string | undefined, text: string) {
+    return this.processTurn(conversationId, text)
+  }
+
+  async runStreaming(
+    conversationId: string | undefined,
+    text: string,
+    onEvent?: (event: { type: string; data?: unknown }) => void,
+  ) {
+    const result = await this.processTurn(conversationId, text, onEvent)
+    onEvent?.({ type: "done", data: { ok: true } })
+    return result
+  }
+
+  private async processTurn(
+    conversationId: string | undefined,
+    text: string,
+    onEvent?: (event: { type: string; data?: unknown }) => void,
+  ) {
     const id = this.conversationId(conversationId)
     const input = String(text || "").trim()
     let conversation = await this.prisma.aiConversation.findFirst({
@@ -278,9 +297,19 @@ export class AiService implements OnModuleDestroy {
       ? conversation!.pendingProposals
       : []
     const pendingEdits = this.editSummary(pending as any[])
-    const pendingNotice = pendingEdits.length
-      ? `用户已在界面中手动微调待确认操作，请以调整后的内容为准。相对你最初提案的变化：\n${pendingEdits.map((item) => `- ${item}`).join("\n")}`
-      : ""
+    const removedNotices = Array.isArray(conversation!.removedNotices)
+      ? (conversation!.removedNotices as string[])
+      : []
+    const pendingNotice = [
+      pendingEdits.length
+        ? `用户已在界面中手动微调待确认操作，请以调整后的内容为准。相对你最初提案的变化：\n${pendingEdits.map((item) => `- ${item}`).join("\n")}`
+        : "",
+      removedNotices.length
+        ? `用户已在界面中移除了以下待确认操作（它们不会被执行，请勿再提及或重新生成）：\n${removedNotices.map((item) => `- ${item}`).join("\n")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
     await this.prisma.aiMessage.create({
       data: { conversationId: id, role: "user", content: input },
     })
@@ -290,6 +319,7 @@ export class AiService implements OnModuleDestroy {
       history,
       pending,
       pendingNotice,
+      onEvent,
     })
     const title =
       conversation!.title === "新对话"
@@ -301,11 +331,16 @@ export class AiService implements OnModuleDestroy {
           conversationId: id,
           role: "assistant",
           content: result.message,
+          thinking: result.thinking || null,
         },
       }),
       this.prisma.aiConversation.update({
         where: { id },
-        data: { title, pendingProposals: result.proposals || [] },
+        data: {
+          title,
+          pendingProposals: result.proposals || [],
+          removedNotices: [],
+        },
       }),
     ])
     return result
@@ -327,6 +362,80 @@ export class AiService implements OnModuleDestroy {
       data: { pendingProposals: edited as any },
     })
     return { proposals: edited }
+  }
+
+  async removePendingProposal(
+    value: string,
+    input: { proposalIndex?: number; recordIndex?: number },
+  ) {
+    const id = this.conversationId(value)
+    const conversation = await this.prisma.aiConversation.findFirst({
+      where: { id, userId: this.currentUser.userId },
+    })
+    if (!conversation) throw new NotFoundException("对话不存在")
+    const pending = Array.isArray(conversation.pendingProposals)
+      ? (conversation.pendingProposals as any[])
+      : []
+    if (!pending.length) throw new BadRequestException("没有待移除的操作")
+    const proposalIndex = Number(input?.proposalIndex)
+    if (
+      !Number.isInteger(proposalIndex) ||
+      proposalIndex < 0 ||
+      proposalIndex >= pending.length
+    )
+      throw new BadRequestException("待移除的操作不存在")
+    const next = [...pending]
+    const target = next[proposalIndex]
+    const recordIndex = Number(input?.recordIndex)
+    let removedLabel: string
+    if (
+      target?.type === "create" &&
+      Array.isArray(target.records) &&
+      target.records.length > 1 &&
+      Number.isInteger(recordIndex) &&
+      recordIndex >= 0 &&
+      recordIndex < target.records.length
+    ) {
+      // 一条“新增”提案含多笔记录时只移除其中一笔
+      const removed = target.records[recordIndex]
+      next[proposalIndex] = {
+        ...target,
+        records: target.records.filter(
+          (_record: unknown, index: number) => index !== recordIndex,
+        ),
+      }
+      removedLabel = this.removedRecordLabel(removed)
+    } else {
+      next.splice(proposalIndex, 1)
+      removedLabel = this.removedProposalLabel(target)
+    }
+    const removedNotices = Array.isArray(conversation.removedNotices)
+      ? (conversation.removedNotices as string[])
+      : []
+    await this.prisma.aiConversation.update({
+      where: { id },
+      data: {
+        pendingProposals: next as any,
+        removedNotices: [...removedNotices, removedLabel],
+      },
+    })
+    return { proposals: next }
+  }
+
+  private removedRecordLabel(record: any) {
+    return `新增“${record?.item || "未命名"}” ¥${Math.abs(Number(record?.amount) || 0).toFixed(2)}（${record?.date || ""}）`
+  }
+
+  private removedProposalLabel(proposal: any) {
+    if (proposal?.type === "create")
+      return (proposal.records || [])
+        .map((record: any) => this.removedRecordLabel(record))
+        .join("；")
+    const item = proposal?.current?.item || ""
+    const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
+    return proposal?.type === "update"
+      ? `修改${label}`
+      : `删除${label}（账目 #${proposal?.id}）`
   }
 
   async quick(text: string | undefined) {
@@ -393,7 +502,9 @@ export class AiService implements OnModuleDestroy {
       }),
       this.prisma.aiConversation.update({
         where: { id },
-        data: { pendingProposals: [] },
+        // 已确认执行：待确认区清空后，此前记录的“已移除”通知一并作废，
+        // 避免下一轮对话把旧的移除通知再告诉 agent，让它误以为还有未确认操作。
+        data: { pendingProposals: [], removedNotices: [] },
       }),
     ])
     return { results }
@@ -423,7 +534,8 @@ export class AiService implements OnModuleDestroy {
         }),
         this.prisma.aiConversation.update({
           where: { id },
-          data: { pendingProposals: [] },
+          // 全部取消：待确认区清空后，移除通知一并作废
+          data: { pendingProposals: [], removedNotices: [] },
         }),
       ])
     return notified
