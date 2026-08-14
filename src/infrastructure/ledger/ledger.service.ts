@@ -331,7 +331,10 @@ export class LedgerService {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       }),
       this.prisma.account.findMany({
-        where: { ledgerId, enabled: true },
+        // Dictionaries are consumed by ordinary bookkeeping forms. Loan
+        // accounts are managed through the repayment flow and cannot be used
+        // as a transaction account.
+        where: { ledgerId, enabled: true, type: { not: "loan" } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       }),
       this.prisma.tag.findMany({
@@ -1891,7 +1894,9 @@ export class LedgerService {
     const tagIds = hasTagChanges
       ? await this.resolveTransactionTagIds(database, ledgerId, changes)
       : []
-    const account = changes.accountId
+    const accountChanged =
+      Boolean(changes.accountId) && changes.accountId !== existingRow!.accountId
+    const account = accountChanged
       ? await this.usableTransactionAccount(
           database,
           ledgerId,

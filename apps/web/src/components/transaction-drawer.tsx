@@ -54,6 +54,7 @@ export function TransactionDrawer({
     [categories],
   )
   const selectedPrimary = Form.useWatch("category1", form)
+  const selectedDirection = Form.useWatch("direction", form)
   const secondaryOptions = useMemo(
     () => [
       ...new Set(
@@ -64,6 +65,22 @@ export function TransactionDrawer({
     ],
     [categories, selectedPrimary],
   )
+  const accountOptions = useMemo(() => {
+    const options = (data?.accounts || []).map((account) => ({
+      value: account.id,
+      label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+    }))
+    if (
+      record?.accountId &&
+      !options.some((option) => option.value === record.accountId)
+    ) {
+      options.push({
+        value: record.accountId,
+        label: `${record.accountName || "原账户"}（已停用）`,
+      })
+    }
+    return options
+  }, [data?.accounts, record?.accountId, record?.accountName])
   useEffect(() => {
     if (!open) return
     const category1 =
@@ -275,20 +292,23 @@ export function TransactionDrawer({
             />
           </Form.Item>
         </div>
-        {(data?.accounts?.length || 0) > 1 && (
-          <Form.Item
-            label="付款账户"
-            name="accountId"
-            extra="已自动选择默认账户，普通记账无需修改。"
-          >
-            <Select
-              options={(data?.accounts || []).map((account) => ({
-                value: account.id,
-                label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
-              }))}
-            />
-          </Form.Item>
-        )}
+        <Form.Item
+          label={selectedDirection === "income" ? "收款账户" : "付款账户"}
+          name="accountId"
+          rules={[{ required: true, message: "请选择账户" }]}
+          extra={
+            accountOptions.length > 1
+              ? "默认账户已预选，也可以改为本次实际使用的账户。"
+              : "当前只有一个可记账账户，可到账户管理中新增。"
+          }
+        >
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder="请选择账户"
+            options={accountOptions}
+          />
+        </Form.Item>
         <Form.Item
           label="标签"
           name="tagIds"

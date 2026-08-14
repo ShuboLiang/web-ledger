@@ -650,6 +650,7 @@ export function AiPage() {
   )
   const selectedProposalCategory = Form.useWatch("category1", proposalForm)
   const selectedProposalSubcategory = Form.useWatch("category2", proposalForm)
+  const selectedProposalDirection = Form.useWatch("direction", proposalForm)
   const secondaryCategories = useMemo(
     () => [
       ...new Set(
@@ -688,7 +689,11 @@ export function AiPage() {
       item: row.item || "",
       category1: row.category1 || "",
       category2: row.category2 || "",
-      accountId: row.accountId || "",
+      accountId:
+        row.accountId ||
+        dictionaries?.accounts?.find((account) => account.isDefault)?.id ||
+        dictionaries?.accounts?.[0]?.id ||
+        "",
       tagNames: row.tagNames || row.tags?.map((tag: any) => tag.name) || [],
       note: row.note || "",
     })
@@ -1169,18 +1174,30 @@ export function AiPage() {
               />
             </Form.Item>
           </div>
-          {(dictionaries?.accounts?.length || 0) > 1 && (
-            <Form.Item label="付款账户" name="accountId">
-              <Select
-                allowClear
-                placeholder="不选则使用默认账户"
-                options={(dictionaries?.accounts || []).map((account) => ({
-                  value: account.id,
-                  label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
-                }))}
-              />
-            </Form.Item>
-          )}
+          <Form.Item
+            label={
+              selectedProposalDirection === "income"
+                ? "收款账户"
+                : "付款账户"
+            }
+            name="accountId"
+            rules={[{ required: true, message: "请选择账户" }]}
+            extra={
+              (dictionaries?.accounts?.length || 0) > 1
+                ? "默认账户已预选，可以按实际情况调整。"
+                : "当前只有一个可记账账户。"
+            }
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择账户"
+              options={(dictionaries?.accounts || []).map((account) => ({
+                value: account.id,
+                label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+              }))}
+            />
+          </Form.Item>
           <Form.Item label="标签" name="tagNames">
             <Select
               mode="tags"
