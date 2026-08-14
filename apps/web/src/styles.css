@@ -443,6 +443,12 @@ select {
 .category-breakdown-label {
   min-width: 0;
 }
+.category-breakdown-label-wrap {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
 .category-breakdown-values {
   display: grid;
   grid-template-columns: minmax(76px, auto) 50px;
@@ -1141,6 +1147,155 @@ select {
   color: #176b62;
   font-size: 20px;
 }
+.category-icon-stamp {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5e4de;
+  border-radius: 9px;
+  background: #edf5f1;
+  color: #176b62;
+  line-height: 1;
+}
+.category-icon-stamp-small {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+.category-icon-stamp-medium {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+}
+.category-icon-stamp-large {
+  width: 42px;
+  height: 42px;
+  font-size: 21px;
+}
+.category-icon-library-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+.category-icon-library-title .ant-typography {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.category-icon-library-shell {
+  width: min(540px, calc(100vw - 48px));
+}
+.category-icon-library-shell > .ant-input-affix-wrapper {
+  margin-bottom: 10px;
+  border-radius: 9px;
+}
+.category-icon-library {
+  max-height: 430px;
+  padding: 2px 4px 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.category-icon-group + .category-icon-group {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid #e7ede9;
+}
+.category-icon-group-title {
+  display: block;
+  margin: 0 4px 7px;
+  color: #69766f;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.category-icon-group-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(68px, 1fr));
+  gap: 5px;
+}
+.category-icon-choice {
+  display: flex;
+  min-width: 0;
+  padding: 8px 4px 7px;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #40504a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.category-icon-choice:hover {
+  background: #f1f6f3;
+}
+.category-icon-choice.selected {
+  border-color: #83b7a9;
+  background: #e3f1ec;
+  color: #145f57;
+}
+.category-icon-choice:focus-visible,
+.category-icon-picker-trigger:focus-visible {
+  outline: 3px solid rgba(23, 107, 98, 0.2);
+  outline-offset: 2px;
+}
+.category-icon-picker-trigger {
+  display: flex;
+  width: 100%;
+  padding: 10px 12px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #d9dedb;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.category-icon-picker-trigger:hover {
+  border-color: #4d9589;
+}
+.category-icon-picker-trigger > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.category-icon-picker-trigger .ant-typography:last-child {
+  font-size: 12px;
+}
+.category-icon-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.category-select-label,
+.transaction-mobile-description {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.category-select-label .category-icon-stamp-small,
+.transaction-category-tag .category-icon-stamp-small,
+.transaction-mobile-description .category-icon-stamp-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.transaction-category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-block: 2px;
+}
+.category-card .ant-list-item-meta-avatar {
+  margin-inline-end: 10px;
+}
 .block-text {
   display: block;
   margin-top: 2px;
@@ -1579,6 +1734,16 @@ select {
 }
 
 @media (max-width: 767px) {
+  .category-icon-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .category-icon-library {
+    max-height: min(430px, 58vh);
+  }
+  .category-icon-group-grid {
+    grid-template-columns: repeat(4, minmax(58px, 1fr));
+  }
   .auth-page {
     display: block;
     background: #0b292b;

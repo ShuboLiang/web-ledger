@@ -5,6 +5,8 @@ export type Transaction = {
   item: string
   category1: string
   category2: string
+  primaryIcon?: string
+  secondaryIcon?: string
   accountId?: string
   accountName?: string
   note: string
@@ -12,6 +14,7 @@ export type Transaction = {
 export type Breakdown = {
   category: string
   parent?: string
+  icon?: string
   amount: number
   share: number
 }
@@ -25,6 +28,7 @@ export type DashboardBudget = {
   id: string
   month: string
   category1?: string
+  primaryIcon?: string
   amount: number
   used: number
   remaining: number
@@ -61,7 +65,12 @@ export type Dashboard = {
 }
 export type Dictionaries = {
   projects: string[]
-  categories: { category1: string; category2: string }[]
+  categories: {
+    category1: string
+    category2: string
+    primaryIcon: string
+    secondaryIcon: string
+  }[]
   accounts?: { id: string; name: string; type: string }[]
 }
 export type AuthUser = { id: string; username: string; displayName: string }

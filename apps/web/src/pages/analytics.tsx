@@ -39,6 +39,7 @@ import {
 } from "@/lib/api"
 import { compactMoney, money } from "@/lib/utils"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
+import { CategoryIcon } from "@/components/category-icon"
 
 type Scope = "day" | "week" | "month" | "year"
 type TransactionPage = { records: Transaction[]; total: number }
@@ -895,7 +896,15 @@ export function AnalyticsPage() {
             >
               <List.Item.Meta
                 title={row.item}
-                description={`${row.category1} / ${row.category2}${row.note ? ` · ${row.note}` : ""}`}
+                description={
+                  <span className="transaction-mobile-description">
+                    <CategoryIcon name={row.secondaryIcon} size="small" />
+                    <span>
+                      {row.category1} / {row.category2}
+                      {row.note ? ` · ${row.note}` : ""}
+                    </span>
+                  </span>
+                }
               />
             </List.Item>
           )}

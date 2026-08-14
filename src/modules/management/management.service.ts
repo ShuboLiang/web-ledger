@@ -21,6 +21,10 @@ export class ManagementService {
       .trim()
       .slice(0, 40)
   }
+  private icon(value: unknown, fallback: string) {
+    const icon = String(value || "").trim()
+    return /^[a-z0-9-]{1,40}$/.test(icon) ? icon : fallback
+  }
   private monthText(value: unknown) {
     const month = String(value || "")
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
@@ -335,8 +339,30 @@ export class ManagementService {
         category2 = String(input.category2 || "").trim()
       if (!category1 || !category2)
         throw new BadRequestException("请填写一级分类和二级分类")
-      return this.prisma.category.create({
-        data: { ledgerId, category1, category2 },
+      const sibling = await this.prisma.category.findFirst({
+        where: { ledgerId, category1 },
+        orderBy: { createdAt: "asc" },
+      })
+      const requestedPrimaryIcon = input.primaryIcon
+        ? this.icon(input.primaryIcon, "folder")
+        : null
+      return this.prisma.$transaction(async (database) => {
+        const category = await database.category.create({
+          data: {
+            ledgerId,
+            category1,
+            category2,
+            primaryIcon:
+              requestedPrimaryIcon || sibling?.primaryIcon || "folder",
+            secondaryIcon: this.icon(input.secondaryIcon, "tag"),
+          },
+        })
+        if (requestedPrimaryIcon)
+          await database.category.updateMany({
+            where: { ledgerId, category1 },
+            data: { primaryIcon: requestedPrimaryIcon },
+          })
+        return category
       })
     }
     if (type === "budgets") return this.createBudget(input)
@@ -370,8 +396,15 @@ export class ManagementService {
     const category2 = this.label(input.category2)
     if (!category1 || !category2)
       throw new BadRequestException("请填写一级分类和二级分类")
+    const primaryIcon = this.icon(input.primaryIcon, source.primaryIcon)
+    const secondaryIcon = this.icon(input.secondaryIcon, source.secondaryIcon)
     if (source.mergedIntoId) throw new BadRequestException("已合并分类不能修改")
-    if (source.category1 === category1 && source.category2 === category2)
+    if (
+      source.category1 === category1 &&
+      source.category2 === category2 &&
+      source.primaryIcon === primaryIcon &&
+      source.secondaryIcon === secondaryIcon
+    )
       return { category: source, updatedTransactions: 0 }
     const duplicate = await this.prisma.category.findFirst({
       where: {
@@ -386,7 +419,11 @@ export class ManagementService {
     return this.prisma.$transaction(async (database) => {
       const category = await database.category.update({
         where: { id },
-        data: { category1, category2 },
+        data: { category1, category2, primaryIcon, secondaryIcon },
+      })
+      await database.category.updateMany({
+        where: { ledgerId: source.ledgerId, category1 },
+        data: { primaryIcon },
       })
       const updated = await database.transaction.updateMany({
         where: { ledgerId: source.ledgerId, categoryId: id },
@@ -406,6 +443,25 @@ export class ManagementService {
       })
       return { category, updatedTransactions: updated.count }
     })
+  }
+
+  async updatePrimaryIcon(name: string, input: Record<string, unknown>) {
+    const ledgerId = await this.ledgerId()
+    const category1 = this.label(name)
+    const primaryIcon = this.icon(input.primaryIcon, "folder")
+    const result = await this.prisma.category.updateMany({
+      where: { ledgerId, category1 },
+      data: { primaryIcon },
+    })
+    if (!result.count) throw new NotFoundException("一级分类不存在")
+    await this.prisma.auditLog.create({
+      data: {
+        action: "category-primary-icon-update",
+        entityType: "category",
+        payload: { category1, primaryIcon, categories: result.count },
+      },
+    })
+    return { categories: result.count, primaryIcon }
   }
 
   async renamePrimary(input: Record<string, unknown>) {

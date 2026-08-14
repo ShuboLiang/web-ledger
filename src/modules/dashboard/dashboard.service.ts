@@ -79,11 +79,27 @@ function breakdown(
       return {
         category: child,
         ...(parent ? { parent } : {}),
+        icon:
+          level === "secondary" ? rowIcon(records, parent, child, false) : rowIcon(records, child, "", true),
         amount: Number(amount.toFixed(2)),
         share: total ? amount / total : 0,
       }
     })
     .sort((a, b) => b.amount - a.amount)
+}
+
+function rowIcon(
+  records: any[],
+  category1: string,
+  category2: string,
+  primary: boolean,
+) {
+  const row = records.find(
+    (item) =>
+      item.category1 === category1 &&
+      (primary || item.category2 === category2),
+  )
+  return primary ? row?.primaryIcon || "folder" : row?.secondaryIcon || "tag"
 }
 
 function dailySeries(records: any[], anchor: string) {
@@ -258,6 +274,9 @@ export class DashboardService {
           id: row.id,
           month: anchor.slice(0, 7),
           category1: row.category1!,
+          primaryIcon:
+            records.find((record) => record.category1 === row.category1)
+              ?.primaryIcon || "folder",
           amount,
           used,
           remaining: Number((amount - used).toFixed(2)),

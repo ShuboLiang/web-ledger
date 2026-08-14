@@ -502,12 +502,41 @@ try {
 
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
-    body: JSON.stringify({ category1: "测试管理", category2: "来源" }),
+    body: JSON.stringify({
+      category1: "测试管理",
+      category2: "来源",
+      primaryIcon: "food",
+      secondaryIcon: "shopping",
+    }),
   })
   const targetCategory = await request("/api/management/categories", {
     method: "POST",
-    body: JSON.stringify({ category1: "测试管理", category2: "目标" }),
+    body: JSON.stringify({
+      category1: "测试管理",
+      category2: "目标",
+      secondaryIcon: "gift",
+    }),
   })
+  await request(
+    `/api/management/categories/primary/${encodeURIComponent("测试管理")}/icon`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ primaryIcon: "transport" }),
+    },
+  )
+  const iconOverview = await request("/api/management")
+  assert.deepEqual(
+    iconOverview.categories
+      .filter((row) => row.category1 === "测试管理")
+      .map((row) => row.primaryIcon),
+    ["transport", "transport"],
+  )
+  assert.equal(
+    (await request("/api/dictionaries")).categories.find(
+      (row) => row.category1 === "测试管理" && row.category2 === "目标",
+    ).secondaryIcon,
+    "gift",
+  )
   const managedRecord = await request("/api/transactions", {
     method: "POST",
     body: JSON.stringify({
@@ -523,7 +552,11 @@ try {
     `/api/management/categories/${sourceCategory.id}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ category1: "测试管理", category2: "已改名" }),
+      body: JSON.stringify({
+        category1: "测试管理",
+        category2: "已改名",
+        secondaryIcon: "care",
+      }),
     },
   )
   assert.equal(renamed.updatedTransactions, 1)
@@ -534,6 +567,25 @@ try {
       )
     ).records[0].category2,
     "已改名",
+  )
+  const iconRecord = (
+    await request(
+      "/api/transactions?query=分类生命周期测试&page=1&pageSize=20",
+    )
+  ).records[0]
+  assert.equal(iconRecord.primaryIcon, "transport")
+  assert.equal(iconRecord.secondaryIcon, "care")
+  const iconDashboard = await request("/api/dashboard?anchor=2026-08-11")
+  assert.equal(
+    iconDashboard.breakdowns.day.find((row) => row.category === "测试管理")
+      .icon,
+    "transport",
+  )
+  assert.equal(
+    iconDashboard.secondaryBreakdowns.day.find(
+      (row) => row.parent === "测试管理" && row.category === "已改名",
+    ).icon,
+    "care",
   )
   const blockedDelete = await requestError(
     `/api/management/categories/${sourceCategory.id}`,
@@ -597,6 +649,62 @@ try {
     { method: "DELETE" },
   )
   assert.equal(primaryDelete.deleted, 1)
+
+  const iconAgentConversationId = "smoke-agent-category-icons"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: iconAgentConversationId }),
+  })
+  const iconAgentProposals = [
+    {
+      type: "create",
+      records: [
+        {
+          date: "2026-08-11",
+          amount: 28,
+          direction: "expense",
+          item: "AI 图标自动记账",
+          category1: "户外活动",
+          category2: "露营用品",
+          primaryIcon: "travel",
+          secondaryIcon: "shopping",
+          note: "",
+        },
+      ],
+    },
+    {
+      type: "category-icon",
+      category1: "户外活动",
+      icon: "care",
+    },
+    {
+      type: "category-icon",
+      category1: "户外活动",
+      category2: "露营用品",
+      icon: "gift",
+    },
+  ]
+  await testDatabase.aiConversation.update({
+    where: { id: iconAgentConversationId },
+    data: { pendingProposals: iconAgentProposals },
+  })
+  const preservedIconProposals = await request(
+    `/api/ai/conversations/${iconAgentConversationId}/proposals`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ proposals: iconAgentProposals }),
+    },
+  )
+  assert.equal(preservedIconProposals.proposals[1].type, "category-icon")
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: iconAgentConversationId }),
+  })
+  const iconAgentRecord = (
+    await request("/api/transactions?query=AI 图标自动记账&page=1&pageSize=20")
+  ).records[0]
+  assert.equal(iconAgentRecord.primaryIcon, "care")
+  assert.equal(iconAgentRecord.secondaryIcon, "gift")
 
   const firstUserCookie = sessionCookie
   const firstUserTotal = (await request("/api/transactions?page=1&pageSize=1"))

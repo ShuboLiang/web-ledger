@@ -10,6 +10,10 @@ const clean = (value: unknown, max = 80) =>
   String(value ?? "")
     .trim()
     .slice(0, max)
+const cleanIcon = (value: unknown, fallback: string) => {
+  const icon = clean(value, 40)
+  return /^[a-z0-9-]{1,40}$/.test(icon) ? icon : fallback
+}
 type LedgerDatabase = Prisma.TransactionClient
 
 @Injectable({ scope: Scope.REQUEST })
@@ -50,7 +54,10 @@ export class LedgerService {
       date: dateText(row.date),
       amount: Number(row.amount),
       accountName: row.account?.name || "未指定",
+      primaryIcon: row.category?.primaryIcon,
+      secondaryIcon: row.category?.secondaryIcon,
       account: undefined,
+      category: undefined,
       created_at: row.createdAt?.toISOString?.() || row.createdAt,
       createdAt: undefined,
       updatedAt: undefined,
@@ -58,11 +65,28 @@ export class LedgerService {
     }
   }
 
+  private async inheritedPrimaryIcon(
+    database: LedgerDatabase,
+    ledgerId: string,
+    category1: string,
+    fallback = "folder",
+  ) {
+    const sibling = await database.category.findFirst({
+      where: { ledgerId, category1 },
+      select: { primaryIcon: true },
+      orderBy: { createdAt: "asc" },
+    })
+    return sibling?.primaryIcon || fallback
+  }
+
   async allTransactions() {
     const { ledgerId } = await this.context()
     const rows = await this.prisma.transaction.findMany({
       where: { ledgerId },
-      include: { account: { select: { name: true } } },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
+      },
       orderBy: [{ date: "desc" }, { id: "desc" }],
     })
     return rows.map((row) => this.serialize(row))
@@ -73,7 +97,10 @@ export class LedgerService {
     const take = Math.min(Math.max(Number(limit) || 100, 1), 500)
     const rows = await this.prisma.transaction.findMany({
       where: { ledgerId },
-      include: { account: { select: { name: true } } },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
+      },
       take,
       orderBy: [{ date: "desc" }, { id: "desc" }],
     })
@@ -162,7 +189,10 @@ export class LedgerService {
     const current = Math.min(Math.max(Number(page) || 1, 1), totalPages)
     const rows = await this.prisma.transaction.findMany({
       where,
-      include: { account: { select: { name: true } } },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
+      },
       take,
       skip: (current - 1) * take,
       orderBy: [{ [orderField]: order }, { id: order }],
@@ -190,7 +220,10 @@ export class LedgerService {
     const { ledgerId } = await this.context()
     const row = await this.prisma.transaction.findFirst({
       where: { id: Number(id), ledgerId },
-      include: { account: { select: { name: true } } },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
+      },
     })
     return row ? this.serialize(row) : null
   }
@@ -213,9 +246,11 @@ export class LedgerService {
     ])
     return {
       projects: projects.map((row) => row.name),
-      categories: categories.map(({ category1, category2 }) => ({
+      categories: categories.map(({ category1, category2, primaryIcon, secondaryIcon }) => ({
         category1,
         category2,
+        primaryIcon,
+        secondaryIcon,
       })),
       accounts: accounts.map((row) => ({
         id: row.id,
@@ -234,6 +269,8 @@ export class LedgerService {
     const normalized = records.map((record) => ({
       ...normalizeRecord(record),
       accountId: clean(record?.accountId, 100),
+      primaryIcon: cleanIcon(record?.primaryIcon, "folder"),
+      secondaryIcon: cleanIcon(record?.secondaryIcon, "tag"),
     }))
     const created: any[] = []
     for (const record of normalized) {
@@ -242,6 +279,12 @@ export class LedgerService {
         update: { enabled: true },
         create: { ledgerId, name: record.item },
       })
+      const primaryIcon = await this.inheritedPrimaryIcon(
+        database,
+        ledgerId,
+        record.category1,
+        record.primaryIcon,
+      )
       const category = await database.category.upsert({
         where: {
           ledgerId_category1_category2: {
@@ -255,6 +298,8 @@ export class LedgerService {
           ledgerId,
           category1: record.category1,
           category2: record.category2,
+          primaryIcon,
+          secondaryIcon: record.secondaryIcon,
         },
       })
       const row = await database.transaction.create({
@@ -268,6 +313,10 @@ export class LedgerService {
           category1: record.category1,
           category2: record.category2,
           note: record.note,
+        },
+        include: {
+          account: { select: { name: true } },
+          category: { select: { primaryIcon: true, secondaryIcon: true } },
         },
       })
       created.push(this.serialize(row))
@@ -321,6 +370,12 @@ export class LedgerService {
       update: { enabled: true },
       create: { ledgerId, name: merged.item },
     })
+    const primaryIcon = await this.inheritedPrimaryIcon(
+      database,
+      ledgerId,
+      merged.category1,
+      cleanIcon(changes?.primaryIcon, "folder"),
+    )
     const category = await database.category.upsert({
       where: {
         ledgerId_category1_category2: {
@@ -334,6 +389,8 @@ export class LedgerService {
         ledgerId,
         category1: merged.category1,
         category2: merged.category2,
+        primaryIcon,
+        secondaryIcon: cleanIcon(changes?.secondaryIcon, "tag"),
       },
     })
     const row = await database.transaction.update({
@@ -347,6 +404,10 @@ export class LedgerService {
         category2: merged.category2,
         note: merged.note,
         ...(changes.accountId ? { accountId: changes.accountId } : {}),
+      },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
       },
     })
     await database.auditLog.create({
@@ -370,12 +431,17 @@ export class LedgerService {
     if (!category1 || !category2 || !ids.length)
       throw new Error("请选择账目和分类")
     return this.prisma.$transaction(async (database) => {
+      const primaryIcon = await this.inheritedPrimaryIcon(
+        database,
+        ledgerId,
+        category1,
+      )
       const category = await database.category.upsert({
         where: {
           ledgerId_category1_category2: { ledgerId, category1, category2 },
         },
         update: { enabled: true },
-        create: { ledgerId, category1, category2 },
+        create: { ledgerId, category1, category2, primaryIcon },
       })
       const result = await database.transaction.updateMany({
         where: { ledgerId, id: { in: ids.map(Number) } },
@@ -457,6 +523,50 @@ export class LedgerService {
             await this.deleteWithDatabase(database, ledgerId, proposal.id),
           ),
         })
+      else if (proposal?.type === "category-icon") {
+        const category1 = clean(proposal.category1, 40)
+        const category2 = clean(proposal.category2, 40)
+        const icon = cleanIcon(proposal.icon, "")
+        if (!category1 || !icon) throw new Error("分类图标操作内容无效")
+        if (category2) {
+          const category = await database.category.findFirst({
+            where: { ledgerId, category1, category2 },
+          })
+          if (!category) throw new Error(`分类“${category1} / ${category2}”不存在`)
+          await database.category.update({
+            where: { id: category.id },
+            data: { secondaryIcon: icon },
+          })
+          await database.auditLog.create({
+            data: {
+              action: "ai-category-secondary-icon-update",
+              entityType: "category",
+              entityId: category.id,
+              payload: { category1, category2, icon },
+            },
+          })
+          results.push({ type: "category-icon", category1, category2, icon })
+        } else {
+          const updated = await database.category.updateMany({
+            where: { ledgerId, category1 },
+            data: { primaryIcon: icon },
+          })
+          if (!updated.count) throw new Error(`一级分类“${category1}”不存在`)
+          await database.auditLog.create({
+            data: {
+              action: "ai-category-primary-icon-update",
+              entityType: "category",
+              payload: { category1, icon, categories: updated.count },
+            },
+          })
+          results.push({
+            type: "category-icon",
+            category1,
+            icon,
+            updated: updated.count,
+          })
+        }
+      }
       else throw new Error("包含未知操作")
     }
     return results

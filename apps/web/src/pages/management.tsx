@@ -1,7 +1,6 @@
 import {
   DeleteOutlined,
   EditOutlined,
-  FolderOpenOutlined,
   MergeOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -27,12 +26,15 @@ import {
   Typography,
 } from "antd"
 import { useMemo, useState } from "react"
+import { CategoryIcon, CategoryIconPicker } from "@/components/category-icon"
 import { api } from "@/lib/api"
 
 type Category = {
   id: string
   category1: string
   category2: string
+  primaryIcon: string
+  secondaryIcon: string
   enabled: boolean
   usageCount: number
   mergedIntoId?: string | null
@@ -42,6 +44,7 @@ type ManagementData = { categories: Category[]; budgets: any[] }
 type Action =
   | { kind: "edit" | "merge"; category: Category }
   | { kind: "rename-primary"; primary: string }
+  | { kind: "icon-primary"; primary: string; icon: string }
   | null
 
 export function ManagementPage() {
@@ -114,6 +117,7 @@ export function ManagementPage() {
   const openCreate = () => {
     setCreator(true)
     createForm.resetFields()
+    createForm.setFieldValue("secondaryIcon", "tag")
   }
   const openAction = (next: Exclude<Action, null>) => {
     setAction(next)
@@ -122,9 +126,13 @@ export function ManagementPage() {
       actionForm.setFieldsValue({
         category1: next.category.category1,
         category2: next.category.category2,
+        primaryIcon: next.category.primaryIcon,
+        secondaryIcon: next.category.secondaryIcon,
       })
     if (next.kind === "rename-primary")
       actionForm.setFieldValue("to", next.primary)
+    if (next.kind === "icon-primary")
+      actionForm.setFieldValue("primaryIcon", next.icon)
   }
   const deleteCategory = (category: Category) =>
     category.usageCount
@@ -191,6 +199,16 @@ export function ManagementPage() {
             const primaryMenu = {
               items: [
                 {
+                  key: "icon",
+                  label: "更换一级分类图标",
+                  onClick: () =>
+                    openAction({
+                      kind: "icon-primary",
+                      primary: String(group.name),
+                      icon: group.children[0]?.primaryIcon || "folder",
+                    }),
+                },
+                {
                   key: "rename",
                   icon: <EditOutlined />,
                   label: "重命名一级分类",
@@ -217,7 +235,10 @@ export function ManagementPage() {
                   className="category-card"
                   title={
                     <Flex gap={10} align="center">
-                      <FolderOpenOutlined className="category-icon" />
+                      <CategoryIcon
+                        name={group.children[0]?.primaryIcon}
+                        size="large"
+                      />
                       <div>
                         <Typography.Text strong>
                           {String(group.name)}
@@ -297,6 +318,12 @@ export function ManagementPage() {
                           }
                         >
                           <List.Item.Meta
+                            avatar={
+                              <CategoryIcon
+                                name={child.secondaryIcon}
+                                size="small"
+                              />
+                            }
                             title={
                               <Space>
                                 <Typography.Text delete={!child.enabled}>
@@ -373,6 +400,14 @@ export function ManagementPage() {
           >
             <Input />
           </Form.Item>
+          <div className="category-icon-form-grid">
+            <Form.Item name="primaryIcon" label="一级分类图标">
+              <CategoryIconPicker />
+            </Form.Item>
+            <Form.Item name="secondaryIcon" label="二级分类图标">
+              <CategoryIconPicker />
+            </Form.Item>
+          </div>
         </Form>
       </Drawer>
       <CategoryActionDrawer
@@ -407,16 +442,21 @@ function CategoryActionDrawer({
   const isMerge = action.kind === "merge"
   const category = isEdit || isMerge ? action.category : null
   const primary = action.kind === "rename-primary" ? action.primary : ""
+  const iconPrimary = action.kind === "icon-primary" ? action.primary : ""
   const title = isEdit
     ? "重命名或移动分类"
     : isMerge
       ? "合并分类"
-      : "重命名一级分类"
+      : action.kind === "icon-primary"
+        ? "更换一级分类图标"
+        : "重命名一级分类"
   const description = isMerge
     ? `“${category!.category1} / ${category!.category2}”的 ${category!.usageCount} 笔账目会迁移到目标分类。`
     : isEdit
       ? `将同步更新 ${category!.usageCount} 笔历史账目。`
-      : `将同步修改“${primary}”下的全部分类、账目和预算。`
+      : action.kind === "icon-primary"
+        ? `“${iconPrimary}”下的所有二级分类会共用这个一级图标。`
+        : `将同步修改“${primary}”下的全部分类、账目和预算。`
   const submit = (values: any) =>
     isEdit
       ? onSubmit({
@@ -430,11 +470,17 @@ function CategoryActionDrawer({
             method: "POST",
             body: values,
           })
-        : onSubmit({
-            url: "/api/management/categories/primary/rename",
-            method: "PATCH",
-            body: { from: primary, to: values.to },
-          })
+        : action.kind === "icon-primary"
+          ? onSubmit({
+              url: `/api/management/categories/primary/${encodeURIComponent(iconPrimary)}/icon`,
+              method: "PATCH",
+              body: { primaryIcon: values.primaryIcon },
+            })
+          : onSubmit({
+              url: "/api/management/categories/primary/rename",
+              method: "PATCH",
+              body: { from: primary, to: values.to },
+            })
   return (
     <Drawer
       title={title}
@@ -477,6 +523,9 @@ function CategoryActionDrawer({
             >
               <Input />
             </Form.Item>
+            <Form.Item name="secondaryIcon" label="二级分类图标">
+              <CategoryIconPicker />
+            </Form.Item>
           </>
         )}
         {isMerge && (
@@ -498,6 +547,11 @@ function CategoryActionDrawer({
         {action.kind === "rename-primary" && (
           <Form.Item name="to" label="新名称" rules={[{ required: true }]}>
             <Input />
+          </Form.Item>
+        )}
+        {action.kind === "icon-primary" && (
+          <Form.Item name="primaryIcon" label="一级分类图标">
+            <CategoryIconPicker />
           </Form.Item>
         )}
       </Form>

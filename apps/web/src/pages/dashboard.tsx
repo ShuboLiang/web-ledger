@@ -36,6 +36,7 @@ import {
 import { useQuickStore, type QuickResult } from "@/lib/quick-store"
 import { compactMoney, money } from "@/lib/utils"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
+import { CategoryIcon } from "@/components/category-icon"
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -437,7 +438,12 @@ export function DashboardPage() {
                       </Avatar>
                     }
                     title={row.item}
-                    description={`${row.category1} · ${row.category2}`}
+                    description={
+                      <span className="transaction-mobile-description">
+                        <CategoryIcon name={row.secondaryIcon} size="small" />
+                        {row.category1} · {row.category2}
+                      </span>
+                    }
                   />
                 </List.Item>
               )}
@@ -518,7 +524,10 @@ function DashboardCategoryBudget({ budget }: { budget: DashboardBudget }) {
     <div className={`dashboard-category-budget ${budget.status}`}>
       <Flex align="center" justify="space-between" gap={10}>
         <Typography.Text strong ellipsis>
-          {budget.category1}
+          <Flex align="center" gap={8}>
+            <CategoryIcon name={budget.primaryIcon} size="small" />
+            {budget.category1}
+          </Flex>
         </Typography.Text>
         <Tag
           bordered={false}

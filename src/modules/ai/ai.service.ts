@@ -111,6 +111,13 @@ export class AiService {
         item: normalized.item,
         category1: normalized.category1,
         category2: normalized.category2,
+        ...(source.primaryIcon && /^[a-z0-9-]{1,40}$/.test(source.primaryIcon)
+          ? { primaryIcon: source.primaryIcon }
+          : {}),
+        ...(source.secondaryIcon &&
+        /^[a-z0-9-]{1,40}$/.test(source.secondaryIcon)
+          ? { secondaryIcon: source.secondaryIcon }
+          : {}),
         note: normalized.note,
       }
     } catch (error) {
@@ -158,6 +165,15 @@ export class AiService {
       if (stored.type === "delete") {
         if (Number(edited.id) !== Number(stored.id))
           throw new BadRequestException("不能更换待删除的账目")
+        return stored
+      }
+      if (stored.type === "category-icon") {
+        if (
+          edited.category1 !== stored.category1 ||
+          String(edited.category2 || "") !== String(stored.category2 || "") ||
+          edited.icon !== stored.icon
+        )
+          throw new BadRequestException("分类图标操作不能在账目编辑器中修改")
         return stored
       }
       throw new BadRequestException("包含未知待确认操作")
@@ -219,6 +235,16 @@ export class AiService {
           备注: record.note || "",
           人工微调: Boolean(proposal._humanEdited),
         }))
+      if (proposal?.type === "category-icon")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "修改分类图标",
+            一级分类: proposal.category1,
+            ...(proposal.category2 ? { 二级分类: proposal.category2 } : {}),
+            图标: proposal.icon,
+          },
+        ]
       const current = proposal?.current || {}
       const changes = proposal?.changes || {}
       return [
@@ -521,6 +547,8 @@ export class AiService {
       return (proposal.records || [])
         .map((record: any) => this.removedRecordLabel(record))
         .join("；")
+    if (proposal?.type === "category-icon")
+      return `修改“${proposal.category1}${proposal.category2 ? ` / ${proposal.category2}` : ""}”分类图标`
     const item = proposal?.current?.item || ""
     const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
     return proposal?.type === "update"

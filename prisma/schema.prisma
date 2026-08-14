@@ -68,6 +68,8 @@ model Category {
   ledgerId  String   @map("ledger_id")
   category1 String   @db.VarChar(40)
   category2 String   @db.VarChar(40)
+  primaryIcon String @default("folder") @map("primary_icon") @db.VarChar(40)
+  secondaryIcon String @default("tag") @map("secondary_icon") @db.VarChar(40)
   enabled   Boolean  @default(true)
   mergedIntoId String? @map("merged_into_id")
   sortOrder Int      @default(0) @map("sort_order")

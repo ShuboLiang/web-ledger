@@ -51,6 +51,12 @@ export class ManagementController {
   ) {
     return this.management.renamePrimary(body)
   }
+  @Patch("categories/primary/:name/icon") updatePrimaryIcon(
+    @Param("name") name: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.management.updatePrimaryIcon(name, body)
+  }
   @Delete("categories/primary/:name") deletePrimary(
     @Param("name") name: string,
   ) {

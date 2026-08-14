@@ -41,6 +41,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
+import { CategoryIcon } from "@/components/category-icon"
 import { money } from "@/lib/utils"
 
 type Page = {
@@ -193,7 +194,18 @@ export function TransactionsPage() {
     ...new Set(dictionaries?.categories.map((row) => row.category1)),
   ]
   const categoryOptions = primary.map((category1) => ({
-    label: category1,
+    label: (
+      <span className="category-select-label">
+        <CategoryIcon
+          name={
+            dictionaries?.categories.find((row) => row.category1 === category1)
+              ?.primaryIcon
+          }
+          size="small"
+        />
+        {category1}
+      </span>
+    ),
     options: [
       {
         label: `全部${category1}`,
@@ -207,7 +219,20 @@ export function TransactionsPage() {
             .map((row) => row.category2),
         ),
       ].map((category2) => ({
-        label: `${category1} / ${category2}`,
+        label: (
+          <span className="category-select-label">
+            <CategoryIcon
+              name={
+                dictionaries?.categories.find(
+                  (row) =>
+                    row.category1 === category1 && row.category2 === category2,
+                )?.secondaryIcon
+              }
+              size="small"
+            />
+            {category2}
+          </span>
+        ),
         value: JSON.stringify([category1, category2]),
         searchText: `${category1} ${category2}`,
       })),
@@ -284,7 +309,8 @@ export function TransactionsPage() {
       width: 180,
       hidden: !visible.category,
       render: (_, row) => (
-        <Tag color="cyan">
+        <Tag color="cyan" className="transaction-category-tag">
+          <CategoryIcon name={row.secondaryIcon} size="small" />
           {row.category1} · {row.category2}
         </Tag>
       ),
@@ -910,7 +936,14 @@ export function TransactionsPage() {
               >
                 <List.Item.Meta
                   title={row.item}
-                  description={`${row.date} · ${row.category1} / ${row.category2}`}
+                  description={
+                    <span className="transaction-mobile-description">
+                      <span>{row.date}</span>
+                      <span>·</span>
+                      <CategoryIcon name={row.secondaryIcon} size="small" />
+                      <span>{row.category1} / {row.category2}</span>
+                    </span>
+                  }
                 />
               </List.Item>
             )}

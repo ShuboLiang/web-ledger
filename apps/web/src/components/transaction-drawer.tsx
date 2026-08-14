@@ -17,6 +17,7 @@ import dayjs from "dayjs"
 import { useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
+import { CategoryIcon } from "@/components/category-icon"
 
 type FormValues = {
   date: any
@@ -102,13 +103,40 @@ export function TransactionDrawer({
     onError: (error: Error) => message.error(error.message),
   })
   const primaryChoices = [
-    ...primaryOptions.map((value) => ({ label: value, value })),
+    ...primaryOptions.map((value) => ({
+      label: (
+        <span className="category-select-label">
+          <CategoryIcon
+            name={categories.find((row) => row.category1 === value)?.primaryIcon}
+            size="small"
+          />
+          {value}
+        </span>
+      ),
+      value,
+    })),
     ...(record?.category1 && !primaryOptions.includes(record.category1)
       ? [{ label: `${record.category1}（已停用）`, value: record.category1 }]
       : []),
   ]
   const secondaryChoices = [
-    ...secondaryOptions.map((value) => ({ label: value, value })),
+    ...secondaryOptions.map((value) => ({
+      label: (
+        <span className="category-select-label">
+          <CategoryIcon
+            name={
+              categories.find(
+                (row) =>
+                  row.category1 === selectedPrimary && row.category2 === value,
+              )?.secondaryIcon
+            }
+            size="small"
+          />
+          {value}
+        </span>
+      ),
+      value,
+    })),
     ...(record?.category1 === selectedPrimary &&
     record?.category2 &&
     !secondaryOptions.includes(record.category2)

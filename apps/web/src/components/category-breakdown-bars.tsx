@@ -1,6 +1,7 @@
 import { Progress, Typography } from "antd"
 import type { Breakdown } from "@/lib/api"
 import { money } from "@/lib/utils"
+import { CategoryIcon } from "@/components/category-icon"
 
 type CategoryBreakdownBarsProps = {
   rows: Breakdown[]
@@ -48,13 +49,19 @@ export function CategoryBreakdownBars({
         const content = (
           <>
             <div className="category-breakdown-row-head">
-              <Typography.Text
-                strong
-                className="category-breakdown-label"
-                ellipsis={{ tooltip: row.label }}
-              >
-                {row.label}
-              </Typography.Text>
+              <div className="category-breakdown-label-wrap">
+                <CategoryIcon
+                  name={row.isOther ? "folder" : row.icon}
+                  size="small"
+                />
+                <Typography.Text
+                  strong
+                  className="category-breakdown-label"
+                  ellipsis={{ tooltip: row.label }}
+                >
+                  {row.label}
+                </Typography.Text>
+              </div>
               <div className="category-breakdown-values">
                 <Typography.Text strong className="category-breakdown-amount">
                   {money(row.amount)}

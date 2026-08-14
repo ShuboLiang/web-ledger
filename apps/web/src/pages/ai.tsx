@@ -41,6 +41,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { api, type Dictionaries } from "@/lib/api"
 import { conversationId, money } from "@/lib/utils"
+import { CategoryIcon } from "@/components/category-icon"
 
 type Message = {
   id: string
@@ -49,12 +50,15 @@ type Message = {
   thinking?: string | null
 }
 type Proposal = {
-  type: "create" | "update" | "delete"
+  type: "create" | "update" | "delete" | "category-icon"
   id?: number
   records?: any[]
   current?: any
   changes?: any
   reason?: string
+  category1?: string
+  category2?: string
+  icon?: string
   _humanEdited?: boolean
 }
 type AiResponse = {
@@ -414,7 +418,22 @@ export function AiPage() {
               editable: true,
               humanEdited: proposal._humanEdited,
             }))
-          : [
+          : proposal.type === "category-icon"
+            ? [
+                {
+                  label: "分类图标",
+                  item: proposal.category2
+                    ? `${proposal.category1} / ${proposal.category2}`
+                    : proposal.category1,
+                  category1: proposal.category1,
+                  category2: proposal.category2,
+                  icon: proposal.icon,
+                  proposalIndex,
+                  editable: false,
+                  isIconOperation: true,
+                },
+              ]
+            : [
               {
                 ...(proposal.current || {}),
                 ...(proposal.changes || {}),
@@ -489,7 +508,9 @@ export function AiPage() {
         return {
           ...proposal,
           records: (proposal.records || []).map((existing, recordIndex) =>
-            recordIndex === editingProposal.recordIndex ? record : existing,
+            recordIndex === editingProposal.recordIndex
+              ? { ...existing, ...record }
+              : existing,
           ),
         }
       if (proposal.type === "update") return { ...proposal, changes: record }
@@ -729,14 +750,18 @@ export function AiPage() {
                         {row.humanEdited && <Tag color="gold">已微调</Tag>}
                       </Flex>
                       <Flex align="center" gap={4}>
-                        <Typography.Text
-                          strong
-                          type={
-                            row.direction === "income" ? "success" : "danger"
-                          }
-                        >
-                          {row.amount ? money(Math.abs(row.amount)) : "—"}
-                        </Typography.Text>
+                        {row.isIconOperation ? (
+                          <CategoryIcon name={row.icon} size="small" />
+                        ) : (
+                          <Typography.Text
+                            strong
+                            type={
+                              row.direction === "income" ? "success" : "danger"
+                            }
+                          >
+                            {row.amount ? money(Math.abs(row.amount)) : "—"}
+                          </Typography.Text>
+                        )}
                         {row.editable && (
                           <Button
                             type="text"
@@ -762,8 +787,9 @@ export function AiPage() {
                       {row.item || `账目 #${row.id}`}
                     </Typography.Text>
                     <Typography.Text type="secondary">
-                      {row.date || ""} · {row.category1 || ""}{" "}
-                      {row.category2 ? `/ ${row.category2}` : ""}
+                      {row.isIconOperation
+                        ? `将图标设置为 ${row.icon}`
+                        : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}`}
                     </Typography.Text>
                   </Card>
                 </List.Item>

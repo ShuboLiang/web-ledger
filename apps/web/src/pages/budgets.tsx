@@ -31,12 +31,15 @@ import {
 import dayjs from "dayjs"
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { CategoryIcon } from "@/components/category-icon"
 import { api } from "@/lib/api"
 
 type Category = {
   id: string
   category1: string
   category2: string
+  primaryIcon: string
+  secondaryIcon: string
   enabled: boolean
 }
 type ManagementData = { categories: Category[] }
@@ -93,6 +96,8 @@ export function BudgetsPage() {
     ],
     [management?.categories],
   )
+  const primaryIcon = (name: string | null) =>
+    management?.categories.find((row) => row.category1 === name)?.primaryIcon
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["budgets"] }),
@@ -273,6 +278,7 @@ export function BudgetsPage() {
               <Col xs={24} md={12} xl={8} key={budget.id}>
                 <BudgetCategoryCard
                   budget={budget}
+                  icon={primaryIcon(budget.category1)}
                   onEdit={openEdit}
                   onDelete={remove}
                 />
@@ -338,7 +344,12 @@ export function BudgetsPage() {
                   disabled: !editing && Boolean(data?.totalBudget),
                 },
                 ...categories.map((name) => ({
-                  label: name,
+                  label: (
+                    <span className="category-select-label">
+                      <CategoryIcon name={primaryIcon(name)} size="small" />
+                      {name}
+                    </span>
+                  ),
                   value: name,
                   disabled:
                     !editing &&
@@ -453,10 +464,12 @@ function BudgetSummary({
 
 function BudgetCategoryCard({
   budget,
+  icon,
   onEdit,
   onDelete,
 }: {
   budget: Budget
+  icon?: string
   onEdit: (budget: Budget) => void
   onDelete: (budget: Budget) => void
 }) {
@@ -465,7 +478,12 @@ function BudgetCategoryCard({
     <Card
       size="small"
       className={`budget-category-card ${budget.status}`}
-      title={budget.category1}
+      title={
+        <Flex align="center" gap={9}>
+          <CategoryIcon name={icon} size="small" />
+          <span>{budget.category1}</span>
+        </Flex>
+      }
       extra={
         <Dropdown
           menu={{
