@@ -57,6 +57,9 @@ type Proposal = {
     | "category-icon"
     | "account-create"
     | "account-update"
+    | "tag-create"
+    | "tag-update"
+    | "tag-delete"
     | "transfer"
     | "liability-create"
     | "liability-payment"
@@ -71,6 +74,8 @@ type Proposal = {
   icon?: string
   account?: any
   accountId?: string
+  tag?: any
+  tagId?: string
   transfer?: any
   liability?: any
   liabilityId?: string
@@ -113,6 +118,7 @@ type ProposalFormValues = {
   category1: string
   category2: string
   accountId?: string
+  tagNames?: string[]
   note?: string
 }
 type EditingProposal = {
@@ -483,6 +489,36 @@ export function AiPage() {
             },
           ]
         }
+        if (
+          proposal.type === "tag-create" ||
+          proposal.type === "tag-update" ||
+          proposal.type === "tag-delete"
+        ) {
+          const isCreate = proposal.type === "tag-create"
+          const isDelete = proposal.type === "tag-delete"
+          const changes = [
+            proposal.changes?.name ? `名称改为“${proposal.changes.name}”` : "",
+            proposal.changes?.enabled === true ? "启用标签" : "",
+            proposal.changes?.enabled === false ? "停用标签" : "",
+          ].filter(Boolean)
+          return [
+            {
+              label: isCreate ? "新增标签" : isDelete ? "删除标签" : "修改标签",
+              item:
+                proposal.tag?.name ||
+                proposal.display?.tagName ||
+                proposal.tagId ||
+                "未指定标签",
+              detail: isCreate
+                ? "用于补充消费场景、人物或目的"
+                : isDelete
+                  ? "只解除账目关联，不删除账目"
+                  : changes.join(" · ") || "更新标签信息",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
         if (proposal.type === "transfer")
           return [
             {
@@ -597,6 +633,7 @@ export function AiPage() {
       category1: row.category1 || "",
       category2: row.category2 || "",
       accountId: row.accountId || "",
+      tagNames: row.tagNames || row.tags?.map((tag: any) => tag.name) || [],
       note: row.note || "",
     })
   }
@@ -896,7 +933,7 @@ export function AiPage() {
                         ? `将图标设置为 ${row.icon}`
                         : row.isFinanceOperation
                           ? `${row.date || ""}${row.date && row.detail ? " · " : ""}${row.detail || ""}`
-                          : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}`}
+                          : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
                     </Typography.Text>
                   </Card>
                 </List.Item>
@@ -1088,6 +1125,23 @@ export function AiPage() {
               />
             </Form.Item>
           )}
+          <Form.Item label="标签" name="tagNames">
+            <Select
+              mode="tags"
+              maxTagCount="responsive"
+              placeholder="可选择或输入标签"
+              options={(dictionaries?.tags || []).map((tag) => ({
+                value: tag.name,
+                label: tag.name,
+              }))}
+              onChange={(values) => {
+                if (values.length > 8) {
+                  message.warning("一笔账最多选择 8 个标签")
+                  proposalForm.setFieldValue("tagNames", values.slice(0, 8))
+                }
+              }}
+            />
+          </Form.Item>
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
             <Input.TextArea rows={4} showCount maxLength={500} />
           </Form.Item>

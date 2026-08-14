@@ -12,6 +12,7 @@ import { ManagementModule } from "./modules/management/management.module.js"
 import { FrontendController } from "./frontend.controller.js"
 import { AuthModule } from "./modules/auth/auth.module.js"
 import { FinanceModule } from "./modules/finance/finance.module.js"
+import { TagsModule } from "./modules/tags/tags.module.js"
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { FinanceModule } from "./modules/finance/finance.module.js"
     HealthModule,
     ManagementModule,
     FinanceModule,
+    TagsModule,
   ],
   controllers: [FrontendController],
 })

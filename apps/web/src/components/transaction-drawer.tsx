@@ -27,6 +27,7 @@ type FormValues = {
   category1: string
   category2: string
   accountId?: string
+  tagIds?: string[]
   note?: string
 }
 
@@ -88,6 +89,7 @@ export function TransactionDrawer({
         record?.accountId ||
         data?.accounts?.find((account) => account.isDefault)?.id ||
         data?.accounts?.[0]?.id,
+      tagIds: record?.tagIds || [],
       note: record?.note || "",
     })
   }, [open, record, data])
@@ -287,6 +289,30 @@ export function TransactionDrawer({
             />
           </Form.Item>
         )}
+        <Form.Item
+          label="标签"
+          name="tagIds"
+          extra="标签记录用途、场景或人物，例如“人情请客”“朋友聚会”；最多选择 8 个。"
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount="responsive"
+            placeholder={
+              data?.tags?.length ? "可选多个标签" : "请先到标签页面新增"
+            }
+            options={(data?.tags || []).map((tag) => ({
+              value: tag.id,
+              label: tag.name,
+            }))}
+            onChange={(values) => {
+              if (values.length > 8) {
+                message.warning("一笔账最多选择 8 个标签")
+                form.setFieldValue("tagIds", values.slice(0, 8))
+              }
+            }}
+          />
+        </Form.Item>
         <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
           <Input.TextArea rows={4} showCount maxLength={500} />
         </Form.Item>

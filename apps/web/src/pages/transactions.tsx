@@ -70,6 +70,7 @@ const transactionFilterKeys = [
   "category1",
   "category2",
   "query",
+  "tagId",
 ] as const
 const transactionStateKeys = [
   ...transactionFilterKeys,
@@ -140,18 +141,6 @@ export function TransactionsPage() {
   useEffect(() => {
     setSearchValue(params.get("query") || "")
     if (params.get("focus") === "search") searchRef.current?.focus()
-    if (params.has("accountId")) {
-      setParams(
-        (current) => {
-          const next = new URLSearchParams(current)
-          next.delete("accountId")
-          return next
-        },
-        { replace: true },
-      )
-      return
-    }
-
     const currentState = savedTransactionState(params).toString()
     if (pendingFilterRestore.current === undefined) {
       const storedFilters =
@@ -309,6 +298,15 @@ export function TransactionsPage() {
               {row.note}
             </Typography.Text>
           )}
+          {!!row.tags?.length && (
+            <span className="transaction-tag-line">
+              {row.tags.map((tag) => (
+                <Tag key={tag.id} color={tag.color}>
+                  {tag.name}
+                </Tag>
+              ))}
+            </span>
+          )}
         </Flex>
       ),
     },
@@ -388,13 +386,14 @@ export function TransactionsPage() {
       if (current >= result.totalPages) break
     }
     const csv = [
-      "日期,项目,一级分类,二级分类,账户,备注,金额",
+      "日期,项目,一级分类,二级分类,标签,账户,备注,金额",
       ...rows.map((row) =>
         [
           row.date,
           row.item,
           row.category1,
           row.category2,
+          row.tags?.map((tag) => tag.name).join("|") || "",
           row.accountName || "",
           row.note,
           row.amount,
@@ -460,6 +459,7 @@ export function TransactionsPage() {
       "category1",
       "category2",
       "query",
+      "tagId",
     ])
   const today = dayjs().startOf("day")
   const weekStart = today.subtract((today.day() + 6) % 7, "day")
@@ -689,12 +689,30 @@ export function TransactionsPage() {
       onChange={setCategoryFilter}
     />
   )
+  const renderTagFilter = (className = "") => (
+    <Select
+      className={className}
+      allowClear
+      showSearch
+      placeholder="全部标签"
+      value={params.get("tagId") || undefined}
+      options={(dictionaries?.tags || []).map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      }))}
+      onChange={(value) => set("tagId", value || "")}
+    />
+  )
   const renderMobileFilters = () => (
     <div className="advanced-filter-panel">
       <Flex vertical gap={14}>
         <Flex vertical gap={6}>
           <Typography.Text type="secondary">分类</Typography.Text>
           {renderCategoryFilter()}
+        </Flex>
+        <Flex vertical gap={6}>
+          <Typography.Text type="secondary">标签</Typography.Text>
+          {renderTagFilter()}
         </Flex>
         <Flex justify="flex-end">
           <Button type="primary" onClick={() => setFilterOpen(false)}>
@@ -723,9 +741,19 @@ export function TransactionsPage() {
       label: `搜索：${params.get("query")}`,
       clear: () => clearFilterKeys(["query"]),
     },
+    params.get("tagId") && {
+      key: "tag",
+      label: `标签：${
+        dictionaries?.tags?.find((tag) => tag.id === params.get("tagId"))
+          ?.name || "已选择"
+      }`,
+      clear: () => clearFilterKeys(["tagId"]),
+    },
   ].filter(Boolean) as { key: string; label: string; clear: () => void }[]
   const activeFilterCount = filterChips.length
-  const mobileMoreFilterCount = Number(Boolean(params.get("category1")))
+  const mobileMoreFilterCount =
+    Number(Boolean(params.get("category1"))) +
+    Number(Boolean(params.get("tagId")))
   const renderFilterSummary = () => (
     <div className="transaction-filter-summary">
       <Typography.Text type="secondary" className="transaction-result-count">
@@ -784,7 +812,7 @@ export function TransactionsPage() {
               <Input.Search
                 ref={searchRef}
                 allowClear
-                placeholder="搜索项目、备注或分类"
+                placeholder="搜索项目、备注、分类或标签"
                 value={searchValue}
                 onChange={(event) => {
                   setSearchValue(event.target.value)
@@ -795,6 +823,7 @@ export function TransactionsPage() {
               />
             </div>
             <div className="transaction-filter-secondary">
+              {renderTagFilter("transaction-tag-filter")}
               {renderFilterSummary()}
               <Flex
                 align="center"
@@ -826,7 +855,7 @@ export function TransactionsPage() {
             <Input.Search
               ref={searchRef}
               allowClear
-              placeholder="搜索项目、备注或分类"
+              placeholder="搜索项目、备注、分类或标签"
               value={searchValue}
               onChange={(event) => {
                 setSearchValue(event.target.value)
@@ -980,6 +1009,15 @@ export function TransactionsPage() {
                         <WalletOutlined />
                         <span>{row.accountName || "未指定账户"}</span>
                       </span>
+                      {!!row.tags?.length && (
+                        <span className="transaction-tag-line">
+                          {row.tags.map((tag) => (
+                            <Tag key={tag.id} color={tag.color}>
+                              {tag.name}
+                            </Tag>
+                          ))}
+                        </span>
+                      )}
                     </span>
                   }
                 />

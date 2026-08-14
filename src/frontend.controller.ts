@@ -11,6 +11,8 @@ export class FrontendController {
     "transactions",
     "analytics",
     "budgets",
+    "finance",
+    "tags",
     "ai",
     "management",
     "settings",

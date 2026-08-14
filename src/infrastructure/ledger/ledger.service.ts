@@ -97,6 +97,11 @@ export class LedgerService {
   }
 
   private serialize(row: any) {
+    const tags = (row.tags || []).map((entry: any) => ({
+      id: entry.tag.id,
+      name: entry.tag.name,
+      color: entry.tag.color,
+    }))
     return {
       ...row,
       date: dateText(row.date),
@@ -104,6 +109,8 @@ export class LedgerService {
       accountName: row.account?.name || "未指定",
       primaryIcon: row.category?.primaryIcon,
       secondaryIcon: row.category?.secondaryIcon,
+      tags,
+      tagIds: tags.map((tag: any) => tag.id),
       account: undefined,
       category: undefined,
       created_at: row.createdAt?.toISOString?.() || row.createdAt,
@@ -134,6 +141,7 @@ export class LedgerService {
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
       },
       orderBy: [{ date: "desc" }, { id: "desc" }],
     })
@@ -148,6 +156,7 @@ export class LedgerService {
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
       },
       take,
       orderBy: [{ date: "desc" }, { id: "desc" }],
@@ -169,6 +178,7 @@ export class LedgerService {
     sortBy = "date",
     sortOrder = "desc",
     accountId = "",
+    tagId = "",
   }: Record<string, unknown> = {}) {
     const { ledgerId } = await this.context()
     const take = Math.min(Math.max(Number(pageSize) || 20, 1), 100)
@@ -220,14 +230,22 @@ export class LedgerService {
       }
     }
     if (search)
-      where.OR = ["item", "note", "category1", "category2"].map((field) => ({
-        [field]: { contains: search, mode: "insensitive" },
-      })) as Prisma.TransactionWhereInput[]
+      where.OR = [
+        ...["item", "note", "category1", "category2"].map((field) => ({
+          [field]: { contains: search, mode: "insensitive" },
+        })),
+        {
+          tags: {
+            some: { tag: { name: { contains: search, mode: "insensitive" } } },
+          },
+        },
+      ] as Prisma.TransactionWhereInput[]
     if (primary) where.category1 = primary
     if (secondary) where.category2 = secondary
     if (selectedDirection)
       where.amount = selectedDirection === "expense" ? { lt: 0 } : { gt: 0 }
     if (clean(accountId, 100)) where.accountId = clean(accountId, 100)
+    if (clean(tagId, 100)) where.tags = { some: { tagId: clean(tagId, 100) } }
     const orderField = ["date", "amount", "item"].includes(String(sortBy))
       ? String(sortBy)
       : "date"
@@ -240,6 +258,7 @@ export class LedgerService {
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
       },
       take,
       skip: (current - 1) * take,
@@ -271,6 +290,7 @@ export class LedgerService {
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
       },
     })
     return row ? this.serialize(row) : null
@@ -278,7 +298,7 @@ export class LedgerService {
 
   async dictionaries() {
     const { ledgerId } = await this.context()
-    const [projects, categories, accounts] = await Promise.all([
+    const [projects, categories, accounts, tags] = await Promise.all([
       this.prisma.project.findMany({
         where: { ledgerId, enabled: true },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -290,6 +310,10 @@ export class LedgerService {
       this.prisma.account.findMany({
         where: { ledgerId, enabled: true },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.tag.findMany({
+        where: { ledgerId, enabled: true },
+        orderBy: { createdAt: "asc" },
       }),
     ])
     return {
@@ -308,7 +332,305 @@ export class LedgerService {
         type: row.type,
         isDefault: row.isDefault,
       })),
+      tags: tags.map((row) => ({
+        id: row.id,
+        name: row.name,
+        color: row.color,
+      })),
     }
+  }
+
+  private tagColor(value: unknown, fallback = "#0f766e") {
+    const color = clean(value, 20)
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : fallback
+  }
+
+  private async resolveTransactionTagIds(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const rawTagIds: unknown[] = Array.isArray(input?.tagIds)
+      ? input.tagIds
+      : []
+    const rawTagNames: unknown[] = Array.isArray(input?.tagNames)
+      ? input.tagNames
+      : []
+    const requestedIds = [
+      ...new Set(rawTagIds.map((value) => clean(value, 100)).filter(Boolean)),
+    ].slice(0, 8)
+    const requestedNames = [
+      ...new Set(rawTagNames.map((value) => clean(value, 40)).filter(Boolean)),
+    ].slice(0, 8)
+    const existing = requestedIds.length
+      ? await database.tag.findMany({
+          where: { ledgerId, id: { in: requestedIds } },
+          select: { id: true },
+        })
+      : []
+    if (existing.length !== requestedIds.length)
+      throw new BadRequestException("包含不存在或已停用的标签")
+    const ids = existing.map((row) => row.id)
+    for (const name of requestedNames) {
+      const tag = await database.tag.upsert({
+        where: { ledgerId_name: { ledgerId, name } },
+        update: { enabled: true },
+        create: { ledgerId, name },
+      })
+      ids.push(tag.id)
+    }
+    return [...new Set(ids)].slice(0, 8)
+  }
+
+  private tagPeriodRange(value: unknown, scopeValue: unknown = "month") {
+    const current = new Date().toISOString().slice(0, 7)
+    const scope = clean(scopeValue, 10) === "year" ? "year" : "month"
+    const requested = clean(value, 7)
+    if (scope === "year") {
+      const period = /^\d{4}$/.test(requested)
+        ? requested
+        : /^\d{4}-(0[1-9]|1[0-2])$/.test(requested)
+          ? requested.slice(0, 4)
+          : current.slice(0, 4)
+      const year = Number(period)
+      return {
+        scope,
+        period,
+        start: new Date(Date.UTC(year, 0, 1)),
+        end: new Date(Date.UTC(year + 1, 0, 1)),
+      }
+    }
+    const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(requested)
+      ? requested
+      : current
+    const [year, month] = period.split("-").map(Number)
+    return {
+      scope,
+      period,
+      start: new Date(Date.UTC(year, month - 1, 1)),
+      end: new Date(Date.UTC(year, month, 1)),
+    }
+  }
+
+  async tagOverview(periodValue?: unknown, scopeValue?: unknown) {
+    const { ledgerId } = await this.context()
+    const { scope, period, start, end } = this.tagPeriodRange(
+      periodValue,
+      scopeValue,
+    )
+    const [tags, links] = await Promise.all([
+      this.prisma.tag.findMany({
+        where: { ledgerId },
+        include: { _count: { select: { transactions: true } } },
+        orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.transactionTag.findMany({
+        where: {
+          tag: { ledgerId },
+          transaction: { ledgerId, date: { gte: start, lt: end } },
+        },
+        include: { transaction: { select: { amount: true } } },
+      }),
+    ])
+    const totals = new Map<
+      string,
+      { expense: number; income: number; count: number }
+    >()
+    links.forEach((link) => {
+      const current = totals.get(link.tagId) || {
+        expense: 0,
+        income: 0,
+        count: 0,
+      }
+      const amount = Number(link.transaction.amount)
+      current.count += 1
+      if (amount < 0) current.expense += Math.abs(amount)
+      else current.income += amount
+      totals.set(link.tagId, current)
+    })
+    return {
+      scope,
+      period,
+      ...(scope === "month" ? { month: period } : { year: period }),
+      tags: tags.map((tag) => {
+        const period = totals.get(tag.id) || {
+          expense: 0,
+          income: 0,
+          count: 0,
+        }
+        return {
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+          enabled: tag.enabled,
+          usageCount: tag._count.transactions,
+          periodCount: period.count,
+          expense: Number(period.expense.toFixed(2)),
+          income: Number(period.income.toFixed(2)),
+        }
+      }),
+    }
+  }
+
+  async tagAnalytics(id: unknown, periodValue?: unknown, scopeValue?: unknown) {
+    const { ledgerId } = await this.context()
+    const tag = await this.prisma.tag.findFirst({
+      where: { id: clean(id, 100), ledgerId },
+    })
+    if (!tag) throw new NotFoundException("标签不存在")
+    const { scope, period, start, end } = this.tagPeriodRange(
+      periodValue,
+      scopeValue,
+    )
+    const links = await this.prisma.transactionTag.findMany({
+      where: {
+        tagId: tag.id,
+        transaction: { ledgerId, date: { gte: start, lt: end } },
+      },
+      include: {
+        transaction: {
+          include: {
+            account: { select: { name: true } },
+            category: { select: { primaryIcon: true, secondaryIcon: true } },
+            tags: { include: { tag: true } },
+          },
+        },
+      },
+      orderBy: { transaction: { date: "desc" } },
+    })
+    const records = links.map((link) => this.serialize(link.transaction))
+    const expenses = records.filter((record) => record.amount < 0)
+    const expense = expenses.reduce(
+      (sum, record) => sum + Math.abs(record.amount),
+      0,
+    )
+    const income = records
+      .filter((record) => record.amount > 0)
+      .reduce((sum, record) => sum + record.amount, 0)
+    const series = new Map<string, number>()
+    const categories = new Map<string, number>()
+    expenses.forEach((record) => {
+      const seriesKey = scope === "year" ? record.date.slice(0, 7) : record.date
+      series.set(
+        seriesKey,
+        (series.get(seriesKey) || 0) + Math.abs(record.amount),
+      )
+      categories.set(
+        record.category1,
+        (categories.get(record.category1) || 0) + Math.abs(record.amount),
+      )
+    })
+    const seriesEntries =
+      scope === "year"
+        ? Array.from({ length: 12 }, (_, index) => {
+            const key = `${period}-${String(index + 1).padStart(2, "0")}`
+            return [key, series.get(key) || 0] as const
+          })
+        : [...series.entries()].sort(([a], [b]) => a.localeCompare(b))
+    return {
+      scope,
+      period,
+      ...(scope === "month" ? { month: period } : { year: period }),
+      tag: { ...tag },
+      summary: {
+        expense: Number(expense.toFixed(2)),
+        income: Number(income.toFixed(2)),
+        count: records.length,
+        expenseCount: expenses.length,
+        averageExpense: expenses.length
+          ? Number((expense / expenses.length).toFixed(2))
+          : 0,
+      },
+      series: seriesEntries.map(([date, amount]) => ({
+        date,
+        amount: Number(amount.toFixed(2)),
+      })),
+      categories: [...categories.entries()]
+        .map(([name, amount]) => ({ name, amount: Number(amount.toFixed(2)) }))
+        .sort((a, b) => b.amount - a.amount),
+      records,
+    }
+  }
+
+  private async createTagWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const name = clean(input?.name, 40)
+    if (!name) throw new BadRequestException("请填写标签名称")
+    const exists = await database.tag.findFirst({ where: { ledgerId, name } })
+    if (exists) throw new BadRequestException("同名标签已经存在")
+    return database.tag.create({
+      data: {
+        ledgerId,
+        name,
+        color: this.tagColor(input?.color),
+      },
+    })
+  }
+
+  async createTag(input: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.createTagWithDatabase(database, ledgerId, input),
+    )
+  }
+
+  private async updateTagWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: unknown,
+    input: any,
+  ) {
+    const tag = await database.tag.findFirst({
+      where: { id: clean(id, 100), ledgerId },
+    })
+    if (!tag) throw new NotFoundException("标签不存在")
+    const name = clean(input?.name ?? tag.name, 40)
+    if (!name) throw new BadRequestException("请填写标签名称")
+    const duplicate = await database.tag.findFirst({
+      where: { ledgerId, name, id: { not: tag.id } },
+    })
+    if (duplicate) throw new BadRequestException("同名标签已经存在")
+    return database.tag.update({
+      where: { id: tag.id },
+      data: {
+        name,
+        color: this.tagColor(input?.color, tag.color),
+        ...(input?.enabled === undefined
+          ? {}
+          : { enabled: Boolean(input.enabled) }),
+      },
+    })
+  }
+
+  async updateTag(id: unknown, input: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.updateTagWithDatabase(database, ledgerId, id, input),
+    )
+  }
+
+  private async deleteTagWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: unknown,
+  ) {
+    const tag = await database.tag.findFirst({
+      where: { id: clean(id, 100), ledgerId },
+      include: { _count: { select: { transactions: true } } },
+    })
+    if (!tag) throw new NotFoundException("标签不存在")
+    await database.tag.delete({ where: { id: tag.id } })
+    return { id: tag.id, detachedTransactions: tag._count.transactions }
+  }
+
+  async deleteTag(id: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.deleteTagWithDatabase(database, ledgerId, id),
+    )
   }
 
   private async financeAccount(
@@ -1069,7 +1391,14 @@ export class LedgerService {
       secondaryIcon: cleanIcon(record?.secondaryIcon, "tag"),
     }))
     const created: any[] = []
-    for (const record of normalized) {
+    for (let index = 0; index < normalized.length; index += 1) {
+      const record = normalized[index]
+      const source = records[index]
+      const tagIds = await this.resolveTransactionTagIds(
+        database,
+        ledgerId,
+        source,
+      )
       await database.project.upsert({
         where: { ledgerId_name: { ledgerId, name: record.item } },
         update: { enabled: true },
@@ -1109,10 +1438,14 @@ export class LedgerService {
           category1: record.category1,
           category2: record.category2,
           note: record.note,
+          tags: {
+            create: tagIds.map((tagId) => ({ tagId })),
+          },
         },
         include: {
           account: { select: { name: true } },
           category: { select: { primaryIcon: true, secondaryIcon: true } },
+          tags: { include: { tag: true } },
         },
       })
       created.push(this.serialize(row))
@@ -1150,7 +1483,10 @@ export class LedgerService {
   ) {
     const existingRow = await database.transaction.findFirst({
       where: { id: Number(id), ledgerId },
-      include: { account: { select: { name: true } } },
+      include: {
+        account: { select: { name: true } },
+        tags: { include: { tag: true } },
+      },
     })
     const existing = existingRow ? this.serialize(existingRow) : null
     if (!existing) throw new Error(`未找到编号为 ${id} 的账目`)
@@ -1189,6 +1525,11 @@ export class LedgerService {
         secondaryIcon: cleanIcon(changes?.secondaryIcon, "tag"),
       },
     })
+    const hasTagChanges =
+      Array.isArray(changes?.tagIds) || Array.isArray(changes?.tagNames)
+    const tagIds = hasTagChanges
+      ? await this.resolveTransactionTagIds(database, ledgerId, changes)
+      : []
     const row = await database.transaction.update({
       where: { id: Number(id) },
       data: {
@@ -1200,10 +1541,19 @@ export class LedgerService {
         category2: merged.category2,
         note: merged.note,
         ...(changes.accountId ? { accountId: changes.accountId } : {}),
+        ...(hasTagChanges
+          ? {
+              tags: {
+                deleteMany: {},
+                create: tagIds.map((tagId) => ({ tagId })),
+              },
+            }
+          : {}),
       },
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
       },
     })
     await database.auditLog.create({
@@ -1380,6 +1730,34 @@ export class LedgerService {
             ledgerId,
             proposal.accountId,
             proposal.changes || {},
+          ),
+        })
+      else if (proposal?.type === "tag-create")
+        results.push({
+          type: "tag-create",
+          tag: await this.createTagWithDatabase(
+            database,
+            ledgerId,
+            proposal.tag || {},
+          ),
+        })
+      else if (proposal?.type === "tag-update")
+        results.push({
+          type: "tag-update",
+          tag: await this.updateTagWithDatabase(
+            database,
+            ledgerId,
+            proposal.tagId,
+            proposal.changes || {},
+          ),
+        })
+      else if (proposal?.type === "tag-delete")
+        results.push({
+          type: "tag-delete",
+          result: await this.deleteTagWithDatabase(
+            database,
+            ledgerId,
+            proposal.tagId,
           ),
         })
       else if (proposal?.type === "transfer")

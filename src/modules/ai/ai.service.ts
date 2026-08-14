@@ -26,6 +26,7 @@ const EDITABLE_FIELDS = [
   "category1",
   "category2",
   "accountId",
+  "tagNames",
   "note",
 ] as const
 const FIELD_LABELS: Record<(typeof EDITABLE_FIELDS)[number], string> = {
@@ -36,6 +37,7 @@ const FIELD_LABELS: Record<(typeof EDITABLE_FIELDS)[number], string> = {
   category1: "一级分类",
   category2: "二级分类",
   accountId: "账户",
+  tagNames: "标签",
   note: "备注",
 }
 const displayFieldValue = (
@@ -46,7 +48,9 @@ const displayFieldValue = (
     ? value === "income"
       ? "收入"
       : "支出"
-    : String(value || "空")
+    : Array.isArray(value)
+      ? value.join("、") || "空"
+      : String(value || "空")
 
 @Injectable()
 export class AiService {
@@ -114,6 +118,22 @@ export class AiService {
         category1: normalized.category1,
         category2: normalized.category2,
         ...(source.accountId ? { accountId: String(source.accountId) } : {}),
+        tagNames: [
+          ...new Set(
+            (Array.isArray(source.tagNames)
+              ? source.tagNames
+              : Array.isArray(source.tags)
+                ? source.tags.map((tag: any) => tag?.name)
+                : []
+            )
+              .map((value: unknown) =>
+                String(value || "")
+                  .trim()
+                  .slice(0, 40),
+              )
+              .filter(Boolean),
+          ),
+        ].slice(0, 8),
         ...(source.primaryIcon && /^[a-z0-9-]{1,40}$/.test(source.primaryIcon)
           ? { primaryIcon: source.primaryIcon }
           : {}),
@@ -183,6 +203,9 @@ export class AiService {
         [
           "account-create",
           "account-update",
+          "tag-create",
+          "tag-update",
+          "tag-delete",
           "transfer",
           "liability-create",
           "liability-payment",
@@ -281,6 +304,34 @@ export class AiService {
             新名称: proposal.changes?.name,
             设为默认: proposal.changes?.isDefault,
             启用: proposal.changes?.enabled,
+          },
+        ]
+      if (proposal?.type === "tag-create")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "新增标签",
+            标签: proposal.tag?.name,
+            颜色: proposal.tag?.color || "默认",
+          },
+        ]
+      if (proposal?.type === "tag-update")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "修改标签",
+            标签: proposal.display?.tagName || proposal.tagId,
+            新名称: proposal.changes?.name,
+            颜色: proposal.changes?.color,
+            启用: proposal.changes?.enabled,
+          },
+        ]
+      if (proposal?.type === "tag-delete")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "删除标签",
+            标签: proposal.display?.tagName || proposal.tagId,
           },
         ]
       if (proposal?.type === "transfer")
@@ -633,6 +684,12 @@ export class AiService {
       return `新增账户“${proposal.account?.name || "未命名"}”`
     if (proposal?.type === "account-update")
       return `修改账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”`
+    if (proposal?.type === "tag-create")
+      return `新增标签“${proposal.tag?.name || "未命名"}”`
+    if (proposal?.type === "tag-update")
+      return `修改标签“${proposal.display?.tagName || proposal.tagId || "未命名"}”`
+    if (proposal?.type === "tag-delete")
+      return `删除标签“${proposal.display?.tagName || proposal.tagId || "未命名"}”`
     if (proposal?.type === "transfer")
       return `转账 ¥${Number(proposal.transfer?.amount || 0).toFixed(2)}`
     if (proposal?.type === "liability-create")

@@ -45,6 +45,7 @@ model Transaction {
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   liabilityPayments LiabilityPayment[]
+  tags      TransactionTag[]
 
   @@index([ledgerId, date(sort: Desc), id(sort: Desc)])
   @@index([ledgerId, category1, category2])
@@ -226,9 +227,22 @@ model Tag {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
 
   @@unique([ledgerId, name])
   @@map("tags")
+}
+
+model TransactionTag {
+  transactionId Int      @map("transaction_id")
+  tagId         String   @map("tag_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag           Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@index([tagId, transactionId])
+  @@map("transaction_tags")
 }
 
 model AiModelProfile {

@@ -9,6 +9,8 @@ export type Transaction = {
   secondaryIcon?: string
   accountId?: string
   accountName?: string
+  tagIds?: string[]
+  tags?: { id: string; name: string; color: string }[]
   note: string
 }
 export type Breakdown = {
@@ -77,6 +79,41 @@ export type Dictionaries = {
     type: string
     isDefault?: boolean
   }[]
+  tags?: { id: string; name: string; color: string }[]
+}
+export type LedgerTag = {
+  id: string
+  name: string
+  color: string
+  enabled: boolean
+  usageCount: number
+  periodCount: number
+  expense: number
+  income: number
+}
+export type TagPeriod = {
+  scope: "month" | "year"
+  period: string
+  month?: string
+  year?: string
+}
+export type TagOverview = TagPeriod & { tags: LedgerTag[] }
+export type TagAnalytics = {
+  scope: "month" | "year"
+  period: string
+  month?: string
+  year?: string
+  tag: { id: string; name: string; color: string; enabled: boolean }
+  summary: {
+    expense: number
+    income: number
+    count: number
+    expenseCount: number
+    averageExpense: number
+  }
+  series: { date: string; amount: number }[]
+  categories: { name: string; amount: number }[]
+  records: Transaction[]
 }
 export type FinanceAccount = {
   id: string

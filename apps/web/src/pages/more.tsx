@@ -32,6 +32,13 @@ const entries = [
     tone: "gold",
   },
   {
+    path: "/tags",
+    icon: <TagsOutlined />,
+    title: "消费标签",
+    description: "按场景、人物或目的查看相关消费",
+    tone: "blue",
+  },
+  {
     path: "/management",
     icon: <TagsOutlined />,
     title: "分类管理",

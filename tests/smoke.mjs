@@ -500,6 +500,107 @@ try {
     "测试账户",
   )
 
+  const hospitalityTag = await request("/api/tags", {
+    method: "POST",
+    body: JSON.stringify({ name: "人情请客", color: "#a4513f" }),
+  })
+  const friendsTag = await request("/api/tags", {
+    method: "POST",
+    body: JSON.stringify({ name: "朋友聚会", color: "#315f77" }),
+  })
+  const taggedRecord = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-12",
+      amount: 120,
+      direction: "expense",
+      item: "请朋友吃饭",
+      category1: "餐饮",
+      category2: "聚餐",
+      accountId: account.id,
+      tagIds: [hospitalityTag.id, friendsTag.id],
+    }),
+  })
+  assert.deepEqual(
+    taggedRecord.records[0].tags.map((tag) => tag.name).sort(),
+    ["人情请客", "朋友聚会"].sort(),
+  )
+  const tagOverview = await request("/api/tags?month=2026-08")
+  assert.equal(
+    tagOverview.tags.find((tag) => tag.id === hospitalityTag.id).expense,
+    120,
+  )
+  assert.equal(
+    (await request(`/api/tags/${hospitalityTag.id}?month=2026-08`)).summary
+      .expense,
+    120,
+  )
+  const yearlyTagAnalytics = await request(
+    `/api/tags/${hospitalityTag.id}?scope=year&period=2026`,
+  )
+  const yearlyTagOverview = await request("/api/tags?scope=year&period=2026")
+  assert.equal(yearlyTagAnalytics.scope, "year")
+  assert.equal(yearlyTagAnalytics.period, "2026")
+  assert.equal(yearlyTagAnalytics.summary.expense, 120)
+  assert.equal(yearlyTagAnalytics.series.length, 12)
+  assert.equal(yearlyTagAnalytics.series[7].amount, 120)
+  assert.equal(
+    yearlyTagOverview.tags.find((tag) => tag.id === hospitalityTag.id).expense,
+    120,
+  )
+  assert.equal(
+    (
+      await request(
+        `/api/transactions?tagId=${hospitalityTag.id}&month=2026-08&page=1&pageSize=20`,
+      )
+    ).total,
+    1,
+  )
+
+  const tagAgentConversationId = "smoke-agent-tags"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: tagAgentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: tagAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "tag-update",
+          tagId: hospitalityTag.id,
+          changes: { name: "人情往来" },
+          display: { tagName: "人情请客" },
+        },
+        {
+          type: "tag-delete",
+          tagId: friendsTag.id,
+          display: { tagName: "朋友聚会" },
+        },
+        {
+          type: "tag-create",
+          tag: { name: "纪念日", color: "#80558c" },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: tagAgentConversationId }),
+  })
+  const tagDictionaries = await request("/api/dictionaries")
+  assert.ok(tagDictionaries.tags.some((tag) => tag.name === "人情往来"))
+  assert.ok(tagDictionaries.tags.some((tag) => tag.name === "纪念日"))
+  assert.ok(!tagDictionaries.tags.some((tag) => tag.name === "朋友聚会"))
+  const taggedAfterAgent = await request(
+    `/api/transactions?query=请朋友吃饭&page=1&pageSize=20`,
+  )
+  assert.equal(taggedAfterAgent.records[0].id, taggedRecord.records[0].id)
+  assert.deepEqual(
+    taggedAfterAgent.records[0].tags.map((tag) => tag.name),
+    ["人情往来"],
+  )
+
   const financeAccount = await request("/api/finance/accounts", {
     method: "POST",
     body: JSON.stringify({
@@ -891,7 +992,7 @@ try {
   sessionCookie = firstUserCookie
 
   console.log(
-    "Smoke test passed: auth, long-lived session, user isolation, PostgreSQL health, profiles, CRUD, summaries, custom range, classification lifecycle, accounts, filtering, pagination, parser",
+    "Smoke test passed: auth, isolation, CRUD, summaries, categories, accounts, finance, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
   )
 } finally {
   await app.close()
