@@ -811,6 +811,433 @@ select {
 .analytics-custom-range .ant-card-body {
   padding-block: 14px !important;
 }
+.expense-structure-card {
+  overflow: hidden;
+}
+.expense-structure-card .ant-card-head-title h4 {
+  margin: 0 !important;
+  font-family: "Aptos Display", "Microsoft YaHei", sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.expense-structure-card .ant-card-head {
+  min-height: 64px;
+  border-bottom: 0 !important;
+}
+.expense-structure-card > .ant-card-body {
+  padding: 0 !important;
+}
+.expense-structure-summary {
+  display: grid;
+  min-height: 78px;
+  margin: 0 24px;
+  padding: 0 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  border: 1px solid #e1e8e3;
+  border-radius: 11px;
+  background: #f5f8f6;
+  color: #102f31;
+}
+.expense-structure-metric {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  padding: 15px clamp(14px, 2.4vw, 28px);
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.expense-structure-metric + .expense-structure-metric::before {
+  position: absolute;
+  top: 17px;
+  bottom: 17px;
+  left: 0;
+  width: 1px;
+  background: #dce5df;
+  content: "";
+}
+.expense-structure-metric span {
+  color: #70807b;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+.expense-structure-metric strong {
+  overflow: hidden;
+  color: #102f31;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: clamp(20px, 2.2vw, 29px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-structure-metric.expense strong {
+  color: #c65f43;
+}
+.expense-structure-metric.income strong,
+.expense-structure-metric strong.positive {
+  color: #176b62;
+}
+.expense-structure-metric strong.negative {
+  color: #c65f43;
+}
+.expense-structure-main {
+  display: grid;
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 34px 28px 30px;
+  grid-template-columns: minmax(380px, 0.95fr) minmax(420px, 1.05fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 64px);
+}
+.expense-donut-figure {
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+}
+.expense-donut-wrap {
+  position: relative;
+  width: min(100%, 420px);
+  margin: 0 auto;
+  aspect-ratio: 360 / 250;
+}
+.expense-donut {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 12px 18px rgba(16, 47, 49, 0.07));
+}
+.expense-donut-track,
+.expense-donut-segment,
+.expense-budget-track,
+.expense-budget-progress {
+  fill: none;
+  transform: rotate(-90deg);
+  transform-origin: 110px 110px;
+}
+.expense-donut-track {
+  stroke: #edf1ee;
+  stroke-width: 28px;
+}
+.expense-donut-segment {
+  stroke-width: 28px;
+  cursor: pointer;
+  transition:
+    opacity 0.18s ease,
+    stroke-width 0.18s ease,
+    filter 0.18s ease;
+}
+.expense-donut-segment:hover,
+.expense-donut-segment.active {
+  stroke-width: 34px;
+  filter: drop-shadow(0 2px 2px rgba(16, 47, 49, 0.16));
+}
+.expense-donut-segment.muted {
+  opacity: 0.28;
+}
+.expense-donut-segment.is-other {
+  cursor: default;
+}
+.expense-donut-segment:focus-visible {
+  outline: none;
+  stroke-width: 34px;
+  filter: drop-shadow(0 0 3px rgba(23, 107, 98, 0.72));
+}
+.expense-donut-label {
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+.expense-donut-label.muted {
+  opacity: 0.28;
+}
+.expense-donut-label.is-other {
+  cursor: default;
+}
+.expense-donut-label path {
+  fill: none;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.expense-donut-label text {
+  pointer-events: none;
+  font-family: Aptos, "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+}
+.expense-donut-label-name {
+  fill: #243936;
+  font-weight: 650;
+}
+.expense-donut-label-share {
+  fill: #7c8a86;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.expense-donut-label:hover .expense-donut-label-name,
+.expense-donut-label.active .expense-donut-label-name {
+  fill: #102f31;
+}
+.expense-budget-track,
+.expense-budget-progress {
+  stroke-width: 5px;
+}
+.expense-budget-track {
+  stroke: #e4eae5;
+}
+.expense-budget-progress {
+  stroke: #c99748;
+  stroke-linecap: round;
+}
+.expense-budget-progress.over {
+  stroke: #c65f43;
+}
+.expense-donut-center {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: flex;
+  width: 112px;
+  transform: translate(-50%, -50%);
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.expense-donut-center span {
+  max-width: 100%;
+  overflow: hidden;
+  color: #53635f;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-donut-center strong {
+  max-width: 150px;
+  color: #102f31;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: clamp(17px, 2vw, 23px);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+.expense-donut-center small {
+  color: #7c8a86;
+  font-size: 11px;
+}
+.expense-donut-figure figcaption {
+  min-height: 22px;
+  margin-top: 2px;
+  color: #7c8a86;
+  font-size: 11px;
+}
+.expense-budget-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.expense-budget-caption i {
+  width: 18px;
+  height: 4px;
+  border-radius: 4px;
+  background: #c99748;
+}
+.expense-budget-caption i.over {
+  background: #c65f43;
+}
+.expense-category-ledger {
+  min-width: 0;
+}
+.expense-category-ledger-head {
+  display: flex;
+  min-height: 42px;
+  padding: 0 10px 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #dfe6e1;
+}
+.expense-category-ledger-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.expense-category-ledger-head > div .ant-typography:last-child {
+  font-size: 11px;
+}
+.expense-category-ledger-head > .ant-typography {
+  font-family: Bahnschrift, "SFMono-Regular", monospace;
+  font-size: 11px;
+}
+.expense-category-ledger ul {
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
+}
+.expense-category-row {
+  display: grid;
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 10px;
+  grid-template-columns: 4px 28px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+button.expense-category-row {
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+button.expense-category-row:hover,
+button.expense-category-row.active {
+  background: #f1f6f3;
+}
+button.expense-category-row:focus-visible,
+.expense-secondary-row:focus-visible {
+  outline: 3px solid rgba(23, 107, 98, 0.22);
+  outline-offset: -2px;
+}
+.expense-category-row.is-other {
+  grid-template-columns: 4px 28px minmax(0, 1fr) auto 14px;
+}
+.expense-category-color {
+  width: 4px;
+  height: 30px;
+  border-radius: 4px;
+}
+.expense-category-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.expense-category-name {
+  overflow: hidden;
+  color: #243936;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-category-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #e8ede9;
+}
+.expense-category-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.expense-category-values {
+  display: flex;
+  min-width: 102px;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.expense-category-values strong {
+  color: #243936;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: 14px;
+}
+.expense-category-values small {
+  color: #7c8a86;
+  font-size: 11px;
+}
+.expense-category-row > .anticon {
+  color: #9caaa5;
+  font-size: 11px;
+}
+.expense-structure-drilldown {
+  padding: 22px 28px 26px;
+  border-top: 1px solid #e1e8e3;
+  background:
+    linear-gradient(90deg, rgba(23, 107, 98, 0.035) 1px, transparent 1px) 0 0 /
+      42px 100%,
+    #f7f9f7;
+}
+.expense-drilldown-head {
+  display: flex;
+  width: min(100%, 1064px);
+  margin: 0 auto 14px;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.expense-drilldown-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.expense-drilldown-head h5 {
+  margin: 0 !important;
+}
+.expense-secondary-grid {
+  display: grid;
+  width: min(100%, 1064px);
+  margin: 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.expense-secondary-row {
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 11px;
+  grid-template-columns: 28px minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #dfe7e2;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.88);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+.expense-secondary-row:hover {
+  border-color: #b8cec4;
+  background: #fff;
+}
+.expense-secondary-row > span:nth-child(2) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.expense-secondary-row > span strong {
+  overflow: hidden;
+  color: #243936;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-secondary-row small {
+  color: #7c8a86;
+  font-size: 10px;
+}
+.expense-secondary-row b {
+  color: #176b62;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.expense-secondary-row > .anticon {
+  color: #9caaa5;
+  font-size: 10px;
+}
 .expense-calendar-card .ant-card-body {
   padding-top: 18px;
 }
@@ -1118,7 +1545,7 @@ select {
   margin-top: 12px;
   line-height: 1.6;
 }
-.mobile-trend-values {
+.mobile-trend-summary {
   display: none;
 }
 .chart-single-summary {
@@ -1631,6 +2058,9 @@ select {
 .finance-transfer-item {
   gap: 14px;
 }
+.finance-transfer-side {
+  flex: 0 0 auto;
+}
 .finance-account-main,
 .finance-account-copy,
 .finance-transfer-route,
@@ -2070,6 +2500,12 @@ select {
   .app-content {
     padding: 16px 16px 96px;
   }
+  .expense-structure-main {
+    grid-template-columns: 1fr;
+  }
+  .expense-secondary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .transaction-filter-secondary {
     flex-wrap: wrap;
     align-items: flex-start;
@@ -2133,6 +2569,17 @@ select {
   .finance-transfer-item {
     align-items: center;
     padding-block: 13px;
+  }
+  .finance-transfer-item {
+    flex-wrap: wrap;
+  }
+  .finance-transfer-route {
+    width: 100%;
+  }
+  .finance-transfer-side {
+    width: 100%;
+    padding-inline-start: 50px;
+    justify-content: space-between;
   }
   .finance-account-item > .ant-flex:last-child {
     flex: 0 0 auto;
@@ -2229,44 +2676,82 @@ select {
     grid-template-columns: 1fr;
     gap: 0;
   }
-  .mobile-trend-values {
+  .mobile-trend-summary {
     display: block;
-    margin-top: 14px;
-    padding-top: 13px;
+    margin-top: 12px;
+    padding-top: 14px;
     border-top: 1px solid #e5ebe7;
   }
-  .mobile-trend-values > .ant-flex .ant-typography:last-child {
-    font-size: 11px;
-  }
-  .mobile-trend-value-strip {
-    display: flex;
-    margin-top: 9px;
-    padding: 1px 1px 7px;
+  .mobile-trend-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
-    scrollbar-width: thin;
-    scrollbar-color: #b9c9c2 transparent;
   }
-  .mobile-trend-value {
+  .mobile-trend-stat-grid > div {
     display: flex;
-    min-width: 106px;
-    padding: 8px 10px;
-    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 66px;
+    padding: 10px;
     flex-direction: column;
-    gap: 2px;
+    justify-content: space-between;
+    gap: 5px;
     border: 1px solid #dce7e1;
     border-radius: 9px;
-    background: #f2f7f4;
-    scroll-snap-align: start;
+    background: #f5f8f6;
     font-variant-numeric: tabular-nums;
   }
-  .mobile-trend-value .ant-typography:first-child {
+  .mobile-trend-stat-grid span {
+    color: #76837f;
     font-size: 11px;
   }
-  .mobile-trend-value .ant-typography:last-child {
-    color: #176b62;
+  .mobile-trend-stat-grid strong {
+    overflow: hidden;
+    color: #173c39;
+    font-family: Bahnschrift, "DIN Alternate", sans-serif;
+    font-size: 15px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-trend-stat-grid > div:last-child strong {
+    color: #c65f43;
+  }
+  .mobile-trend-insight {
+    display: flex;
+    min-height: 46px;
+    margin-top: 9px;
+    padding: 7px 6px 7px 11px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-left: 3px solid #c65f43;
+    border-radius: 7px;
+    background: #fbf5f2;
+  }
+  .mobile-trend-insight > div {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 7px;
+  }
+  .mobile-trend-insight i {
+    width: 7px;
+    height: 7px;
+    margin-top: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #c65f43;
+  }
+  .mobile-trend-insight .ant-typography {
+    color: #5e6865;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .mobile-trend-insight .ant-btn {
+    height: auto;
+    padding-inline: 6px;
+    flex: 0 0 auto;
+    font-size: 12px;
   }
   .category-icon-form-grid {
     grid-template-columns: 1fr;
@@ -2426,6 +2911,70 @@ select {
   .analytics-range-drawer .ant-drawer-body {
     padding-top: 12px;
   }
+  .expense-structure-card .ant-card-head {
+    padding-inline: 16px;
+  }
+  .expense-structure-card .ant-card-head-title {
+    padding-block: 14px;
+  }
+  .expense-structure-card .ant-card-extra {
+    display: none;
+  }
+  .expense-structure-summary {
+    min-height: 78px;
+    margin-inline: 12px;
+    padding: 0 8px;
+  }
+  .expense-structure-metric {
+    padding: 15px 10px;
+  }
+  .expense-structure-metric + .expense-structure-metric::before {
+    top: 17px;
+    bottom: 17px;
+  }
+  .expense-structure-metric span {
+    font-size: 10px;
+  }
+  .expense-structure-metric strong {
+    font-size: clamp(15px, 4.5vw, 20px);
+  }
+  .expense-structure-main {
+    padding: 22px 14px 18px;
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .expense-donut-wrap {
+    width: min(100%, 340px);
+  }
+  .expense-donut-center strong {
+    font-size: 19px;
+  }
+  .expense-category-ledger-head {
+    padding-inline: 8px;
+  }
+  .expense-category-row {
+    padding-inline: 7px;
+    grid-template-columns: 4px 28px minmax(0, 1fr) auto 12px;
+    gap: 8px;
+  }
+  .expense-category-row.is-other {
+    grid-template-columns: 4px 28px minmax(0, 1fr) auto 12px;
+  }
+  .expense-category-values {
+    min-width: 88px;
+  }
+  .expense-structure-drilldown {
+    padding: 18px 14px 20px;
+  }
+  .expense-drilldown-head {
+    align-items: center;
+  }
+  .expense-drilldown-head .ant-btn {
+    padding-inline: 6px;
+  }
+  .expense-secondary-grid {
+    grid-template-columns: 1fr;
+  }
   .expense-calendar-card .ant-card-body {
     padding: 14px !important;
   }
@@ -2570,6 +3119,18 @@ select {
   }
   .category-breakdown-share {
     font-size: 11px;
+  }
+  .expense-category-row {
+    min-height: 52px;
+  }
+  .expense-category-values {
+    min-width: 78px;
+  }
+  .expense-category-values strong {
+    font-size: 13px;
+  }
+  .expense-category-ledger-head > .ant-typography {
+    display: none;
   }
   .budget-toolbar .ant-card-body > .ant-flex > .ant-flex:last-child {
     grid-template-columns: 1fr 1fr;

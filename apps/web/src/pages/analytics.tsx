@@ -1,8 +1,6 @@
 import {
-  ArrowDownOutlined,
   ArrowLeftOutlined,
   ArrowRightOutlined,
-  ArrowUpOutlined,
   CalendarOutlined,
 } from "@ant-design/icons"
 import { Column, Line } from "@ant-design/plots"
@@ -28,7 +26,7 @@ import {
   Typography,
 } from "antd"
 import dayjs from "dayjs"
-import { useEffect, useMemo, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   api,
@@ -38,11 +36,18 @@ import {
   type Transaction,
 } from "@/lib/api"
 import { compactMoney, money } from "@/lib/utils"
-import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 import { CategoryIcon } from "@/components/category-icon"
+import { ExpenseCategoryOverview } from "@/components/expense-category-overview"
 
 type Scope = "day" | "week" | "month" | "year"
 type TransactionPage = { records: Transaction[]; total: number }
+type TrendChartRow = {
+  key: string
+  period: string
+  amount: number
+  start?: string
+  end?: string
+}
 const analyticsFilterKey = "qing-zhang-analytics-filter"
 type RangeAnalytics = {
   start: string
@@ -75,6 +80,51 @@ const dateText = (value: string) =>
   }).format(dayjs(value).toDate())
 const rangeText = (range: [string, string]) =>
   `${dateText(range[0])} — ${dateText(range[1])}`
+
+function mobileTrendRows(rows: TrendChartRow[]) {
+  if (rows.length <= 14) return rows
+
+  if (rows.length <= 45) {
+    const groups: TrendChartRow[] = []
+    for (let index = 0; index < rows.length; index += 7) {
+      const chunk = rows.slice(index, index + 7)
+      const start = chunk[0].key
+      const end = chunk[chunk.length - 1].key
+      const startDate = dayjs(start)
+      const endDate = dayjs(end)
+      groups.push({
+        key: start,
+        start,
+        end,
+        period:
+          startDate.month() === endDate.month()
+            ? `${startDate.format("M/D")}–${endDate.format("D")}`
+            : `${startDate.format("M/D")}–${endDate.format("M/D")}`,
+        amount: chunk.reduce((sum, row) => sum + row.amount, 0),
+      })
+    }
+    return groups
+  }
+
+  const months = new Map<string, TrendChartRow>()
+  for (const row of rows) {
+    const month = row.key.slice(0, 7)
+    const existing = months.get(month)
+    if (existing) {
+      existing.amount += row.amount
+      existing.end = row.key
+    } else {
+      months.set(month, {
+        key: month,
+        start: row.key,
+        end: row.key,
+        period: dayjs(`${month}-01`).format("M月"),
+        amount: row.amount,
+      })
+    }
+  }
+  return [...months.values()]
+}
 
 export function AnalyticsPage() {
   const [params, setParams] = useSearchParams()
@@ -247,14 +297,23 @@ export function AnalyticsPage() {
   const secondaryRows: Breakdown[] =
     customData?.secondaryBreakdown || data.secondaryBreakdowns[scope]
   const activeFlow = customData?.cashflow || data.cashflow[scope]
-  const comparison = customData?.comparison || data.comparison[scope]
   const comparisonRows =
     customData?.comparisonBreakdown || data.comparisonBreakdowns[scope] || []
-  const change = comparison.change
-  const chartData = trendRows.map((row: any) => ({
+  const rawChartData: TrendChartRow[] = trendRows.map((row: any) => ({
+    key: row.key,
     period: row.label,
     amount: row.amount,
   }))
+  const chartData = screens.md ? rawChartData : mobileTrendRows(rawChartData)
+  const peakChartAmount = Math.max(0, ...chartData.map((row) => row.amount))
+  const mobileTrendGranularity =
+    rawChartData.length > 45
+      ? "按月"
+      : rawChartData.length > 14
+        ? "按周"
+        : rawChartData.some((row) => row.key.length === 7)
+          ? "按月"
+          : "按日"
   const mobileLabelPeriods = new Set(
     chartData
       .filter((row) => row.amount > 0)
@@ -264,21 +323,29 @@ export function AnalyticsPage() {
   )
   const mobileAxisPeriods = new Set(
     chartData
-      .filter((_, index) => index % 4 === 0 || index === chartData.length - 1)
+      .filter(
+        (_, index) =>
+          chartData.length <= 7 ||
+          index % 4 === 0 ||
+          index === chartData.length - 1,
+      )
       .map((row) => row.period),
   )
   const columnConfig: any = {
     data: chartData,
     xField: "period",
     yField: "amount",
-    height: 300,
+    height: screens.md ? 300 : 230,
     autoFit: true,
     paddingTop: 30,
     paddingRight: 48,
     style: {
       radiusTopLeft: 5,
       radiusTopRight: 5,
-      fill: "#176b62",
+      fill: (row: TrendChartRow) =>
+        !screens.md && peakChartAmount > 0 && row.amount === peakChartAmount
+          ? "#c65f43"
+          : "#176b62",
       shadowColor: "transparent",
       shadowBlur: 0,
     },
@@ -316,10 +383,7 @@ export function AnalyticsPage() {
     (row) => row.category === requestedCategory,
   )
     ? requestedCategory
-    : primaryRows[0]?.category || ""
-  const focusedSecondaryRows = focusedCategory
-    ? secondaryRows.filter((row) => row.parent === focusedCategory)
-    : secondaryRows
+    : ""
   const contributionRows = comparisonRows.slice(0, 6)
   const budgetPaceRows =
     !customRange && data.budget
@@ -611,45 +675,43 @@ export function AnalyticsPage() {
             {mobileRangePicker}
           </Drawer>
         ))}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <Metric
-            title="周期支出"
-            value={activeFlow.expense}
-            trend={change}
-            trendLabel={
-              change == null
-                ? "暂无可比数据"
-                : change === 0
-                  ? "与上一周期持平"
-                  : `较上一周期${change > 0 ? "增加" : "减少"} ${Math.abs(change * 100).toFixed(1)}%`
-            }
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <Metric title="周期收入" value={activeFlow.income} />
-        </Col>
-        <Col xs={24} md={8}>
-          <Metric
-            title="净结余"
-            value={activeFlow.balance}
-            valueStyle={{
-              color: activeFlow.balance < 0 ? "#c65f43" : "#176b62",
-            }}
-          />
-        </Col>
-      </Row>
+      <ExpenseCategoryOverview
+        rows={primaryRows}
+        secondaryRows={secondaryRows}
+        expense={activeFlow.expense}
+        income={activeFlow.income}
+        balance={activeFlow.balance}
+        selectedCategory={focusedCategory}
+        budgetUsageRate={
+          !customRange && scope === "month" ? data.budget?.usageRate : undefined
+        }
+        onSelectedCategoryChange={(category) =>
+          setParam("focusCategory", category)
+        }
+        onOpenPrimary={(category) =>
+          navigate(
+            `/transactions?start=${activeRange[0]}&end=${activeRange[1]}&category1=${encodeURIComponent(category)}`,
+          )
+        }
+        onOpenSecondary={(parent, category) =>
+          navigate(
+            `/transactions?start=${activeRange[0]}&end=${activeRange[1]}&category1=${encodeURIComponent(parent)}&category2=${encodeURIComponent(category)}`,
+          )
+        }
+      />
       <Card
         title="支出趋势"
         extra={
           <Typography.Text type="secondary">
-            {customData
-              ? customData.days > 120
-                ? "自定义范围按月"
-                : "自定义范围按日"
-              : scope === "year"
-                ? "本年按月"
-                : "当前范围按日"}
+            {!screens.md
+              ? `当前范围${mobileTrendGranularity}`
+              : customData
+                ? customData.days > 120
+                  ? "自定义范围按月"
+                  : "自定义范围按日"
+                : scope === "year"
+                  ? "本年按月"
+                  : "当前范围按日"}
           </Typography.Text>
         }
       >
@@ -658,53 +720,26 @@ export function AnalyticsPage() {
         ) : chartData.length ? (
           <>
             <Column {...columnConfig} />
-            {!screens.md && <MobileTrendValues rows={chartData} />}
-            <ChartSummary rows={chartData} />
+            {!screens.md && (
+              <MobileTrendSummary
+                rows={chartData}
+                onOpen={(row) => {
+                  const periodQuery =
+                    row.start && row.end && row.start !== row.end
+                      ? `start=${row.start}&end=${row.end}`
+                      : row.key.length === 7
+                        ? `month=${row.key}`
+                        : `date=${row.key}`
+                  navigate(`/transactions?${periodQuery}&direction=expense`)
+                }}
+              />
+            )}
+            {screens.md && <ChartSummary rows={chartData} />}
           </>
         ) : (
           <Empty />
         )}
       </Card>
-      <Row gutter={[20, 20]}>
-        <Col xs={24} xl={12}>
-          <Card title="一级分类支出">
-            {primaryRows.length ? (
-              <CategoryBreakdownBars
-                rows={primaryRows}
-                onCategoryClick={(row) =>
-                  setParam("focusCategory", row.category)
-                }
-              />
-            ) : (
-              <Empty />
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} xl={12}>
-          <Card
-            title={
-              focusedCategory ? `${focusedCategory} · 二级分类` : "二级分类支出"
-            }
-          >
-            {focusedSecondaryRows.length ? (
-              <CategoryBreakdownBars
-                rows={focusedSecondaryRows}
-                onCategoryClick={(row) =>
-                  navigate(
-                    `/transactions?start=${activeRange[0]}&end=${activeRange[1]}&category1=${encodeURIComponent(row.parent || focusedCategory)}&category2=${encodeURIComponent(row.category)}`,
-                  )
-                }
-              />
-            ) : (
-              <Empty
-                description={
-                  focusedCategory ? "该分类暂无二级支出" : "暂无二级分类"
-                }
-              />
-            )}
-          </Card>
-        </Col>
-      </Row>
       {contributionRows.length > 0 && (
         <Card
           title="分类变化贡献"
@@ -1079,28 +1114,52 @@ function ChartSummary({
   )
 }
 
-function MobileTrendValues({
+function MobileTrendSummary({
   rows,
+  onOpen,
 }: {
-  rows: { period: string; amount: number }[]
+  rows: TrendChartRow[]
+  onOpen: (row: TrendChartRow) => void
 }) {
   const active = rows.filter((row) => row.amount > 0)
   if (!active.length) return null
+  const total = active.reduce((sum, row) => sum + row.amount, 0)
+  const peak = active.reduce((highest, row) =>
+    row.amount > highest.amount ? row : highest,
+  )
+  const concentration = total ? (peak.amount / total) * 100 : 0
   return (
-    <div className="mobile-trend-values" aria-label="有支出的日期和金额">
-      <Flex justify="space-between" align="baseline" gap={12}>
-        <Typography.Text strong>有支出的日期</Typography.Text>
-        {active.length > 4 && (
-          <Typography.Text type="secondary">左右滑动查看全部</Typography.Text>
-        )}
-      </Flex>
-      <div className="mobile-trend-value-strip">
-        {active.map((row) => (
-          <div className="mobile-trend-value" key={row.period}>
-            <Typography.Text type="secondary">{row.period}</Typography.Text>
-            <Typography.Text strong>{money(row.amount)}</Typography.Text>
-          </div>
-        ))}
+    <div className="mobile-trend-summary" aria-label="支出趋势摘要">
+      <div className="mobile-trend-stat-grid">
+        <div>
+          <span>本期支出</span>
+          <strong>{compactMoney(total)}</strong>
+        </div>
+        <div>
+          <span>最高支出</span>
+          <strong>{peak.period}</strong>
+        </div>
+        <div>
+          <span>集中度</span>
+          <strong>{concentration.toFixed(1)}%</strong>
+        </div>
+      </div>
+      <div className="mobile-trend-insight">
+        <div>
+          <i aria-hidden="true" />
+          <Typography.Text>
+            <strong>{peak.period}</strong> 支出 {money(peak.amount)}，占本期
+            {concentration.toFixed(1)}%。
+          </Typography.Text>
+        </div>
+        <Button
+          type="link"
+          icon={<ArrowRightOutlined />}
+          iconPosition="end"
+          onClick={() => onOpen(peak)}
+        >
+          查看账目
+        </Button>
       </div>
     </div>
   )
@@ -1159,44 +1218,5 @@ function CategoryContribution({ rows }: { rows: BreakdownChange[] }) {
         </div>
       ))}
     </div>
-  )
-}
-
-function Metric({
-  title,
-  value,
-  trend,
-  trendLabel,
-  valueStyle,
-}: {
-  title: string
-  value: number | null
-  trend?: number | null
-  trendLabel?: string
-  valueStyle?: CSSProperties
-}) {
-  const trendColor =
-    trend == null || trend === 0 ? undefined : trend > 0 ? "#c65f43" : "#4d7a5a"
-  return (
-    <Card>
-      <Statistic
-        title={title}
-        value={value ?? 0}
-        formatter={value == null ? () => "—" : undefined}
-        precision={value == null ? undefined : 2}
-        prefix={value == null ? undefined : "¥"}
-        valueStyle={valueStyle || { color: trendColor }}
-      />
-      <Flex gap={6} align="center">
-        {trend != null &&
-          trend !== 0 &&
-          (trend > 0 ? (
-            <ArrowUpOutlined style={{ color: "#c65f43" }} />
-          ) : (
-            <ArrowDownOutlined style={{ color: "#4d7a5a" }} />
-          ))}
-        <Typography.Text type="secondary">{trendLabel || ""}</Typography.Text>
-      </Flex>
-    </Card>
   )
 }
