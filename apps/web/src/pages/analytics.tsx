@@ -255,6 +255,18 @@ export function AnalyticsPage() {
     period: row.label,
     amount: row.amount,
   }))
+  const mobileLabelPeriods = new Set(
+    chartData
+      .filter((row) => row.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3)
+      .map((row) => row.period),
+  )
+  const mobileAxisPeriods = new Set(
+    chartData
+      .filter((_, index) => index % 4 === 0 || index === chartData.length - 1)
+      .map((row) => row.period),
+  )
   const columnConfig: any = {
     data: chartData,
     xField: "period",
@@ -271,8 +283,10 @@ export function AnalyticsPage() {
       shadowBlur: 0,
     },
     label: {
-      text: (row: { amount: number }) =>
-        row.amount ? compactMoney(row.amount) : "",
+      text: (row: { period: string; amount: number }) =>
+        row.amount && (screens.md || mobileLabelPeriods.has(row.period))
+          ? compactMoney(row.amount)
+          : "",
       position: "top",
       textBaseline: "bottom",
       dy: -5,
@@ -281,6 +295,10 @@ export function AnalyticsPage() {
       transform: [{ type: "overlapHide" }],
     },
     axis: {
+      x: {
+        labelFormatter: (value: string) =>
+          screens.md || mobileAxisPeriods.has(value) ? value : "",
+      },
       y: { labelFormatter: (value: number) => compactMoney(value) },
     },
     tooltip: false,
@@ -640,6 +658,7 @@ export function AnalyticsPage() {
         ) : chartData.length ? (
           <>
             <Column {...columnConfig} />
+            {!screens.md && <MobileTrendValues rows={chartData} />}
             <ChartSummary rows={chartData} />
           </>
         ) : (
@@ -1057,6 +1076,33 @@ function ChartSummary({
       共支出 {money(total)}，最高支出出现在 {peak.period}，金额{" "}
       {money(peak.amount)}。
     </Typography.Text>
+  )
+}
+
+function MobileTrendValues({
+  rows,
+}: {
+  rows: { period: string; amount: number }[]
+}) {
+  const active = rows.filter((row) => row.amount > 0)
+  if (!active.length) return null
+  return (
+    <div className="mobile-trend-values" aria-label="有支出的日期和金额">
+      <Flex justify="space-between" align="baseline" gap={12}>
+        <Typography.Text strong>有支出的日期</Typography.Text>
+        {active.length > 4 && (
+          <Typography.Text type="secondary">左右滑动查看全部</Typography.Text>
+        )}
+      </Flex>
+      <div className="mobile-trend-value-strip">
+        {active.map((row) => (
+          <div className="mobile-trend-value" key={row.period}>
+            <Typography.Text type="secondary">{row.period}</Typography.Text>
+            <Typography.Text strong>{money(row.amount)}</Typography.Text>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
