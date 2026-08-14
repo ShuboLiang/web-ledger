@@ -50,7 +50,17 @@ type Message = {
   thinking?: string | null
 }
 type Proposal = {
-  type: "create" | "update" | "delete" | "category-icon"
+  type:
+    | "create"
+    | "update"
+    | "delete"
+    | "category-icon"
+    | "account-create"
+    | "account-update"
+    | "transfer"
+    | "liability-create"
+    | "liability-payment"
+    | "liability-settlement"
   id?: number
   records?: any[]
   current?: any
@@ -59,6 +69,14 @@ type Proposal = {
   category1?: string
   category2?: string
   icon?: string
+  account?: any
+  accountId?: string
+  transfer?: any
+  liability?: any
+  liabilityId?: string
+  payment?: any
+  settlement?: any
+  display?: any
   _humanEdited?: boolean
 }
 type AiResponse = {
@@ -94,6 +112,7 @@ type ProposalFormValues = {
   item: string
   category1: string
   category2: string
+  accountId?: string
   note?: string
 }
 type EditingProposal = {
@@ -408,46 +427,127 @@ export function AiPage() {
     })
   const proposalRows = useMemo(
     () =>
-      proposals.flatMap((proposal, proposalIndex) =>
-        proposal.type === "create"
-          ? (proposal.records || []).map((record, recordIndex) => ({
-              ...record,
-              label: "新增",
+      proposals.flatMap((proposal, proposalIndex) => {
+        if (proposal.type === "create")
+          return (proposal.records || []).map((record, recordIndex) => ({
+            ...record,
+            label: "新增",
+            proposalIndex,
+            recordIndex,
+            editable: true,
+            humanEdited: proposal._humanEdited,
+          }))
+        if (proposal.type === "category-icon")
+          return [
+            {
+              label: "分类图标",
+              item: proposal.category2
+                ? `${proposal.category1} / ${proposal.category2}`
+                : proposal.category1,
+              category1: proposal.category1,
+              category2: proposal.category2,
+              icon: proposal.icon,
               proposalIndex,
-              recordIndex,
-              editable: true,
-              humanEdited: proposal._humanEdited,
-            }))
-          : proposal.type === "category-icon"
-            ? [
-                {
-                  label: "分类图标",
-                  item: proposal.category2
-                    ? `${proposal.category1} / ${proposal.category2}`
-                    : proposal.category1,
-                  category1: proposal.category1,
-                  category2: proposal.category2,
-                  icon: proposal.icon,
-                  proposalIndex,
-                  editable: false,
-                  isIconOperation: true,
-                },
-              ]
-            : [
-              {
-                ...(proposal.current || {}),
-                ...(proposal.changes || {}),
-                direction:
-                  proposal.changes?.direction ||
-                  proposal.current?.direction ||
-                  (Number(proposal.current?.amount) > 0 ? "income" : "expense"),
-                label: proposal.type === "update" ? "修改" : "删除",
-                proposalIndex,
-                editable: proposal.type === "update",
-                humanEdited: proposal._humanEdited,
-              },
-            ],
-      ),
+              editable: false,
+              isIconOperation: true,
+            },
+          ]
+        if (proposal.type === "account-create")
+          return [
+            {
+              label: "新增账户",
+              item: proposal.account?.name,
+              amount: proposal.account?.openingBalance || 0,
+              detail: `账户类型：${proposal.account?.type || "未指定"}`,
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "account-update") {
+          const changes = [
+            proposal.changes?.name ? `名称改为“${proposal.changes.name}”` : "",
+            proposal.changes?.isDefault === true ? "设为默认账户" : "",
+            proposal.changes?.enabled === true ? "启用账户" : "",
+            proposal.changes?.enabled === false ? "停用账户" : "",
+          ].filter(Boolean)
+          return [
+            {
+              label: "修改账户",
+              item:
+                proposal.display?.accountName ||
+                proposal.accountId ||
+                "未指定账户",
+              detail: changes.join(" · ") || "更新账户信息",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
+        if (proposal.type === "transfer")
+          return [
+            {
+              label: "账户转账",
+              item: `${proposal.display?.fromAccountName || "转出账户"} → ${proposal.display?.toAccountName || "转入账户"}`,
+              amount: proposal.transfer?.amount,
+              date: proposal.transfer?.date,
+              detail: "仅移动资金，不计入收支",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "liability-create")
+          return [
+            {
+              label: "新增负债",
+              item: proposal.liability?.name,
+              amount: proposal.liability?.principal,
+              date: proposal.liability?.startDate,
+              detail: `${proposal.liability?.totalInstallments || 0} 期 · 首次还款 ${proposal.liability?.firstDueDate || ""}`,
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (
+          proposal.type === "liability-payment" ||
+          proposal.type === "liability-settlement"
+        ) {
+          const value = proposal.payment || proposal.settlement || {}
+          const amount =
+            proposal.type === "liability-settlement"
+              ? Number(proposal.display?.outstandingPrincipal || 0) +
+                Number(value.interest || 0) +
+                Number(value.fee || 0)
+              : Number(value.principal || 0) +
+                Number(value.interest || 0) +
+                Number(value.fee || 0)
+          return [
+            {
+              label:
+                proposal.type === "liability-payment" ? "偿还一期" : "提前结清",
+              item: proposal.display?.liabilityName || "负债计划",
+              amount,
+              date: value.date,
+              detail: `付款账户：${proposal.display?.sourceAccountName || value.sourceAccountId}`,
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
+        return [
+          {
+            ...(proposal.current || {}),
+            ...(proposal.changes || {}),
+            direction:
+              proposal.changes?.direction ||
+              proposal.current?.direction ||
+              (Number(proposal.current?.amount) > 0 ? "income" : "expense"),
+            label: proposal.type === "update" ? "修改" : "删除",
+            proposalIndex,
+            editable: proposal.type === "update",
+            humanEdited: proposal._humanEdited,
+          },
+        ]
+      }),
     [proposals],
   )
   const primaryCategories = useMemo(
@@ -496,6 +596,7 @@ export function AiPage() {
       item: row.item || "",
       category1: row.category1 || "",
       category2: row.category2 || "",
+      accountId: row.accountId || "",
       note: row.note || "",
     })
   }
@@ -756,7 +857,11 @@ export function AiPage() {
                           <Typography.Text
                             strong
                             type={
-                              row.direction === "income" ? "success" : "danger"
+                              row.isFinanceOperation
+                                ? undefined
+                                : row.direction === "income"
+                                  ? "success"
+                                  : "danger"
                             }
                           >
                             {row.amount ? money(Math.abs(row.amount)) : "—"}
@@ -789,7 +894,9 @@ export function AiPage() {
                     <Typography.Text type="secondary">
                       {row.isIconOperation
                         ? `将图标设置为 ${row.icon}`
-                        : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}`}
+                        : row.isFinanceOperation
+                          ? `${row.date || ""}${row.date && row.detail ? " · " : ""}${row.detail || ""}`
+                          : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}`}
                     </Typography.Text>
                   </Card>
                 </List.Item>
@@ -969,6 +1076,18 @@ export function AiPage() {
               />
             </Form.Item>
           </div>
+          {(dictionaries?.accounts?.length || 0) > 1 && (
+            <Form.Item label="付款账户" name="accountId">
+              <Select
+                allowClear
+                placeholder="不选则使用默认账户"
+                options={(dictionaries?.accounts || []).map((account) => ({
+                  value: account.id,
+                  label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+                }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
             <Input.TextArea rows={4} showCount maxLength={500} />
           </Form.Item>

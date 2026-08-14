@@ -1,6 +1,7 @@
 import {
   AppstoreOutlined,
   BarChartOutlined,
+  BankOutlined,
   BookOutlined,
   BookTwoTone,
   RobotOutlined,
@@ -46,6 +47,7 @@ const nav = [
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
   { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
+  { key: "/finance", label: "资产负债", icon: <BankOutlined /> },
   { key: "/ai", label: "AI 助手", icon: <RobotOutlined /> },
   { key: "/management", label: "分类管理", icon: <TagsOutlined /> },
   { key: "/settings", label: "设置", icon: <SettingOutlined /> },
@@ -59,6 +61,7 @@ const mobileNav = [
 const morePaths = new Set([
   "/more",
   "/budgets",
+  "/finance",
   "/ai",
   "/management",
   "/settings",
@@ -70,9 +73,10 @@ const titles: Record<string, [string, string]> = {
   "/analytics": ["统计分析", "比较周期、分类与长期变化"],
   "/ai": ["AI 助手", "用自然语言记账和查询"],
   "/budgets": ["预算规划", "控制本月总支出与重点分类"],
+  "/finance": ["资产与负债", "管理账户余额、资金转账和还款计划"],
   "/management": ["分类管理", "维护收支分类"],
   "/settings": ["系统设置", "管理 AI 模型和数据设置"],
-  "/more": ["更多功能", "管理预算、分类与应用设置"],
+  "/more": ["更多功能", "管理资产、预算、分类与应用设置"],
 }
 
 export function AppShell() {

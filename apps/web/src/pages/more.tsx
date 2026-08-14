@@ -1,4 +1,5 @@
 import {
+  BankOutlined,
   RightOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -9,6 +10,13 @@ import { Avatar, Card, List, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
 
 const entries = [
+  {
+    path: "/finance",
+    icon: <BankOutlined />,
+    title: "资产与负债",
+    description: "查看账户余额，管理转账、贷款、分期和提前结清",
+    tone: "mint",
+  },
   {
     path: "/ai",
     icon: <RobotOutlined />,

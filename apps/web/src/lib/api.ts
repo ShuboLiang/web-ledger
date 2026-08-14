@@ -71,7 +71,85 @@ export type Dictionaries = {
     primaryIcon: string
     secondaryIcon: string
   }[]
-  accounts?: { id: string; name: string; type: string }[]
+  accounts?: {
+    id: string
+    name: string
+    type: string
+    isDefault?: boolean
+  }[]
+}
+export type FinanceAccount = {
+  id: string
+  name: string
+  type: string
+  typeText: string
+  openingBalance: number
+  balance: number
+  isLiability: boolean
+  isDefault: boolean
+  enabled: boolean
+}
+export type FinanceInstallment = {
+  id: string
+  number: number
+  dueDate: string
+  principal: number
+  interest: number
+  fee: number
+  total: number
+  status: "planned" | "paid" | "cancelled"
+}
+export type FinanceLiability = {
+  id: string
+  accountId: string
+  name: string
+  kind: "loan" | "credit" | "installment"
+  status: "active" | "settled"
+  originalPrincipal: number
+  totalInterest: number
+  outstandingPrincipal: number
+  repaidPrincipal: number
+  startDate: string
+  firstDueDate: string
+  totalInstallments: number
+  settledAt?: string | null
+  nextInstallment?: FinanceInstallment | null
+  installments: FinanceInstallment[]
+  payments: {
+    id: string
+    date: string
+    principal: number
+    interest: number
+    fee: number
+    total: number
+    kind: "scheduled" | "early_settlement"
+    sourceAccountName: string
+  }[]
+}
+export type FinanceOverview = {
+  summary: {
+    assets: number
+    liabilities: number
+    netWorth: number
+    upcomingAmount: number
+  }
+  accounts: FinanceAccount[]
+  liabilities: FinanceLiability[]
+  upcoming: (FinanceInstallment & {
+    liabilityId: string
+    liabilityName: string
+  })[]
+  recentTransfers: {
+    id: string
+    date: string
+    amount: number
+    kind: "transfer" | "debt_drawdown" | "debt_payment"
+    note: string
+    fromAccountId: string
+    toAccountId: string
+    fromAccountName: string
+    toAccountName: string
+  }[]
 }
 export type AuthUser = { id: string; username: string; displayName: string }
 

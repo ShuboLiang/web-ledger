@@ -27,12 +27,14 @@
 - 近 14 日、8 周、12 月支出趋势。
 - 账目新增、查询、修改、删除 REST 接口。
 - `/dashboard`、`/transactions`、`/analytics`、`/ai`、`/management`、`/settings` 独立工作区。
+- `/finance` 资产与负债工作区：账户余额、账户转账、贷款/分期计划、按期还款和提前结清。
 - 桌面端侧栏与全局顶栏；移动端底部导航和中央记账入口。
 - 新增、编辑账目使用右侧 Drawer，取消不会触发表单必填校验。
 - URL 保存账目筛选、服务端分页/排序、多选、筛选保存和 CSV 导出。
 - 分析页同时展示一级与二级分类饼图、环比、每日支出日历和大额支出；日历按月切换，点击日期可查看当天账目，跨年范围由趋势图统一汇总。
 - AI 独立多轮对话工作区、Markdown 渲染和待确认操作栏。
 - 自然语言记账和账本问答。
+- AI 可查询资产负债，并提出新增/修改账户、转账、负债计划、还款和提前结清操作；写入前仍需确认。
 - 首次启动自动导入当前 `记账.xlsx` 对应的 10 笔初始数据。
 - 新项目和“一级分类 + 二级分类”组合自动去重加入字典。
 - 注册、登录和退出；登录会话在服务端不设过期时间，浏览器 Cookie 采用十年期限并可由退出操作立即吊销。
@@ -77,6 +79,13 @@ Pi 在应用里只能使用以下账本工具，不具备文件或命令工具�
 - `ledger_propose_create`：提出新增账目建议。
 - `ledger_propose_update`：提出修改建议。
 - `ledger_propose_delete`：提出删除建议。
+- `ledger_get_finance_overview`：查询账户余额、负债和近期应还。
+- `ledger_propose_account_create`：提出新增账户建议。
+- `ledger_propose_account_update`：提出账户改名、设为默认或启停建议。
+- `ledger_propose_transfer`：提出账户间转账建议，不计入收支。
+- `ledger_propose_liability_create`：提出贷款或分期计划建议。
+- `ledger_propose_liability_payment`：提出按期还款建议，本金不计入支出。
+- `ledger_propose_liability_settlement`：提出提前结清建议并取消未来分期。
 
 三个变更工具都只生成待确认操作；只有用户在网页点击“确认执行”后，后端才会写入数据库。
 

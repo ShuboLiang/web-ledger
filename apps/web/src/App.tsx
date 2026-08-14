@@ -23,6 +23,9 @@ const AnalyticsPage = lazy(() =>
 const BudgetsPage = lazy(() =>
   import("@/pages/budgets").then((module) => ({ default: module.BudgetsPage })),
 )
+const FinancePage = lazy(() =>
+  import("@/pages/finance").then((module) => ({ default: module.FinancePage })),
+)
 const AiPage = lazy(() =>
   import("@/pages/ai").then((module) => ({ default: module.AiPage })),
 )
@@ -70,6 +73,7 @@ export function App() {
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
+          <Route path="finance" element={<FinancePage />} />
           <Route path="ai" element={<AiPage />} />
           <Route path="management" element={<ManagementPage />} />
           <Route path="settings" element={<SettingsPage />} />

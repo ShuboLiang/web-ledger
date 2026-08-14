@@ -26,6 +26,7 @@ type FormValues = {
   item: string
   category1: string
   category2: string
+  accountId?: string
   note?: string
 }
 
@@ -83,6 +84,10 @@ export function TransactionDrawer({
       item: record?.item || "",
       category1,
       category2,
+      accountId:
+        record?.accountId ||
+        data?.accounts?.find((account) => account.isDefault)?.id ||
+        data?.accounts?.[0]?.id,
       note: record?.note || "",
     })
   }, [open, record, data])
@@ -107,7 +112,9 @@ export function TransactionDrawer({
       label: (
         <span className="category-select-label">
           <CategoryIcon
-            name={categories.find((row) => row.category1 === value)?.primaryIcon}
+            name={
+              categories.find((row) => row.category1 === value)?.primaryIcon
+            }
             size="small"
           />
           {value}
@@ -266,6 +273,20 @@ export function TransactionDrawer({
             />
           </Form.Item>
         </div>
+        {(data?.accounts?.length || 0) > 1 && (
+          <Form.Item
+            label="付款账户"
+            name="accountId"
+            extra="已自动选择默认账户，普通记账无需修改。"
+          >
+            <Select
+              options={(data?.accounts || []).map((account) => ({
+                value: account.id,
+                label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+              }))}
+            />
+          </Form.Item>
+        )}
         <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
           <Input.TextArea rows={4} showCount maxLength={500} />
         </Form.Item>

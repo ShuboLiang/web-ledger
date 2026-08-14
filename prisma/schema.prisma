@@ -19,6 +19,8 @@ model Ledger {
   projects     Project[]
   categories   Category[]
   accounts     Account[]
+  accountTransfers AccountTransfer[]
+  liabilities Liability[]
   budgets      Budget[]
   tags         Tag[]
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -42,6 +44,7 @@ model Transaction {
   ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  liabilityPayments LiabilityPayment[]
 
   @@index([ledgerId, date(sort: Desc), id(sort: Desc)])
   @@index([ledgerId, category1, category2])
@@ -91,15 +94,112 @@ model Account {
   name           String        @db.VarChar(80)
   type           String        @default("cash") @db.VarChar(30)
   openingBalance Decimal       @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  isDefault      Boolean       @default(false) @map("is_default")
   enabled        Boolean       @default(true)
   sortOrder      Int           @default(0) @map("sort_order")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   ledger         Ledger        @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
   transactions   Transaction[]
+  outgoingTransfers AccountTransfer[] @relation("TransferFrom")
+  incomingTransfers AccountTransfer[] @relation("TransferTo")
+  liabilities    Liability[]
+  liabilityPayments LiabilityPayment[] @relation("PaymentSource")
 
   @@unique([ledgerId, name])
   @@map("accounts")
+}
+
+model AccountTransfer {
+  id            String   @id @default(cuid())
+  ledgerId      String   @map("ledger_id")
+  date          DateTime @db.Date
+  amount        Decimal  @db.Decimal(14, 2)
+  fromAccountId String   @map("from_account_id")
+  toAccountId   String   @map("to_account_id")
+  kind          String   @default("transfer") @db.VarChar(30)
+  note          String   @default("") @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  ledger        Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  fromAccount   Account  @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount     Account  @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Restrict)
+  liabilityPayments LiabilityPayment[]
+
+  @@index([ledgerId, date(sort: Desc)])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@map("account_transfers")
+}
+
+model Liability {
+  id                String   @id @default(cuid())
+  ledgerId          String   @map("ledger_id")
+  accountId         String   @map("account_id")
+  name              String   @db.VarChar(80)
+  kind              String   @default("loan") @db.VarChar(30)
+  originalPrincipal Decimal  @map("original_principal") @db.Decimal(14, 2)
+  totalInterest     Decimal  @default(0) @map("total_interest") @db.Decimal(14, 2)
+  startDate         DateTime @map("start_date") @db.Date
+  firstDueDate      DateTime @map("first_due_date") @db.Date
+  totalInstallments Int      @map("total_installments")
+  status            String   @default("active") @db.VarChar(20)
+  settledAt         DateTime? @map("settled_at") @db.Date
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  ledger            Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  installments      LiabilityInstallment[]
+  payments          LiabilityPayment[]
+
+  @@unique([ledgerId, accountId])
+  @@index([ledgerId, status])
+  @@map("liabilities")
+}
+
+model LiabilityInstallment {
+  id          String   @id @default(cuid())
+  liabilityId String   @map("liability_id")
+  number      Int
+  dueDate     DateTime @map("due_date") @db.Date
+  principal   Decimal  @db.Decimal(14, 2)
+  interest    Decimal  @default(0) @db.Decimal(14, 2)
+  fee         Decimal  @default(0) @db.Decimal(14, 2)
+  status      String   @default("planned") @db.VarChar(20)
+  paymentId   String?  @map("payment_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  liability   Liability @relation(fields: [liabilityId], references: [id], onDelete: Cascade)
+  payment     LiabilityPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([liabilityId, number])
+  @@index([liabilityId, dueDate])
+  @@map("liability_installments")
+}
+
+model LiabilityPayment {
+  id                   String   @id @default(cuid())
+  liabilityId          String   @map("liability_id")
+  date                 DateTime @db.Date
+  sourceAccountId      String   @map("source_account_id")
+  principal            Decimal  @db.Decimal(14, 2)
+  interest             Decimal  @default(0) @db.Decimal(14, 2)
+  fee                  Decimal  @default(0) @db.Decimal(14, 2)
+  kind                 String   @default("scheduled") @db.VarChar(30)
+  note                 String   @default("") @db.VarChar(500)
+  transferId           String   @unique @map("transfer_id")
+  expenseTransactionId Int?     @map("expense_transaction_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  liability            Liability @relation(fields: [liabilityId], references: [id], onDelete: Cascade)
+  sourceAccount        Account @relation("PaymentSource", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  transfer             AccountTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  expenseTransaction   Transaction? @relation(fields: [expenseTransactionId], references: [id], onDelete: SetNull)
+  installments         LiabilityInstallment[]
+
+  @@index([liabilityId, date(sort: Desc)])
+  @@index([sourceAccountId])
+  @@map("liability_payments")
 }
 
 model Budget {

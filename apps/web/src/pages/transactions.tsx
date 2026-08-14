@@ -8,6 +8,7 @@ import {
   MoreOutlined,
   SettingOutlined,
   TagsOutlined,
+  WalletOutlined,
 } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -57,6 +58,7 @@ const columnLabels: Record<string, string> = {
   date: "日期",
   item: "项目",
   category: "分类",
+  account: "账户",
   amount: "金额",
 }
 const transactionFilterKeys = [
@@ -102,13 +104,20 @@ export function TransactionsPage() {
         date: true,
         item: true,
         category: true,
+        account: true,
         amount: true,
         ...JSON.parse(
           sessionStorage.getItem(transactionColumnsStorageKey) || "{}",
         ),
       }
     } catch {
-      return { date: true, item: true, category: true, amount: true }
+      return {
+        date: true,
+        item: true,
+        category: true,
+        account: true,
+        amount: true,
+      }
     }
   })
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -316,6 +325,19 @@ export function TransactionsPage() {
       ),
     },
     {
+      key: "account",
+      dataIndex: "accountName",
+      title: "账户",
+      width: 160,
+      hidden: !visible.account,
+      render: (value) => (
+        <span className="transaction-account-label">
+          <WalletOutlined />
+          <span>{value || "未指定账户"}</span>
+        </span>
+      ),
+    },
+    {
       key: "amount",
       dataIndex: "amount",
       title: "金额",
@@ -366,9 +388,17 @@ export function TransactionsPage() {
       if (current >= result.totalPages) break
     }
     const csv = [
-      "日期,项目,一级分类,二级分类,备注,金额",
+      "日期,项目,一级分类,二级分类,账户,备注,金额",
       ...rows.map((row) =>
-        [row.date, row.item, row.category1, row.category2, row.note, row.amount]
+        [
+          row.date,
+          row.item,
+          row.category1,
+          row.category2,
+          row.accountName || "",
+          row.note,
+          row.amount,
+        ]
           .map((value) => `"${String(value).replaceAll('"', '""')}"`)
           .join(","),
       ),
@@ -938,10 +968,18 @@ export function TransactionsPage() {
                   title={row.item}
                   description={
                     <span className="transaction-mobile-description">
-                      <span>{row.date}</span>
-                      <span>·</span>
-                      <CategoryIcon name={row.secondaryIcon} size="small" />
-                      <span>{row.category1} / {row.category2}</span>
+                      <span className="transaction-mobile-category-line">
+                        <span>{row.date}</span>
+                        <span>·</span>
+                        <CategoryIcon name={row.secondaryIcon} size="small" />
+                        <span>
+                          {row.category1} / {row.category2}
+                        </span>
+                      </span>
+                      <span className="transaction-account-label">
+                        <WalletOutlined />
+                        <span>{row.accountName || "未指定账户"}</span>
+                      </span>
                     </span>
                   }
                 />

@@ -25,6 +25,7 @@ const EDITABLE_FIELDS = [
   "item",
   "category1",
   "category2",
+  "accountId",
   "note",
 ] as const
 const FIELD_LABELS: Record<(typeof EDITABLE_FIELDS)[number], string> = {
@@ -34,6 +35,7 @@ const FIELD_LABELS: Record<(typeof EDITABLE_FIELDS)[number], string> = {
   item: "项目",
   category1: "一级分类",
   category2: "二级分类",
+  accountId: "账户",
   note: "备注",
 }
 const displayFieldValue = (
@@ -111,6 +113,7 @@ export class AiService {
         item: normalized.item,
         category1: normalized.category1,
         category2: normalized.category2,
+        ...(source.accountId ? { accountId: String(source.accountId) } : {}),
         ...(source.primaryIcon && /^[a-z0-9-]{1,40}$/.test(source.primaryIcon)
           ? { primaryIcon: source.primaryIcon }
           : {}),
@@ -174,6 +177,20 @@ export class AiService {
           edited.icon !== stored.icon
         )
           throw new BadRequestException("分类图标操作不能在账目编辑器中修改")
+        return stored
+      }
+      if (
+        [
+          "account-create",
+          "account-update",
+          "transfer",
+          "liability-create",
+          "liability-payment",
+          "liability-settlement",
+        ].includes(stored.type)
+      ) {
+        if (JSON.stringify(edited) !== JSON.stringify(stored))
+          throw new BadRequestException("财务操作不能在账目编辑器中修改")
         return stored
       }
       throw new BadRequestException("包含未知待确认操作")
@@ -245,6 +262,69 @@ export class AiService {
             图标: proposal.icon,
           },
         ]
+      if (proposal?.type === "account-create")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "新增账户",
+            账户: proposal.account?.name,
+            类型: proposal.account?.type,
+            当前余额: proposal.account?.openingBalance || 0,
+          },
+        ]
+      if (proposal?.type === "account-update")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "修改账户",
+            账户: proposal.display?.accountName || proposal.accountId,
+            新名称: proposal.changes?.name,
+            设为默认: proposal.changes?.isDefault,
+            启用: proposal.changes?.enabled,
+          },
+        ]
+      if (proposal?.type === "transfer")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "账户转账",
+            日期: proposal.transfer?.date,
+            金额: proposal.transfer?.amount,
+            转出账户编号: proposal.transfer?.fromAccountId,
+            转入账户编号: proposal.transfer?.toAccountId,
+            备注: proposal.transfer?.note || "",
+          },
+        ]
+      if (proposal?.type === "liability-create")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "新增负债计划",
+            名称: proposal.liability?.name,
+            本金: proposal.liability?.principal,
+            总期数: proposal.liability?.totalInstallments,
+            首次还款日: proposal.liability?.firstDueDate,
+          },
+        ]
+      if (
+        proposal?.type === "liability-payment" ||
+        proposal?.type === "liability-settlement"
+      ) {
+        const value = proposal.payment || proposal.settlement || {}
+        return [
+          {
+            序号: ++displayIndex,
+            操作:
+              proposal.type === "liability-payment" ? "偿还一期" : "提前结清",
+            负债编号: proposal.liabilityId,
+            日期: value.date,
+            本金: value.principal || "按系统余额",
+            利息: value.interest || 0,
+            手续费: value.fee || 0,
+            付款账户编号: value.sourceAccountId,
+          },
+        ]
+      }
       const current = proposal?.current || {}
       const changes = proposal?.changes || {}
       return [
@@ -549,6 +629,16 @@ export class AiService {
         .join("；")
     if (proposal?.type === "category-icon")
       return `修改“${proposal.category1}${proposal.category2 ? ` / ${proposal.category2}` : ""}”分类图标`
+    if (proposal?.type === "account-create")
+      return `新增账户“${proposal.account?.name || "未命名"}”`
+    if (proposal?.type === "account-update")
+      return `修改账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”`
+    if (proposal?.type === "transfer")
+      return `转账 ¥${Number(proposal.transfer?.amount || 0).toFixed(2)}`
+    if (proposal?.type === "liability-create")
+      return `新增负债“${proposal.liability?.name || "未命名"}”`
+    if (proposal?.type === "liability-payment") return "偿还一期负债"
+    if (proposal?.type === "liability-settlement") return "提前结清负债"
     const item = proposal?.current?.item || ""
     const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
     return proposal?.type === "update"

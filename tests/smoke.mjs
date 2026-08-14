@@ -500,6 +500,151 @@ try {
     "测试账户",
   )
 
+  const financeAccount = await request("/api/finance/accounts", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "还款银行卡",
+      type: "bank",
+      openingBalance: 10000,
+      isDefault: true,
+    }),
+  })
+  assert.equal(financeAccount.isDefault, true)
+  const renamedFinanceAccount = await request(
+    `/api/finance/accounts/${financeAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name: "家庭还款卡" }),
+    },
+  )
+  assert.equal(renamedFinanceAccount.name, "家庭还款卡")
+  const liability = await request("/api/finance/liabilities", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "测试车贷",
+      kind: "loan",
+      principal: 5000,
+      totalInterest: 500,
+      totalInstallments: 10,
+      startDate: "2026-08-15",
+      firstDueDate: "2026-09-15",
+      fundingMode: "deposit",
+      targetAccountId: financeAccount.id,
+    }),
+  })
+  let finance = await request("/api/finance")
+  assert.equal(
+    finance.accounts.find((row) => row.id === financeAccount.id).balance,
+    15000,
+  )
+  assert.equal(
+    finance.accounts.find((row) => row.id === liability.accountId).balance,
+    -5000,
+  )
+  assert.equal(
+    finance.liabilities.find((row) => row.id === liability.id).nextInstallment
+      .total,
+    550,
+  )
+  await request(`/api/finance/liabilities/${liability.id}/payments`, {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-09-15",
+      sourceAccountId: financeAccount.id,
+      principal: 500,
+      interest: 50,
+      fee: 10,
+    }),
+  })
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-09-15")).totals.day,
+    60,
+  )
+  const financeExpensePage = await request("/api/transactions?date=2026-09-15")
+  assert.equal(financeExpensePage.records[0].accountName, "家庭还款卡")
+  finance = await request("/api/finance")
+  assert.equal(
+    finance.liabilities.find((row) => row.id === liability.id)
+      .outstandingPrincipal,
+    4500,
+  )
+  const settlement = await request(
+    `/api/finance/liabilities/${liability.id}/settlement`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        date: "2026-10-01",
+        sourceAccountId: financeAccount.id,
+        interest: 20,
+        fee: 5,
+      }),
+    },
+  )
+  assert.equal(settlement.settled, true)
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-10-01")).totals.day,
+    25,
+  )
+  finance = await request("/api/finance")
+  const settledLiability = finance.liabilities.find(
+    (row) => row.id === liability.id,
+  )
+  assert.equal(settledLiability.outstandingPrincipal, 0)
+  assert.equal(settledLiability.status, "settled")
+  assert.equal(
+    settledLiability.installments.filter((row) => row.status === "planned")
+      .length,
+    0,
+  )
+
+  const financeAgentConversationId = "smoke-agent-finance"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: financeAgentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: financeAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "account-update",
+          accountId: financeAccount.id,
+          changes: { name: "还款银行卡" },
+          display: { accountName: "家庭还款卡" },
+        },
+        {
+          type: "transfer",
+          transfer: {
+            date: "2026-10-02",
+            amount: 100,
+            fromAccountId: financeAccount.id,
+            toAccountId: account.id,
+            kind: "transfer",
+            note: "Agent 转账测试",
+          },
+          display: {
+            fromAccountName: "还款银行卡",
+            toAccountName: "测试账户",
+          },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: financeAgentConversationId }),
+  })
+  finance = await request("/api/finance")
+  assert.equal(
+    finance.accounts.find((row) => row.id === financeAccount.id).name,
+    "还款银行卡",
+  )
+  assert.equal(finance.recentTransfers[0].note, "Agent 转账测试")
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-10-02")).totals.day,
+    0,
+  )
+
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
     body: JSON.stringify({
@@ -569,9 +714,7 @@ try {
     "已改名",
   )
   const iconRecord = (
-    await request(
-      "/api/transactions?query=分类生命周期测试&page=1&pageSize=20",
-    )
+    await request("/api/transactions?query=分类生命周期测试&page=1&pageSize=20")
   ).records[0]
   assert.equal(iconRecord.primaryIcon, "transport")
   assert.equal(iconRecord.secondaryIcon, "care")

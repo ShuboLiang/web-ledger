@@ -11,6 +11,7 @@ import { TransactionsModule } from "./modules/transactions/transactions.module.j
 import { ManagementModule } from "./modules/management/management.module.js"
 import { FrontendController } from "./frontend.controller.js"
 import { AuthModule } from "./modules/auth/auth.module.js"
+import { FinanceModule } from "./modules/finance/finance.module.js"
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AuthModule } from "./modules/auth/auth.module.js"
     AiModule,
     HealthModule,
     ManagementModule,
+    FinanceModule,
   ],
   controllers: [FrontendController],
 })
