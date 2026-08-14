@@ -1014,11 +1014,10 @@ select {
 }
 .large-expense-item {
   display: grid !important;
+  width: 100%;
   min-width: 0;
-  /* 覆盖 antd List.Item 自带的 justify-content: space-between，
-     避免剩余空间被平均分配到序号/名称/金额三个轨道之间 */
-  justify-content: start;
-  grid-template-columns: 20px minmax(0, auto) auto;
+  justify-content: stretch;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center !important;
   gap: 14px;
   padding-block: 16px !important;
@@ -1030,16 +1029,24 @@ select {
 }
 .large-expense-main {
   display: flex;
+  width: 100%;
   min-width: 0;
-  max-width: 380px;
+  align-items: flex-start;
   flex-direction: column;
   gap: 3px;
+  text-align: left;
 }
 .large-expense-main > .ant-typography {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.large-expense-item > .ant-btn {
+  min-width: 92px;
+  justify-self: end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .analytics-insight-grid {
   display: grid;

@@ -739,14 +739,14 @@ export function AnalyticsPage() {
         </Card>
         <Card
           className="large-expense-card"
-          title="大额支出"
+          title="支出排行"
           extra={
             <Typography.Text type="secondary">{currentRange}</Typography.Text>
           }
         >
           {largeError ? (
             <ErrorState
-              message="大额支出加载失败"
+              message="支出排行加载失败"
               onRetry={() => refetchLarge()}
             />
           ) : (
