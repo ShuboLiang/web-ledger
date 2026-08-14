@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common"
 import { Prisma } from "@prisma/client"
 import { PrismaService } from "../../infrastructure/prisma/prisma.service.js"
+import { LedgerService } from "../../infrastructure/ledger/ledger.service.js"
 import { CurrentUserService } from "../auth/current-user.service.js"
 
 @Injectable()
@@ -12,6 +13,7 @@ export class ManagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly currentUser: CurrentUserService,
+    private readonly ledger: LedgerService,
   ) {}
   private async ledgerId() {
     return this.currentUser.ledgerId
@@ -320,15 +322,7 @@ export class ManagementService {
     const ledgerId = await this.ledgerId()
     const name = String(input.name || "").trim()
     if (type === "accounts") {
-      if (!name) throw new BadRequestException("请填写账户名称")
-      return this.prisma.account.create({
-        data: {
-          ledgerId,
-          name,
-          type: input.type || "cash",
-          openingBalance: new Prisma.Decimal(Number(input.openingBalance) || 0),
-        },
-      })
+      return this.ledger.createAccount(input)
     }
     if (type === "projects") {
       if (!name) throw new BadRequestException("请填写项目名称")
@@ -375,18 +369,27 @@ export class ManagementService {
     throw new Error("不支持的管理类型")
   }
   async setEnabled(type: string, id: string, enabled: boolean) {
-    if (type === "accounts")
-      return this.prisma.account.update({ where: { id }, data: { enabled } })
-    if (type === "projects")
+    if (type === "accounts") return this.ledger.updateAccount(id, { enabled })
+    if (type === "projects") {
+      const ledgerId = await this.ledgerId()
+      const project = await this.prisma.project.findFirst({
+        where: { id, ledgerId },
+      })
+      if (!project) throw new NotFoundException("项目不存在")
       return this.prisma.project.update({ where: { id }, data: { enabled } })
+    }
     if (type === "categories") {
       const category = await this.category(id)
       if (enabled && category.mergedIntoId)
         throw new BadRequestException("该分类已经合并，请使用合并后的目标分类")
       return this.prisma.category.update({ where: { id }, data: { enabled } })
     }
-    if (type === "tags")
+    if (type === "tags") {
+      const ledgerId = await this.ledgerId()
+      const tag = await this.prisma.tag.findFirst({ where: { id, ledgerId } })
+      if (!tag) throw new NotFoundException("标签不存在")
       return this.prisma.tag.update({ where: { id }, data: { enabled } })
+    }
     throw new Error("不支持的管理类型")
   }
 

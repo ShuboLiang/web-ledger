@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common"
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from "@nestjs/common"
 import { LedgerService } from "../../infrastructure/ledger/ledger.service.js"
 
 @Controller("api/finance")
@@ -23,9 +31,27 @@ export class FinanceController {
     return this.ledger.updateAccount(id, body)
   }
 
+  @Post("accounts/:id/reconcile")
+  reconcileAccount(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.ledger.reconcileAccount(id, body)
+  }
+
+  @Delete("accounts/:id")
+  deleteAccount(@Param("id") id: string) {
+    return this.ledger.deleteAccount(id)
+  }
+
   @Post("transfers")
   createTransfer(@Body() body: Record<string, unknown>) {
     return this.ledger.createTransfer(body)
+  }
+
+  @Delete("transfers/:id")
+  deleteTransfer(@Param("id") id: string) {
+    return this.ledger.deleteTransfer(id)
   }
 
   @Post("liabilities")
@@ -44,5 +70,13 @@ export class FinanceController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.ledger.settleLiability(id, body)
+  }
+
+  @Delete("liabilities/:liabilityId/payments/:paymentId")
+  deleteLiabilityPayment(
+    @Param("liabilityId") liabilityId: string,
+    @Param("paymentId") paymentId: string,
+  ) {
+    return this.ledger.deleteLiabilityPayment(liabilityId, paymentId)
   }
 }

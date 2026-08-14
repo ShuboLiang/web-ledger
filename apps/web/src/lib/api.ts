@@ -121,6 +121,7 @@ export type FinanceAccount = {
   type: string
   typeText: string
   openingBalance: number
+  balanceDate?: string | null
   balance: number
   isLiability: boolean
   isDefault: boolean
@@ -186,6 +187,9 @@ export type FinanceOverview = {
     toAccountId: string
     fromAccountName: string
     toAccountName: string
+    paymentId?: string | null
+    liabilityId?: string | null
+    reversible: boolean
   }[]
 }
 export type AuthUser = { id: string; username: string; displayName: string }

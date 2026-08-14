@@ -57,13 +57,17 @@ type Proposal = {
     | "category-icon"
     | "account-create"
     | "account-update"
+    | "account-reconcile"
+    | "account-delete"
     | "tag-create"
     | "tag-update"
     | "tag-delete"
     | "transfer"
+    | "transfer-reverse"
     | "liability-create"
     | "liability-payment"
     | "liability-settlement"
+    | "liability-payment-reverse"
   id?: number
   records?: any[]
   current?: any
@@ -81,6 +85,9 @@ type Proposal = {
   liabilityId?: string
   payment?: any
   settlement?: any
+  reconcile?: any
+  transferId?: string
+  paymentId?: string
   display?: any
   _humanEdited?: boolean
 }
@@ -490,6 +497,32 @@ export function AiPage() {
           ]
         }
         if (
+          proposal.type === "account-reconcile" ||
+          proposal.type === "account-delete"
+        )
+          return [
+            {
+              label:
+                proposal.type === "account-reconcile"
+                  ? "校准账户余额"
+                  : "删除账户",
+              item:
+                proposal.display?.accountName ||
+                proposal.accountId ||
+                "未指定账户",
+              amount:
+                proposal.type === "account-reconcile"
+                  ? proposal.reconcile?.balance
+                  : undefined,
+              detail:
+                proposal.type === "account-reconcile"
+                  ? `当前 ${money(proposal.display?.currentBalance || 0)}，校准差额不计入收支`
+                  : "仅零余额且无历史记录的账户可以删除",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (
           proposal.type === "tag-create" ||
           proposal.type === "tag-update" ||
           proposal.type === "tag-delete"
@@ -527,6 +560,17 @@ export function AiPage() {
               amount: proposal.transfer?.amount,
               date: proposal.transfer?.date,
               detail: "仅移动资金，不计入收支",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "transfer-reverse")
+          return [
+            {
+              label: "撤销账户转账",
+              item: proposal.display?.route || "账户转账",
+              amount: proposal.display?.amount,
+              detail: "恢复双方账户余额，不影响收支",
               proposalIndex,
               isFinanceOperation: true,
             },
@@ -569,6 +613,18 @@ export function AiPage() {
             },
           ]
         }
+        if (proposal.type === "liability-payment-reverse")
+          return [
+            {
+              label: "撤销最近还款",
+              item: proposal.display?.liabilityName || "负债计划",
+              amount: proposal.display?.amount,
+              date: proposal.display?.date,
+              detail: "本金、费用与分期状态会一起恢复",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
         return [
           {
             ...(proposal.current || {}),

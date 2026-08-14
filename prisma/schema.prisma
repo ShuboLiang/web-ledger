@@ -20,6 +20,7 @@ model Ledger {
   categories   Category[]
   accounts     Account[]
   accountTransfers AccountTransfer[]
+  accountAdjustments AccountAdjustment[]
   liabilities Liability[]
   budgets      Budget[]
   tags         Tag[]
@@ -95,6 +96,7 @@ model Account {
   name           String        @db.VarChar(80)
   type           String        @default("cash") @db.VarChar(30)
   openingBalance Decimal       @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  balanceDate    DateTime?      @map("balance_date") @db.Date
   isDefault      Boolean       @default(false) @map("is_default")
   enabled        Boolean       @default(true)
   sortOrder      Int           @default(0) @map("sort_order")
@@ -104,11 +106,28 @@ model Account {
   transactions   Transaction[]
   outgoingTransfers AccountTransfer[] @relation("TransferFrom")
   incomingTransfers AccountTransfer[] @relation("TransferTo")
+  adjustments    AccountAdjustment[]
   liabilities    Liability[]
   liabilityPayments LiabilityPayment[] @relation("PaymentSource")
 
   @@unique([ledgerId, name])
   @@map("accounts")
+}
+
+model AccountAdjustment {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  accountId String   @map("account_id")
+  date      DateTime @db.Date
+  amount    Decimal  @db.Decimal(14, 2)
+  note      String   @default("") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([ledgerId, date(sort: Desc)])
+  @@index([accountId])
+  @@map("account_adjustments")
 }
 
 model AccountTransfer {

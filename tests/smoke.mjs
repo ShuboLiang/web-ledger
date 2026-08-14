@@ -607,6 +607,7 @@ try {
       name: "还款银行卡",
       type: "bank",
       openingBalance: 10000,
+      balanceDate: "2026-08-01",
       isDefault: true,
     }),
   })
@@ -619,6 +620,44 @@ try {
     },
   )
   assert.equal(renamedFinanceAccount.name, "家庭还款卡")
+  const disposableAccount = await request("/api/finance/accounts", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "待删除空账户",
+      type: "cash",
+      openingBalance: 0,
+      balanceDate: "2026-08-01",
+    }),
+  })
+  assert.equal(
+    (
+      await request(`/api/finance/accounts/${disposableAccount.id}`, {
+        method: "DELETE",
+      })
+    ).deleted,
+    true,
+  )
+  assert.equal(
+    (
+      await requestError(`/api/finance/accounts/${account.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isDefault: true, enabled: false }),
+      })
+    ).status,
+    400,
+  )
+  assert.equal(
+    (
+      await requestError(
+        `/api/management/accounts/${financeAccount.id}/enabled`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: false }),
+        },
+      )
+    ).status,
+    400,
+  )
   const liability = await request("/api/finance/liabilities", {
     method: "POST",
     body: JSON.stringify({
@@ -627,8 +666,8 @@ try {
       principal: 5000,
       totalInterest: 500,
       totalInstallments: 10,
-      startDate: "2026-08-15",
-      firstDueDate: "2026-09-15",
+      startDate: "2026-08-01",
+      firstDueDate: "2026-08-10",
       fundingMode: "deposit",
       targetAccountId: financeAccount.id,
     }),
@@ -643,26 +682,101 @@ try {
     -5000,
   )
   assert.equal(
+    (
+      await requestError("/api/finance/transfers", {
+        method: "POST",
+        body: JSON.stringify({
+          date: "2026-08-09",
+          amount: 100,
+          fromAccountId: financeAccount.id,
+          toAccountId: liability.accountId,
+        }),
+      })
+    ).status,
+    400,
+  )
+  const reconciliation = await request(
+    `/api/finance/accounts/${financeAccount.id}/reconcile`,
+    {
+      method: "POST",
+      body: JSON.stringify({ balance: 14900, note: "冒烟校准" }),
+    },
+  )
+  assert.equal(reconciliation.adjusted, -100)
+  assert.equal(
+    (await request("/api/finance")).accounts.find(
+      (row) => row.id === financeAccount.id,
+    ).balance,
+    14900,
+  )
+  assert.equal(
     finance.liabilities.find((row) => row.id === liability.id).nextInstallment
       .total,
     550,
   )
-  await request(`/api/finance/liabilities/${liability.id}/payments`, {
-    method: "POST",
-    body: JSON.stringify({
-      date: "2026-09-15",
-      sourceAccountId: financeAccount.id,
-      principal: 500,
-      interest: 50,
-      fee: 10,
-    }),
-  })
   assert.equal(
-    (await request("/api/dashboard?anchor=2026-09-15")).totals.day,
+    (
+      await requestError(`/api/finance/liabilities/${liability.id}/payments`, {
+        method: "POST",
+        body: JSON.stringify({
+          date: "2026-08-10",
+          sourceAccountId: financeAccount.id,
+          principal: 100,
+          interest: 50,
+        }),
+      })
+    ).status,
+    400,
+  )
+  let scheduledPayment = await request(
+    `/api/finance/liabilities/${liability.id}/payments`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        date: "2026-08-10",
+        sourceAccountId: financeAccount.id,
+        principal: 500,
+        interest: 50,
+        fee: 10,
+      }),
+    },
+  )
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-10")).totals.day,
     60,
   )
-  const financeExpensePage = await request("/api/transactions?date=2026-09-15")
+  const financeExpensePage = await request("/api/transactions?date=2026-08-10")
   assert.equal(financeExpensePage.records[0].accountName, "家庭还款卡")
+  assert.equal(
+    (
+      await requestError(
+        `/api/transactions/${financeExpensePage.records[0].id}`,
+        { method: "DELETE" },
+      )
+    ).status,
+    400,
+  )
+  await request(
+    `/api/finance/liabilities/${liability.id}/payments/${scheduledPayment.id}`,
+    { method: "DELETE" },
+  )
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-10")).totals.day,
+    0,
+  )
+  scheduledPayment = await request(
+    `/api/finance/liabilities/${liability.id}/payments`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        date: "2026-08-10",
+        sourceAccountId: financeAccount.id,
+        principal: 500,
+        interest: 50,
+        fee: 10,
+      }),
+    },
+  )
   finance = await request("/api/finance")
   assert.equal(
     finance.liabilities.find((row) => row.id === liability.id)
@@ -674,7 +788,7 @@ try {
     {
       method: "POST",
       body: JSON.stringify({
-        date: "2026-10-01",
+        date: "2026-08-14",
         sourceAccountId: financeAccount.id,
         interest: 20,
         fee: 5,
@@ -683,7 +797,7 @@ try {
   )
   assert.equal(settlement.settled, true)
   assert.equal(
-    (await request("/api/dashboard?anchor=2026-10-01")).totals.day,
+    (await request("/api/dashboard?anchor=2026-08-14")).totals.day,
     25,
   )
   finance = await request("/api/finance")
@@ -699,6 +813,9 @@ try {
   )
 
   const financeAgentConversationId = "smoke-agent-finance"
+  const financeBalanceBeforeAgent = finance.accounts.find(
+    (row) => row.id === financeAccount.id,
+  ).balance
   await request("/api/ai/conversations", {
     method: "POST",
     body: JSON.stringify({ id: financeAgentConversationId }),
@@ -716,7 +833,7 @@ try {
         {
           type: "transfer",
           transfer: {
-            date: "2026-10-02",
+            date: "2026-08-14",
             amount: 100,
             fromAccountId: financeAccount.id,
             toAccountId: account.id,
@@ -726,6 +843,18 @@ try {
           display: {
             fromAccountName: "还款银行卡",
             toAccountName: "测试账户",
+          },
+        },
+        {
+          type: "account-reconcile",
+          accountId: financeAccount.id,
+          reconcile: {
+            balance: financeBalanceBeforeAgent - 100,
+            note: "Agent 校准测试",
+          },
+          display: {
+            accountName: "还款银行卡",
+            currentBalance: financeBalanceBeforeAgent,
           },
         },
       ],
@@ -741,9 +870,19 @@ try {
     "还款银行卡",
   )
   assert.equal(finance.recentTransfers[0].note, "Agent 转账测试")
+  const reversibleTransferId = finance.recentTransfers[0].id
+  assert.equal(finance.recentTransfers[0].reversible, true)
+  await request(`/api/finance/transfers/${reversibleTransferId}`, {
+    method: "DELETE",
+  })
+  assert.ok(
+    !(await request("/api/finance")).recentTransfers.some(
+      (row) => row.id === reversibleTransferId,
+    ),
+  )
   assert.equal(
-    (await request("/api/dashboard?anchor=2026-10-02")).totals.day,
-    0,
+    (await request("/api/dashboard?anchor=2026-08-14")).totals.day,
+    25,
   )
 
   const sourceCategory = await request("/api/management/categories", {
@@ -964,6 +1103,35 @@ try {
   assert.equal(secondUser.user.username, "smoke_second")
   assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 0)
   assert.equal((await request("/api/ai/settings")).profiles.length, 0)
+  assert.equal(
+    (
+      await requestError("/api/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          date: "2026-08-12",
+          amount: 8,
+          direction: "expense",
+          item: "跨账本账户",
+          category1: "餐饮",
+          category2: "午餐",
+          accountId: financeAccount.id,
+        }),
+      })
+    ).status,
+    404,
+  )
+  assert.equal(
+    (
+      await requestError(
+        `/api/management/accounts/${financeAccount.id}/enabled`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: false }),
+        },
+      )
+    ).status,
+    404,
+  )
   const secondRecord = await request("/api/transactions", {
     method: "POST",
     body: JSON.stringify({
