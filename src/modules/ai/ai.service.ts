@@ -839,6 +839,28 @@ export class AiService {
       return true
     })
   }
+  async clear(value: string) {
+    const id = this.conversationId(value)
+    return this.coordinator.run(this.conversationKey(id), async () => {
+      const conversation = await this.prisma.aiConversation.findFirst({
+        where: { id, userId: this.currentUser.userId },
+      })
+      if (!conversation) throw new NotFoundException("对话不存在")
+      await this.prisma.$transaction([
+        this.prisma.aiMessage.deleteMany({ where: { conversationId: id } }),
+        this.prisma.aiConversation.update({
+          where: { id },
+          data: {
+            title: "新对话",
+            pendingProposals: [],
+            removedNotices: [],
+          },
+        }),
+      ])
+      return true
+    })
+  }
+
   async remove(value: string) {
     const id = this.conversationId(value)
     return this.coordinator.run(this.conversationKey(id), async () => {

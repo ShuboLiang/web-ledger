@@ -1,10 +1,12 @@
 import {
   CheckOutlined,
+  ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   MessageOutlined,
   PlusOutlined,
   RobotOutlined,
+  UpOutlined,
   UserOutlined,
 } from "@ant-design/icons"
 import { Bubble, Conversations, Sender } from "@ant-design/x"
@@ -17,6 +19,7 @@ import {
 import {
   App,
   Avatar,
+  Badge,
   Button,
   Card,
   DatePicker,
@@ -142,11 +145,13 @@ export function AiPage() {
   const [id, setId] = useState<string>("")
   const [input, setInput] = useState("")
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [pendingOpen, setPendingOpen] = useState(false)
   const [editingProposal, setEditingProposal] =
     useState<EditingProposal | null>(null)
   const [proposalForm] = Form.useForm<ProposalFormValues>()
   const creatingInitial = useRef(false)
   const streamAbortRef = useRef<AbortController | null>(null)
+  const prevProposalCount = useRef(0)
   const { data: settings } = useQuery({
     queryKey: ["ai-settings"],
     queryFn: () => api<any>("/api/ai/settings"),
@@ -341,6 +346,7 @@ export function AiPage() {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries()
+      setPendingOpen(false)
       message.success("账目操作已执行")
     },
     onError: (error: Error) => message.error(error.message),
@@ -422,6 +428,30 @@ export function AiPage() {
     Boolean(id) &&
     (history.length > 1 ||
       (history.find((c) => c.id === id)?.messageCount ?? 0) > 0)
+  const canClear =
+    Boolean(id) &&
+    !isCurrentConversationAnswering &&
+    ((chat?.messages.length ?? 0) > 0 || proposals.length > 0)
+  const clearChat = () =>
+    modal.confirm({
+      title: "清空对话",
+      content:
+        "会清空当前对话的全部消息和待确认操作，但不会删除已经写入的账目。",
+      okText: "清空",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        streamAbortRef.current?.abort()
+        await api(`/api/ai/conversations/${id}/clear`, { method: "POST" })
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["ai-conversation", id] }),
+          queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }),
+        ])
+        setStream(null)
+        setInput("")
+        message.success("对话已清空")
+      },
+    })
   const deleteChat = () =>
     modal.confirm({
       title: "删除当前对话",
@@ -642,6 +672,15 @@ export function AiPage() {
       }),
     [proposals],
   )
+  useEffect(() => {
+    if (!screens.md && proposalRows.length > 0 && prevProposalCount.current === 0) {
+      setPendingOpen(true)
+    }
+    if (!screens.md && proposalRows.length === 0) {
+      setPendingOpen(false)
+    }
+    prevProposalCount.current = proposalRows.length
+  }, [proposalRows.length, screens.md])
   const primaryCategories = useMemo(
     () => [
       ...new Set((dictionaries?.categories || []).map((row) => row.category1)),
@@ -823,6 +862,100 @@ export function AiPage() {
       onClick: () => selectModel.mutate(profile.id),
     })),
   }
+  const actionButtonSize = screens.md ? "small" : "middle"
+  const pendingList =
+    proposalRows.length > 0 ? (
+      <List
+        className="ai-pending-list"
+        dataSource={proposalRows}
+        renderItem={(row) => (
+          <List.Item>
+            <Card size="small" className="proposal-card">
+              <Flex justify="space-between" align="center" gap={8}>
+                <Flex align="center" gap={4} wrap="wrap">
+                  <Tag color="cyan">{row.label}</Tag>
+                  {row.humanEdited && <Tag color="gold">已微调</Tag>}
+                </Flex>
+                <Flex align="center" gap={4} className="proposal-card-actions">
+                  {row.isIconOperation ? (
+                    <CategoryIcon name={row.icon} size="small" />
+                  ) : (
+                    <Typography.Text
+                      strong
+                      type={
+                        row.isFinanceOperation
+                          ? undefined
+                          : row.direction === "income"
+                            ? "success"
+                            : "danger"
+                      }
+                    >
+                      {row.amount ? money(Math.abs(row.amount)) : "—"}
+                    </Typography.Text>
+                  )}
+                  {row.editable && (
+                    <Button
+                      type="text"
+                      size={actionButtonSize}
+                      icon={<EditOutlined />}
+                      disabled={isCurrentConversationAnswering}
+                      aria-label={`编辑${row.item || "待确认账目"}`}
+                      onClick={() => openProposalEditor(row)}
+                    />
+                  )}
+                  <Button
+                    type="text"
+                    size={actionButtonSize}
+                    danger
+                    icon={<DeleteOutlined />}
+                    disabled={isCurrentConversationAnswering}
+                    aria-label={`移除${row.item || "待确认账目"}`}
+                    onClick={() => removeProposal.mutate(row)}
+                  />
+                </Flex>
+              </Flex>
+              <Typography.Text strong className="proposal-card-title">
+                {row.item || `账目 #${row.id}`}
+              </Typography.Text>
+              <Typography.Text type="secondary" className="proposal-card-detail">
+                {row.isIconOperation
+                  ? `将图标设置为 ${row.icon}`
+                  : row.isFinanceOperation
+                    ? `${row.date || ""}${row.date && row.detail ? " · " : ""}${row.detail || ""}`
+                    : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
+              </Typography.Text>
+            </Card>
+          </List.Item>
+        )}
+      />
+    ) : (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="暂无待确认操作"
+      />
+    )
+  const pendingFooter =
+    proposalRows.length > 0 ? (
+      <Flex gap={8} className="ai-pending-footer">
+        <Button
+          block
+          disabled={isCurrentConversationAnswering}
+          onClick={cancel}
+        >
+          全部取消
+        </Button>
+        <Button
+          block
+          type="primary"
+          icon={<CheckOutlined />}
+          loading={execute.isPending}
+          disabled={isCurrentConversationAnswering}
+          onClick={() => execute.mutate()}
+        >
+          确认执行
+        </Button>
+      </Flex>
+    ) : null
   return (
     <Card
       className="ai-workspace"
@@ -871,8 +1004,10 @@ export function AiPage() {
             className="ai-chat-header"
             align="center"
             justify="space-between"
+            wrap={screens.md ? undefined : "wrap"}
+            gap={screens.md ? undefined : 8}
           >
-            <Flex gap={8} align="center">
+            <Flex gap={8} align="center" className="ai-chat-header-brand">
               {!screens.xl && (
                 <Button
                   icon={<MessageOutlined />}
@@ -886,14 +1021,31 @@ export function AiPage() {
               />
               <div>
                 <Typography.Text strong>轻账 AI</Typography.Text>
-                <Tag color="success" bordered={false}>
-                  多轮 Agent 已就绪
-                </Tag>
+                {screens.md ? (
+                  <Tag color="success" bordered={false}>
+                    多轮 Agent 已就绪
+                  </Tag>
+                ) : null}
               </div>
             </Flex>
-            <Dropdown menu={modelMenu}>
-              <Button>当前模型：{settings?.name || "尚未配置"}</Button>
-            </Dropdown>
+            <Flex gap={8} align="center" className="ai-chat-header-actions">
+              <Button
+                type="text"
+                icon={<ClearOutlined />}
+                disabled={!canClear}
+                aria-label="清空对话"
+                onClick={clearChat}
+              >
+                {screens.md ? "清空对话" : null}
+              </Button>
+              <Dropdown menu={modelMenu}>
+                <Button className="ai-model-button">
+                  {screens.md
+                    ? `当前模型：${settings?.name || "尚未配置"}`
+                    : settings?.name || "模型"}
+                </Button>
+              </Dropdown>
+            </Flex>
           </Flex>
           <Bubble.List
             className="ai-messages"
@@ -901,6 +1053,33 @@ export function AiPage() {
             items={bubbleItems}
             role={roles}
           />
+          {!screens.md && proposalRows.length > 0 && (
+            <button
+              type="button"
+              className="ai-pending-trigger"
+              aria-label={`${proposalRows.length} 项待确认，点击查看`}
+              onClick={() => setPendingOpen(true)}
+            >
+              <Flex align="center" justify="space-between">
+                <Flex align="center" gap={10}>
+                  <Badge count={proposalRows.length} color="#176b62">
+                    <span className="ai-pending-trigger-icon">
+                      <CheckOutlined />
+                    </span>
+                  </Badge>
+                  <span className="ai-pending-trigger-copy">
+                    <Typography.Text strong>
+                      {proposalRows.length} 项待确认
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      点击查看详情并执行
+                    </Typography.Text>
+                  </span>
+                </Flex>
+                <UpOutlined className="ai-pending-trigger-chevron" />
+              </Flex>
+            </button>
+          )}
           <div className="ai-sender">
             <Sender
               value={input}
@@ -912,122 +1091,38 @@ export function AiPage() {
               autoSize={{ minRows: 1, maxRows: 5 }}
             />
             <Typography.Text type="secondary">
-              涉及增删改的操作会先进入待确认区，不会直接写入账本
+              {screens.md || proposalRows.length === 0
+                ? "涉及增删改的操作会先进入待确认区，不会直接写入账本"
+                : "待确认操作可通过上方入口查看"}
             </Typography.Text>
           </div>
         </section>
-        <Flex vertical className="ai-pending">
-          <Flex align="center" justify="space-between">
-            <div>
-              <Typography.Text type="secondary" className="section-label">
-                PENDING ACTIONS
-              </Typography.Text>
-              <Typography.Title level={5}>
-                待确认操作（{proposalRows.length}）
-              </Typography.Title>
-            </div>
-            {proposalRows.length > 0 && (
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label="全部取消待确认操作"
-                disabled={isCurrentConversationAnswering}
-                onClick={cancel}
-              />
-            )}
-          </Flex>
-          {proposalRows.length ? (
-            <List
-              dataSource={proposalRows}
-              renderItem={(row) => (
-                <List.Item>
-                  <Card size="small" className="proposal-card">
-                    <Flex justify="space-between" align="center" gap={8}>
-                      <Flex align="center" gap={4}>
-                        <Tag color="cyan">{row.label}</Tag>
-                        {row.humanEdited && <Tag color="gold">已微调</Tag>}
-                      </Flex>
-                      <Flex align="center" gap={4}>
-                        {row.isIconOperation ? (
-                          <CategoryIcon name={row.icon} size="small" />
-                        ) : (
-                          <Typography.Text
-                            strong
-                            type={
-                              row.isFinanceOperation
-                                ? undefined
-                                : row.direction === "income"
-                                  ? "success"
-                                  : "danger"
-                            }
-                          >
-                            {row.amount ? money(Math.abs(row.amount)) : "—"}
-                          </Typography.Text>
-                        )}
-                        {row.editable && (
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<EditOutlined />}
-                            disabled={isCurrentConversationAnswering}
-                            aria-label={`编辑${row.item || "待确认账目"}`}
-                            onClick={() => openProposalEditor(row)}
-                          />
-                        )}
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          disabled={isCurrentConversationAnswering}
-                          aria-label={`移除${row.item || "待确认账目"}`}
-                          onClick={() => removeProposal.mutate(row)}
-                        />
-                      </Flex>
-                    </Flex>
-                    <Typography.Text strong>
-                      {row.item || `账目 #${row.id}`}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {row.isIconOperation
-                        ? `将图标设置为 ${row.icon}`
-                        : row.isFinanceOperation
-                          ? `${row.date || ""}${row.date && row.detail ? " · " : ""}${row.detail || ""}`
-                          : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
-                    </Typography.Text>
-                  </Card>
-                </List.Item>
+        {screens.md && (
+          <Flex vertical className="ai-pending">
+            <Flex align="center" justify="space-between">
+              <div>
+                <Typography.Text type="secondary" className="section-label">
+                  PENDING ACTIONS
+                </Typography.Text>
+                <Typography.Title level={5}>
+                  待确认操作（{proposalRows.length}）
+                </Typography.Title>
+              </div>
+              {proposalRows.length > 0 && (
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label="全部取消待确认操作"
+                  disabled={isCurrentConversationAnswering}
+                  onClick={cancel}
+                />
               )}
-            />
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="暂无待确认操作"
-            />
-          )}{" "}
-          {proposalRows.length > 0 && (
-            <Flex gap={8}>
-              <Button
-                block
-                disabled={isCurrentConversationAnswering}
-                onClick={cancel}
-              >
-                全部取消
-              </Button>
-              <Button
-                block
-                type="primary"
-                icon={<CheckOutlined />}
-                loading={execute.isPending}
-                disabled={isCurrentConversationAnswering}
-                onClick={() => execute.mutate()}
-              >
-                确认执行
-              </Button>
             </Flex>
-          )}
-        </Flex>
+            {pendingList}
+            {pendingFooter}
+          </Flex>
+        )}
       </div>
       {!screens.xl && (
         <Drawer
@@ -1060,6 +1155,17 @@ export function AiPage() {
             }))}
             onActiveChange={(key) => switchChat(String(key))}
           />
+          {canClear && (
+            <Button
+              block
+              type="text"
+              icon={<ClearOutlined />}
+              onClick={clearChat}
+              style={{ marginTop: 20 }}
+            >
+              清空对话
+            </Button>
+          )}
           {canDelete && (
             <Button
               block
@@ -1067,17 +1173,45 @@ export function AiPage() {
               type="text"
               icon={<DeleteOutlined />}
               onClick={deleteChat}
-              style={{ marginTop: 20 }}
+              style={{ marginTop: canClear ? 8 : 20 }}
             >
               删除当前对话
             </Button>
           )}
         </Drawer>
       )}
+      {!screens.md && (
+        <Drawer
+          className="responsive-drawer ai-pending-drawer"
+          title={`待确认操作（${proposalRows.length}）`}
+          placement="bottom"
+          height="min(85vh, 640px)"
+          open={pendingOpen}
+          destroyOnHidden={false}
+          onClose={() => setPendingOpen(false)}
+          extra={
+            proposalRows.length > 0 ? (
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label="全部取消待确认操作"
+                disabled={isCurrentConversationAnswering}
+                onClick={cancel}
+              />
+            ) : null
+          }
+          footer={pendingFooter}
+        >
+          {pendingList}
+        </Drawer>
+      )}
       <Drawer
         className="responsive-drawer proposal-edit-drawer"
         title={`编辑${editingProposal?.label || "待确认"}账目`}
+        placement={screens.md ? "right" : "bottom"}
         width={520}
+        height="auto"
         open={Boolean(editingProposal)}
         destroyOnHidden
         onClose={() => setEditingProposal(null)}

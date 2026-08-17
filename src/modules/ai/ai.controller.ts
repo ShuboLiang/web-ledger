@@ -152,6 +152,11 @@ export class AiController {
     return { ok: true }
   }
 
+  @Post("conversations/:id/clear")
+  async clearConversation(@Param("id") id: string) {
+    return { ok: await this.ai.clear(id) }
+  }
+
   @Delete("conversations/:id")
   async removeConversation(@Param("id") id: string) {
     return { ok: await this.ai.remove(id) }
