@@ -35,7 +35,7 @@ import {
   type Dashboard,
   type Transaction,
 } from "@/lib/api"
-import { compactMoney, money } from "@/lib/utils"
+import { compactMoney, money, readPersist, writePersist } from "@/lib/utils"
 import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseCategoryOverview } from "@/components/expense-category-overview"
 
@@ -155,13 +155,13 @@ export function AnalyticsPage() {
       return next
     })
   useEffect(() => {
-    const saved = sessionStorage.getItem(analyticsFilterKey)
+    const saved = readPersist(analyticsFilterKey)
     if (!params.toString() && saved) {
-      setParams(new URLSearchParams(saved), { replace: true })
+      setParams(new URLSearchParams(saved.replace(/^\?/, "")), { replace: true })
       return
     }
     if (params.toString())
-      sessionStorage.setItem(analyticsFilterKey, `?${params.toString()}`)
+      writePersist(analyticsFilterKey, `?${params.toString()}`)
   }, [params, setParams])
   const setScope = (value: Scope) => {
     setParams((current) => {

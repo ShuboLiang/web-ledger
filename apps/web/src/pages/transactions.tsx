@@ -45,7 +45,7 @@ import { useSearchParams } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
 import { CategoryIcon } from "@/components/category-icon"
-import { money } from "@/lib/utils"
+import { money, readPersist, writePersist } from "@/lib/utils"
 
 type Page = {
   records: Transaction[]
@@ -116,9 +116,7 @@ export function TransactionsPage() {
         category: true,
         account: true,
         amount: true,
-        ...JSON.parse(
-          sessionStorage.getItem(transactionColumnsStorageKey) || "{}",
-        ),
+        ...JSON.parse(readPersist(transactionColumnsStorageKey) || "{}"),
       }
     } catch {
       return {
@@ -160,8 +158,7 @@ export function TransactionsPage() {
     if (params.get("focus") === "search") searchRef.current?.focus()
     const currentState = savedTransactionState(params).toString()
     if (pendingFilterRestore.current === undefined) {
-      const storedFilters =
-        sessionStorage.getItem(transactionFilterStorageKey) || ""
+      const storedFilters = readPersist(transactionFilterStorageKey)
       if (!currentState && storedFilters) {
         const restored = new URLSearchParams(params)
         savedTransactionState(new URLSearchParams(storedFilters)).forEach(
@@ -180,15 +177,10 @@ export function TransactionsPage() {
       pendingFilterRestore.current = null
     }
 
-    if (currentState)
-      sessionStorage.setItem(transactionFilterStorageKey, currentState)
-    else sessionStorage.removeItem(transactionFilterStorageKey)
+    writePersist(transactionFilterStorageKey, currentState)
   }, [params, setParams])
   useEffect(() => {
-    sessionStorage.setItem(
-      transactionColumnsStorageKey,
-      JSON.stringify(visible),
-    )
+    writePersist(transactionColumnsStorageKey, JSON.stringify(visible))
   }, [visible])
   const queryString = useMemo(() => {
     const q = new URLSearchParams(params)

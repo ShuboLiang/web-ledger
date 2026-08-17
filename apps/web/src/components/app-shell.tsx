@@ -40,6 +40,7 @@ import { useEffect, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type AuthUser } from "@/lib/api"
+import { clearPersist, readPersist } from "@/lib/utils"
 
 const { Header, Sider, Content } = Layout
 const nav = [
@@ -105,17 +106,17 @@ export function AppShell() {
   const logout = useMutation({
     mutationFn: () => api("/api/auth/logout", { method: "POST" }),
     onSuccess: () => {
-      Object.keys(sessionStorage)
-        .filter((key) => key.startsWith("qing-zhang-"))
-        .forEach((key) => sessionStorage.removeItem(key))
+      clearPersist()
       queryClient.clear()
       window.location.assign("/login")
     },
   })
   const [title, subtitle] = titles[location.pathname] || titles["/dashboard"]
   const analyticsHref = () => {
-    const saved = sessionStorage.getItem(analyticsFilterKey)
-    return saved ? `/analytics${saved}` : "/analytics"
+    const saved = readPersist(analyticsFilterKey)
+    return saved
+      ? `/analytics${saved.startsWith("?") ? saved : `?${saved}`}`
+      : "/analytics"
   }
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {

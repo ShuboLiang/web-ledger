@@ -16,3 +16,35 @@ export const compactMoney = (value: number) => {
 export const conversationId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `ledger-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const persistPrefix = "qing-zhang-"
+
+export function readPersist(key: string) {
+  try {
+    return localStorage.getItem(key) || sessionStorage.getItem(key) || ""
+  } catch {
+    return ""
+  }
+}
+
+export function writePersist(key: string, value: string) {
+  try {
+    if (value) {
+      localStorage.setItem(key, value)
+      sessionStorage.removeItem(key)
+    } else {
+      localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
+    }
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
+export function clearPersist() {
+  for (const storage of [localStorage, sessionStorage]) {
+    Object.keys(storage)
+      .filter((key) => key.startsWith(persistPrefix))
+      .forEach((key) => storage.removeItem(key))
+  }
+}
