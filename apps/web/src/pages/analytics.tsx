@@ -64,11 +64,16 @@ const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"]
 const scopes: Scope[] = ["day", "week", "month", "year"]
 const shift = (date: string, days: number) =>
   dayjs(date).add(days, "day").format("YYYY-MM-DD")
+const startOfWeek = (date: string) => {
+  const value = dayjs(date)
+  const isoDay = value.day() === 0 ? 7 : value.day()
+  return value.subtract(isoDay - 1, "day").format("YYYY-MM-DD")
+}
 const shiftPeriod = (date: string, scope: Scope, direction: -1 | 1) =>
   scope === "day"
     ? shift(date, direction)
     : scope === "week"
-      ? shift(date, direction * 7)
+      ? shift(startOfWeek(date), direction * 7)
       : dayjs(date).add(direction, scope).startOf(scope).format("YYYY-MM-DD")
 const isScope = (value: string | null): value is Scope =>
   Boolean(value && scopes.includes(value as Scope))
@@ -164,6 +169,9 @@ export function AnalyticsPage() {
       next.set("scope", value)
       next.delete("start")
       next.delete("end")
+      if (!current.get("anchor")) {
+        next.set("anchor", dayjs().format("YYYY-MM-DD"))
+      }
       return next
     })
     setCustomMode(false)

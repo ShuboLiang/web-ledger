@@ -215,7 +215,7 @@ export class DashboardService {
     const latestDate = String(records[0]?.date || currentDate())
     const anchor = /^\d{4}-\d{2}-\d{2}$/.test(requestedAnchor || "")
       ? requestedAnchor!
-      : latestDate
+      : currentDate()
     const weekStart = startOfWeek(anchor)
     const ranges = {
       day: [anchor, anchor],
