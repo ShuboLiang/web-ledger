@@ -30,6 +30,8 @@ export class TransactionsController {
       "direction",
       "accountId",
       "tagId",
+      "tagIds",
+      "tagMatch",
       "sortBy",
       "sortOrder",
     ].some((key) => Object.hasOwn(query, key))

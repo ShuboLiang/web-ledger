@@ -202,6 +202,8 @@ export class LedgerService {
     sortOrder = "desc",
     accountId = "",
     tagId = "",
+    tagIds = "",
+    tagMatch = "",
   }: Record<string, unknown> = {}) {
     const { ledgerId } = await this.context()
     const take = Math.min(Math.max(Number(pageSize) || 20, 1), 100)
@@ -268,7 +270,31 @@ export class LedgerService {
     if (selectedDirection)
       where.amount = selectedDirection === "expense" ? { lt: 0 } : { gt: 0 }
     if (clean(accountId, 100)) where.accountId = clean(accountId, 100)
-    if (clean(tagId, 100)) where.tags = { some: { tagId: clean(tagId, 100) } }
+    const selectedTagIds = [
+      ...new Set(
+        [
+          clean(tagId, 100),
+          ...String(tagIds || "")
+            .split(",")
+            .map((value) => clean(value, 100)),
+        ].filter(Boolean),
+      ),
+    ]
+    if (selectedTagIds.length === 1) {
+      where.tags = { some: { tagId: selectedTagIds[0] } }
+    } else if (selectedTagIds.length > 1) {
+      const matchAll = String(tagMatch).toLowerCase() === "all"
+      if (matchAll) {
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+          ...selectedTagIds.map((id) => ({
+            tags: { some: { tagId: id } },
+          })),
+        ]
+      } else {
+        where.tags = { some: { tagId: { in: selectedTagIds } } }
+      }
+    }
     const orderField = ["date", "amount", "item"].includes(String(sortBy))
       ? String(sortBy)
       : "date"
@@ -276,23 +302,39 @@ export class LedgerService {
     const total = await this.prisma.transaction.count({ where })
     const totalPages = Math.max(1, Math.ceil(total / take))
     const current = Math.min(Math.max(Number(page) || 1, 1), totalPages)
-    const rows = await this.prisma.transaction.findMany({
-      where,
-      include: {
-        account: { select: { name: true } },
-        category: { select: { primaryIcon: true, secondaryIcon: true } },
-        tags: { include: { tag: true } },
-      },
-      take,
-      skip: (current - 1) * take,
-      orderBy: [{ [orderField]: order }, { id: order }],
-    })
+    const [expenseAgg, incomeAgg, rows] = await Promise.all([
+      this.prisma.transaction.aggregate({
+        where: { ...where, amount: { lt: 0 } },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { ...where, amount: { gt: 0 } },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.findMany({
+        where,
+        include: {
+          account: { select: { name: true } },
+          category: { select: { primaryIcon: true, secondaryIcon: true } },
+          tags: { include: { tag: true } },
+        },
+        take,
+        skip: (current - 1) * take,
+        orderBy: [{ [orderField]: order }, { id: order }],
+      }),
+    ])
+    const expense = Number(
+      Math.abs(Number(expenseAgg._sum.amount || 0)).toFixed(2),
+    )
+    const income = Number(Number(incomeAgg._sum.amount || 0).toFixed(2))
+    const balance = Number((income - expense).toFixed(2))
     return {
       records: rows.map((row) => this.serialize(row)),
       total,
       page: current,
       pageSize: take,
       totalPages,
+      summary: { expense, income, balance },
       date: selectedDate,
       month: selectedMonth,
       start: selectedStart,
@@ -303,6 +345,12 @@ export class LedgerService {
       direction: selectedDirection,
       sortBy: orderField,
       sortOrder: order,
+      tagIds: selectedTagIds,
+      tagMatch:
+        selectedTagIds.length > 1 &&
+        String(tagMatch).toLowerCase() === "all"
+          ? "all"
+          : "any",
     }
   }
 

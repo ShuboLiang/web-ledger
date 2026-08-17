@@ -6,6 +6,7 @@ import {
   EditOutlined,
   FilterOutlined,
   MoreOutlined,
+  SearchOutlined,
   SettingOutlined,
   TagsOutlined,
   WalletOutlined,
@@ -31,6 +32,7 @@ import {
   Segmented,
   Select,
   Space,
+  Statistic,
   Table,
   Tag,
   Typography,
@@ -51,6 +53,11 @@ type Page = {
   page: number
   pageSize: number
   totalPages: number
+  summary?: {
+    expense: number
+    income: number
+    balance: number
+  }
 }
 type TimePreset =
   "all" | "today" | "week" | "month" | "lastMonth" | "year" | "custom"
@@ -71,6 +78,8 @@ const transactionFilterKeys = [
   "category2",
   "query",
   "tagId",
+  "tagIds",
+  "tagMatch",
 ] as const
 const transactionStateKeys = [
   ...transactionFilterKeys,
@@ -130,6 +139,14 @@ export function TransactionsPage() {
   const [drawer, setDrawer] = useState(false)
   const page = Number(params.get("page") || 1)
   const pageSize = Number(params.get("pageSize") || 20)
+  const selectedTagIds = useMemo(() => {
+    const fromIds = params.get("tagIds")
+    if (fromIds)
+      return fromIds.split(",").map((value) => value.trim()).filter(Boolean)
+    const legacy = params.get("tagId")
+    return legacy ? [legacy] : []
+  }, [params])
+  const tagMatch = params.get("tagMatch") === "all" ? "all" : "any"
   const set = (key: string, value: string) =>
     setParams((current) => {
       const next = new URLSearchParams(current)
@@ -460,6 +477,8 @@ export function TransactionsPage() {
       "category2",
       "query",
       "tagId",
+      "tagIds",
+      "tagMatch",
     ])
   const today = dayjs().startOf("day")
   const weekStart = today.subtract((today.day() + 6) % 7, "day")
@@ -514,6 +533,14 @@ export function TransactionsPage() {
         ? selectedRange![0].isSame(selectedRange![1], "day")
           ? selectedRange![0].format("YYYY年M月D日")
           : `${selectedRange![0].format("YYYY.M.D")} - ${selectedRange![1].format("YYYY.M.D")}`
+        : timePresets.find((preset) => preset.key === activeTimePreset)!.label
+  const mobileTimeLabel =
+    activeTimePreset === "all"
+      ? "时间"
+      : activeTimePreset === "custom"
+        ? selectedRange![0].isSame(selectedRange![1], "day")
+          ? selectedRange![0].format("M/D")
+          : `${selectedRange![0].format("M/D")}-${selectedRange![1].format("M/D")}`
         : timePresets.find((preset) => preset.key === activeTimePreset)!.label
   const setTimeRange = (range: [Dayjs, Dayjs] | null) =>
     setParams((current) => {
@@ -637,13 +664,13 @@ export function TransactionsPage() {
       </div>
     </div>
   )
-  const timeTrigger = (className = "") => (
+  const timeTrigger = (className = "", label = timeLabel) => (
     <Button
       className={`transaction-time-trigger ${activeTimePreset !== "all" ? "is-active" : ""} ${className}`}
       icon={<CalendarOutlined />}
       onClick={screens.md ? undefined : () => setTimeOpen(true)}
     >
-      {timeLabel}
+      {label}
     </Button>
   )
   const renderTimeFilter = (className = "") =>
@@ -689,19 +716,62 @@ export function TransactionsPage() {
       onChange={setCategoryFilter}
     />
   )
-  const renderTagFilter = (className = "") => (
-    <Select
-      className={className}
-      allowClear
-      showSearch
-      placeholder="全部标签"
-      value={params.get("tagId") || undefined}
-      options={(dictionaries?.tags || []).map((tag) => ({
-        value: tag.id,
-        label: tag.name,
-      }))}
-      onChange={(value) => set("tagId", value || "")}
-    />
+  const renderTagFilter = (className = "", stacked = !screens.md) => (
+    <Flex
+      gap={8}
+      align={stacked ? "stretch" : "center"}
+      vertical={stacked}
+      className={`transaction-tag-filter-wrap${stacked ? " is-mobile" : ""}`}
+    >
+      <Select
+        className={`transaction-tag-filter ${className}`.trim()}
+        mode="multiple"
+        allowClear
+        showSearch
+        maxTagCount={stacked ? 2 : "responsive"}
+        placeholder="筛选标签"
+        value={selectedTagIds}
+        optionFilterProp="label"
+        options={(dictionaries?.tags || []).map((tag) => ({
+          value: tag.id,
+          label: tag.name,
+        }))}
+        onChange={(values) =>
+          setParams((current) => {
+            const next = new URLSearchParams(current)
+            next.delete("tagId")
+            if (values.length) next.set("tagIds", values.join(","))
+            else {
+              next.delete("tagIds")
+              next.delete("tagMatch")
+            }
+            if (values.length <= 1) next.delete("tagMatch")
+            next.set("page", "1")
+            return next
+          })
+        }
+      />
+      {selectedTagIds.length > 1 && (
+        <Segmented
+          block={stacked}
+          size="small"
+          className="transaction-tag-match"
+          value={tagMatch}
+          options={
+            stacked
+              ? [
+                  { label: "任一标签", value: "any" },
+                  { label: "全部标签", value: "all" },
+                ]
+              : [
+                  { label: "或", value: "any" },
+                  { label: "且", value: "all" },
+                ]
+          }
+          onChange={(value) => set("tagMatch", value === "all" ? "all" : "")}
+        />
+      )}
+    </Flex>
   )
   const renderMobileFilters = () => (
     <div className="advanced-filter-panel">
@@ -712,7 +782,7 @@ export function TransactionsPage() {
         </Flex>
         <Flex vertical gap={6}>
           <Typography.Text type="secondary">标签</Typography.Text>
-          {renderTagFilter()}
+          {renderTagFilter("transaction-tag-filter-mobile", true)}
         </Flex>
         <Flex justify="flex-end">
           <Button type="primary" onClick={() => setFilterOpen(false)}>
@@ -741,19 +811,22 @@ export function TransactionsPage() {
       label: `搜索：${params.get("query")}`,
       clear: () => clearFilterKeys(["query"]),
     },
-    params.get("tagId") && {
+    selectedTagIds.length > 0 && {
       key: "tag",
-      label: `标签：${
-        dictionaries?.tags?.find((tag) => tag.id === params.get("tagId"))
-          ?.name || "已选择"
-      }`,
-      clear: () => clearFilterKeys(["tagId"]),
+      label:
+        selectedTagIds.length > 1
+          ? `${selectedTagIds.length} 个标签${tagMatch === "all" ? " · 且" : ""}`
+          : dictionaries?.tags?.find((tag) => tag.id === selectedTagIds[0])
+              ?.name || "标签",
+      clear: () => clearFilterKeys(["tagId", "tagIds", "tagMatch"]),
     },
   ].filter(Boolean) as { key: string; label: string; clear: () => void }[]
   const activeFilterCount = filterChips.length
   const mobileMoreFilterCount =
-    Number(Boolean(params.get("category1"))) +
-    Number(Boolean(params.get("tagId")))
+    Number(Boolean(params.get("category1"))) + selectedTagIds.length
+  const mobileActiveFilterChips = filterChips.filter(
+    (chip) => !["time", "direction"].includes(chip.key),
+  )
   const renderFilterSummary = () => (
     <div className="transaction-filter-summary">
       <Typography.Text type="secondary" className="transaction-result-count">
@@ -783,6 +856,114 @@ export function TransactionsPage() {
       )}
     </div>
   )
+  const renderMobileActiveFilters = () => {
+    if (!mobileActiveFilterChips.length) return null
+    return (
+      <div className="transaction-mobile-active-filters">
+        <div className="transaction-mobile-active-filters-scroll">
+          {mobileActiveFilterChips.map((chip) => (
+            <Tag
+              key={chip.key}
+              closable
+              onClose={(event) => {
+                event.preventDefault()
+                chip.clear()
+              }}
+            >
+              {chip.label}
+            </Tag>
+          ))}
+        </div>
+        {activeFilterCount > 1 && (
+          <Button
+            type="link"
+            size="small"
+            icon={<ClearOutlined />}
+            onClick={clearAllFilters}
+          >
+            清除
+          </Button>
+        )}
+      </div>
+    )
+  }
+  const direction = params.get("direction") || "all"
+  const renderResultSummary = () => {
+    if (!data?.summary) return null
+    const { expense, income, balance } = data.summary
+    const items = [
+      {
+        key: "count",
+        title: "笔数",
+        value: data.total,
+        precision: 0,
+        prefix: undefined as string | undefined,
+        type: undefined as "success" | "danger" | undefined,
+      },
+      ...(direction !== "income"
+        ? [
+            {
+              key: "expense",
+              title: "支出合计",
+              value: expense,
+              precision: 2,
+              prefix: "¥",
+              type: undefined as "success" | "danger" | undefined,
+            },
+          ]
+        : []),
+      ...(direction !== "expense"
+        ? [
+            {
+              key: "income",
+              title: "收入合计",
+              value: income,
+              precision: 2,
+              prefix: "¥",
+              type: "success" as const,
+            },
+          ]
+        : []),
+      ...(direction === "all"
+        ? [
+            {
+              key: "balance",
+              title: balance >= 0 ? "结余" : "超支",
+              value: Math.abs(balance),
+              precision: 2,
+              prefix: "¥",
+              type: (balance >= 0 ? "success" : "danger") as
+                | "success"
+                | "danger"
+                | undefined,
+            },
+          ]
+        : []),
+    ]
+    return (
+      <Card size="small" className="transaction-result-summary">
+        <div
+          className="transaction-result-stats"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(items.length, screens.md ? 4 : 2)}, minmax(0, 1fr))`,
+          }}
+        >
+          {items.map((item) => (
+            <Statistic
+              key={item.key}
+              title={item.title}
+              value={item.value}
+              precision={item.precision}
+              prefix={item.prefix}
+              valueStyle={
+                item.type ? { color: item.type === "success" ? "#176b62" : "#c65f43" } : undefined
+              }
+            />
+          ))}
+        </div>
+      </Card>
+    )
+  }
   const sorter = params.get("sortBy")
     ? {
         field: params.get("sortBy"),
@@ -851,51 +1032,82 @@ export function TransactionsPage() {
           size="small"
           className="transaction-filter-card transaction-filter-mobile"
         >
-          <Flex vertical gap={10}>
-            <Input.Search
-              ref={searchRef}
-              allowClear
-              placeholder="搜索项目、备注、分类或标签"
-              value={searchValue}
-              onChange={(event) => {
-                setSearchValue(event.target.value)
-                if (!event.target.value) set("query", "")
-              }}
-              onSearch={(value) => set("query", value.trim())}
-              className="transaction-search"
-            />
-            <div className="transaction-filter-mobile-toolbar">
-              {renderTimeFilter("transaction-time-trigger-mobile")}
+          <Flex vertical gap={8}>
+            <div className="transaction-mobile-search-row">
+              <Input
+                ref={searchRef}
+                allowClear
+                placeholder="搜索项目、备注、分类或标签"
+                value={searchValue}
+                onChange={(event) => {
+                  setSearchValue(event.target.value)
+                  if (!event.target.value) set("query", "")
+                }}
+                onPressEnter={() => set("query", searchValue.trim())}
+                className="transaction-search-mobile"
+                suffix={
+                  <button
+                    type="button"
+                    className="transaction-search-mobile-go"
+                    aria-label="搜索"
+                    onClick={() => set("query", searchValue.trim())}
+                  >
+                    <SearchOutlined />
+                  </button>
+                }
+              />
               <Badge
                 count={mobileMoreFilterCount}
                 size="small"
-                offset={[-2, 2]}
+                offset={[-4, 4]}
               >
                 <Button
+                  className="transaction-mobile-icon-btn"
                   icon={<FilterOutlined />}
+                  aria-label="筛选分类和标签"
                   onClick={() => setFilterOpen(true)}
-                >
-                  分类
-                </Button>
+                />
               </Badge>
               <Dropdown menu={mobileActionMenu} trigger={["click"]}>
-                <Button icon={<MoreOutlined />} aria-label="更多账目操作" />
+                <Button
+                  className="transaction-mobile-icon-btn"
+                  icon={<MoreOutlined />}
+                  aria-label="更多账目操作"
+                />
               </Dropdown>
             </div>
-            <Segmented
-              block
-              className="transaction-direction-filter"
-              value={params.get("direction") || "all"}
-              options={[
-                { label: "全部", value: "all" },
-                { label: "支出", value: "expense" },
-                { label: "收入", value: "income" },
-              ]}
-              onChange={(value) =>
-                set("direction", value === "all" ? "" : String(value))
-              }
-            />
-            {renderFilterSummary()}
+            <div className="transaction-mobile-switcher">
+              <button
+                type="button"
+                className={`transaction-mobile-switcher-item is-time${
+                  activeTimePreset !== "all" ? " is-active" : ""
+                }`}
+                onClick={() => setTimeOpen(true)}
+              >
+                {mobileTimeLabel}
+              </button>
+              {(
+                [
+                  ["all", "全部"],
+                  ["expense", "支出"],
+                  ["income", "收入"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`transaction-mobile-switcher-item${
+                    (params.get("direction") || "all") === value
+                      ? " is-active"
+                      : ""
+                  }`}
+                  onClick={() => set("direction", value === "all" ? "" : value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {renderMobileActiveFilters()}
           </Flex>
         </Card>
       )}
@@ -922,6 +1134,7 @@ export function TransactionsPage() {
           }
         />
       )}
+      {renderResultSummary()}
       {screens.md ? (
         <Card styles={{ body: { padding: 0 } }}>
           <Table<Transaction>
@@ -1054,7 +1267,7 @@ export function TransactionsPage() {
       {!screens.md && (
         <Drawer
           className="mobile-filter-drawer"
-          title="选择分类"
+          title="分类与标签"
           placement="bottom"
           height="auto"
           open={filterOpen}
