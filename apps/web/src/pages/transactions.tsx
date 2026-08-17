@@ -1168,6 +1168,7 @@ export function TransactionsPage() {
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
           <List
+            className="transaction-mobile-list"
             loading={isLoading}
             dataSource={data?.records || []}
             locale={{ emptyText: <Empty /> }}

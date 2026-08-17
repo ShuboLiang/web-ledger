@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  BarChartOutlined,
   RightOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -10,6 +11,13 @@ import { Avatar, Card, List, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
 
 const entries = [
+  {
+    path: "/analytics",
+    icon: <BarChartOutlined />,
+    title: "统计分析",
+    description: "比较周期、分类构成和支出趋势",
+    tone: "mint",
+  },
   {
     path: "/finance",
     icon: <BankOutlined />,

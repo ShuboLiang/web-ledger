@@ -3,7 +3,7 @@ import {
   ArrowRightOutlined,
   CalendarOutlined,
 } from "@ant-design/icons"
-import { Column, Line } from "@ant-design/plots"
+import { Line } from "@ant-design/plots"
 import { useQuery } from "@tanstack/react-query"
 import {
   Alert,
@@ -21,12 +21,11 @@ import {
   Segmented,
   Skeleton,
   Space,
-  Statistic,
   Tag,
   Typography,
 } from "antd"
 import dayjs from "dayjs"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   api,
@@ -36,11 +35,9 @@ import {
   type Transaction,
 } from "@/lib/api"
 import { compactMoney, money, readPersist, writePersist } from "@/lib/utils"
-import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseCategoryOverview } from "@/components/expense-category-overview"
 
 type Scope = "day" | "week" | "month" | "year"
-type TransactionPage = { records: Transaction[]; total: number }
 type TrendChartRow = {
   key: string
   period: string
@@ -60,7 +57,6 @@ type RangeAnalytics = {
   comparison: Dashboard["comparison"]["month"]
   series: { key: string; label: string; amount: number }[]
 }
-const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"]
 const scopes: Scope[] = ["day", "week", "month", "year"]
 const shift = (date: string, days: number) =>
   dayjs(date).add(days, "day").format("YYYY-MM-DD")
@@ -86,33 +82,57 @@ const dateText = (value: string) =>
 const rangeText = (range: [string, string]) =>
   `${dateText(range[0])} — ${dateText(range[1])}`
 
-function mobileTrendRows(rows: TrendChartRow[]) {
-  if (rows.length <= 14) return rows
+function clipTrendToToday(rows: TrendChartRow[]) {
+  const today = dayjs().format("YYYY-MM-DD")
+  const thisMonth = today.slice(0, 7)
+  return rows.filter((row) =>
+    row.key.length === 7 ? row.key <= thisMonth : row.key <= today,
+  )
+}
 
-  if (rows.length <= 45) {
-    const groups: TrendChartRow[] = []
-    for (let index = 0; index < rows.length; index += 7) {
-      const chunk = rows.slice(index, index + 7)
-      const start = chunk[0].key
-      const end = chunk[chunk.length - 1].key
-      const startDate = dayjs(start)
-      const endDate = dayjs(end)
-      groups.push({
-        key: start,
-        start,
-        end,
-        period:
-          startDate.month() === endDate.month()
-            ? `${startDate.format("M/D")}–${endDate.format("D")}`
-            : `${startDate.format("M/D")}–${endDate.format("M/D")}`,
-        amount: chunk.reduce((sum, row) => sum + row.amount, 0),
-      })
+function weekPeriodLabel(start: string, end: string) {
+  const startDate = dayjs(start)
+  const endDate = dayjs(end)
+  if (start === end) return startDate.format("M/D")
+  return startDate.month() === endDate.month()
+    ? `${startDate.format("M/D")}–${endDate.format("D")}`
+    : `${startDate.format("M/D")}–${endDate.format("M/D")}`
+}
+
+function mobileTrendRows(rows: TrendChartRow[]) {
+  const occurred = clipTrendToToday(rows)
+  if (occurred.length <= 31) {
+    return occurred.map((row) =>
+      row.key.length === 7
+        ? row
+        : { ...row, period: dayjs(row.key).format("M/D") },
+    )
+  }
+
+  if (occurred.length <= 90) {
+    const groups = new Map<string, TrendChartRow>()
+    for (const row of occurred) {
+      const weekStart = startOfWeek(row.key)
+      const existing = groups.get(weekStart)
+      if (existing) {
+        existing.amount += row.amount
+        existing.end = row.key
+        existing.period = weekPeriodLabel(weekStart, row.key)
+      } else {
+        groups.set(weekStart, {
+          key: weekStart,
+          start: weekStart,
+          end: row.key,
+          period: weekPeriodLabel(weekStart, row.key),
+          amount: row.amount,
+        })
+      }
     }
-    return groups
+    return [...groups.values()]
   }
 
   const months = new Map<string, TrendChartRow>()
-  for (const row of rows) {
+  for (const row of occurred) {
     const month = row.key.slice(0, 7)
     const existing = months.get(month)
     if (existing) {
@@ -131,6 +151,33 @@ function mobileTrendRows(rows: TrendChartRow[]) {
   return [...months.values()]
 }
 
+function trendGranularity(rows: TrendChartRow[]) {
+  if (rows.some((row) => row.start && row.end && row.start !== row.end))
+    return "按周"
+  if (rows.some((row) => row.key.length === 7)) return "按月"
+  return "按日"
+}
+
+function trendPeriodQuery(row: TrendChartRow) {
+  if (row.start && row.end && row.start !== row.end)
+    return `start=${row.start}&end=${row.end}`
+  if (row.key.length === 7) return `month=${row.key}`
+  return `date=${row.key}`
+}
+
+function trendPeriodActionLabel(row: TrendChartRow) {
+  if (row.start && row.end && row.start !== row.end) return "查看这周账目"
+  if (row.key.length === 7) return "查看当月账目"
+  return "查看当日账目"
+}
+
+function niceAxisMax(value: number) {
+  if (value <= 0) return 100
+  if (value <= 100) return Math.ceil(value / 20) * 20
+  if (value <= 1000) return Math.ceil(value / 100) * 100
+  return Math.ceil(value / 1000) * 1000
+}
+
 export function AnalyticsPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
@@ -139,7 +186,7 @@ export function AnalyticsPage() {
   const [mobileRangeDraft, setMobileRangeDraft] = useState<
     [string, string] | null
   >(null)
-  const [selectedHeatDate, setSelectedHeatDate] = useState("")
+  const [selectedTrendKey, setSelectedTrendKey] = useState("")
   const scope: Scope = isScope(params.get("scope"))
     ? (params.get("scope") as Scope)
     : "month"
@@ -163,6 +210,9 @@ export function AnalyticsPage() {
     if (params.toString())
       writePersist(analyticsFilterKey, `?${params.toString()}`)
   }, [params, setParams])
+  useEffect(() => {
+    setSelectedTrendKey("")
+  }, [scope, anchor, customRange?.[0], customRange?.[1]])
   const setScope = (value: Scope) => {
     setParams((current) => {
       const next = new URLSearchParams(current)
@@ -192,10 +242,6 @@ export function AnalyticsPage() {
       api<Dashboard>(`/api/dashboard${anchor ? `?anchor=${anchor}` : ""}`),
   })
   const selected = data?.anchor || anchor || dayjs().format("YYYY-MM-DD")
-  const calendarMonth =
-    params.get("calendarMonth") ||
-    customRange?.[1].slice(0, 7) ||
-    selected.slice(0, 7)
   const requestedRange =
     customRange || (data ? (data.ranges[scope] as [string, string]) : null)
   const {
@@ -222,62 +268,6 @@ export function AnalyticsPage() {
     queryFn: () =>
       api<{ records: Transaction[] }>(
         `/api/transactions?start=${requestedRange![0]}&end=${requestedRange![1]}&page=1&pageSize=5&direction=expense&sortBy=amount&sortOrder=asc`,
-      ),
-  })
-  const calendarMonthStart = `${calendarMonth}-01`
-  const calendarMonthEnd = dayjs(calendarMonthStart)
-    .endOf("month")
-    .format("YYYY-MM-DD")
-  const calendarStart =
-    customRange && customRange[0] > calendarMonthStart
-      ? customRange[0]
-      : calendarMonthStart
-  const calendarEnd =
-    customRange && customRange[1] < calendarMonthEnd
-      ? customRange[1]
-      : calendarMonthEnd
-  const calendarInRange = calendarStart <= calendarEnd
-  const {
-    data: calendarData,
-    isFetching: calendarLoading,
-    isError: calendarError,
-    refetch: refetchCalendar,
-  } = useQuery({
-    queryKey: ["expense-calendar", calendarStart, calendarEnd],
-    enabled: calendarInRange,
-    queryFn: () =>
-      api<{ series: { key: string; amount: number }[] }>(
-        `/api/dashboard/range?start=${calendarStart}&end=${calendarEnd}`,
-      ),
-  })
-  const heatAmounts = useMemo(
-    () =>
-      new Map((calendarData?.series || []).map((row) => [row.key, row.amount])),
-    [calendarData?.series],
-  )
-  const heatThresholds = useMemo(() => {
-    const values = [...heatAmounts.values()]
-      .filter((amount) => amount > 0)
-      .sort((a, b) => a - b)
-    const at = (ratio: number) =>
-      values.length
-        ? values[
-            Math.min(values.length - 1, Math.floor((values.length - 1) * ratio))
-          ]
-        : 0
-    return [at(0.25), at(0.5), at(0.75)]
-  }, [heatAmounts])
-  const {
-    data: heatDay,
-    isFetching: heatDayLoading,
-    isError: heatDayError,
-    refetch: refetchHeatDay,
-  } = useQuery({
-    queryKey: ["heat-day", selectedHeatDate],
-    enabled: Boolean(selectedHeatDate),
-    queryFn: () =>
-      api<TransactionPage>(
-        `/api/transactions?date=${selectedHeatDate}&direction=expense&page=1&pageSize=100`,
       ),
   })
   if (isLoading || !data)
@@ -312,80 +302,11 @@ export function AnalyticsPage() {
     period: row.label,
     amount: row.amount,
   }))
-  const chartData = screens.md ? rawChartData : mobileTrendRows(rawChartData)
-  const peakChartAmount = Math.max(0, ...chartData.map((row) => row.amount))
-  const mobileTrendGranularity =
-    rawChartData.length > 45
-      ? "按月"
-      : rawChartData.length > 14
-        ? "按周"
-        : rawChartData.some((row) => row.key.length === 7)
-          ? "按月"
-          : "按日"
-  const mobileLabelPeriods = new Set(
-    chartData
-      .filter((row) => row.amount > 0)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 3)
-      .map((row) => row.period),
-  )
-  const mobileAxisPeriods = new Set(
-    chartData
-      .filter(
-        (_, index) =>
-          chartData.length <= 7 ||
-          index % 4 === 0 ||
-          index === chartData.length - 1,
-      )
-      .map((row) => row.period),
-  )
-  const columnConfig: any = {
-    data: chartData,
-    xField: "period",
-    yField: "amount",
-    height: screens.md ? 300 : 230,
-    autoFit: true,
-    paddingTop: 30,
-    paddingRight: 48,
-    style: {
-      radiusTopLeft: 5,
-      radiusTopRight: 5,
-      fill: (row: TrendChartRow) =>
-        !screens.md && peakChartAmount > 0 && row.amount === peakChartAmount
-          ? "#c65f43"
-          : "#176b62",
-      shadowColor: "transparent",
-      shadowBlur: 0,
-    },
-    label: {
-      text: (row: { period: string; amount: number }) =>
-        row.amount && (screens.md || mobileLabelPeriods.has(row.period))
-          ? compactMoney(row.amount)
-          : "",
-      position: "top",
-      textBaseline: "bottom",
-      dy: -5,
-      fontSize: 11,
-      fill: "#56635e",
-      transform: [{ type: "overlapHide" }],
-    },
-    axis: {
-      x: {
-        labelFormatter: (value: string) =>
-          screens.md || mobileAxisPeriods.has(value) ? value : "",
-      },
-      y: { labelFormatter: (value: number) => compactMoney(value) },
-    },
-    tooltip: false,
-    interaction: {
-      tooltip: false,
-      elementHighlight: false,
-    },
-    state: {
-      active: { fillOpacity: 1, shadowColor: "transparent", shadowBlur: 0 },
-      inactive: { fillOpacity: 1, opacity: 1 },
-    },
-  }
+  const chartData = mobileTrendRows(rawChartData)
+  const selectedTrend =
+    chartData.find((row) => row.key === selectedTrendKey) ||
+    (chartData.length === 1 ? chartData[0] : null)
+  const mobileTrendGranularity = trendGranularity(chartData)
   const requestedCategory = params.get("focusCategory") || ""
   const focusedCategory = primaryRows.some(
     (row) => row.category === requestedCategory,
@@ -535,34 +456,6 @@ export function AnalyticsPage() {
       </Button>
     </Flex>
   )
-  const previousCalendarMonth = dayjs(calendarMonthStart)
-    .subtract(1, "month")
-    .format("YYYY-MM")
-  const nextCalendarMonth = dayjs(calendarMonthStart)
-    .add(1, "month")
-    .format("YYYY-MM")
-  const canGoPreviousMonth =
-    !customRange || previousCalendarMonth >= customRange[0].slice(0, 7)
-  const canGoNextMonth =
-    !customRange || nextCalendarMonth <= customRange[1].slice(0, 7)
-  const calendarMonthPicker = (
-    <DatePicker
-      picker="month"
-      allowClear={false}
-      format="YYYY年M月"
-      value={dayjs(calendarMonthStart)}
-      disabledDate={(value) =>
-        Boolean(
-          customRange &&
-          (value.format("YYYY-MM") < customRange[0].slice(0, 7) ||
-            value.format("YYYY-MM") > customRange[1].slice(0, 7)),
-        )
-      }
-      onChange={(value) =>
-        value && setParam("calendarMonth", value.format("YYYY-MM"))
-      }
-    />
-  )
   return (
     <div className="page-stack">
       <Card className="analytics-toolbar">
@@ -707,47 +600,45 @@ export function AnalyticsPage() {
           )
         }
       />
-      <Card
-        title="支出趋势"
-        extra={
-          <Typography.Text type="secondary">
-            {!screens.md
-              ? `当前范围${mobileTrendGranularity}`
-              : customData
-                ? customData.days > 120
-                  ? "自定义范围按月"
-                  : "自定义范围按日"
-                : scope === "year"
-                  ? "本年按月"
-                  : "当前范围按日"}
-          </Typography.Text>
-        }
-      >
-        {chartData.length === 1 ? (
-          <SinglePointSummary row={chartData[0]} />
-        ) : chartData.length ? (
-          <>
-            <Column {...columnConfig} />
-            {!screens.md && (
-              <MobileTrendSummary
-                rows={chartData}
-                onOpen={(row) => {
-                  const periodQuery =
-                    row.start && row.end && row.start !== row.end
-                      ? `start=${row.start}&end=${row.end}`
-                      : row.key.length === 7
-                        ? `month=${row.key}`
-                        : `date=${row.key}`
-                  navigate(`/transactions?${periodQuery}&direction=expense`)
-                }}
-              />
-            )}
-            {screens.md && <ChartSummary rows={chartData} />}
-          </>
-        ) : (
-          <Empty />
-        )}
-      </Card>
+      {(customRange || scope !== "day") && chartData.length > 1 && (
+        <Card
+          title="支出趋势"
+          extra={
+            <Typography.Text type="secondary">
+              {!screens.md
+                ? `当前范围${mobileTrendGranularity}`
+                : customData
+                  ? customData.days > 120
+                    ? "自定义范围按月"
+                    : "自定义范围按日"
+                  : scope === "year"
+                    ? "本年按月"
+                    : "当前范围按日"}
+            </Typography.Text>
+          }
+        >
+          <div className="analytics-trend-chart">
+            <MobileTrendChart
+              rows={chartData}
+              selectedKey={selectedTrend?.key || ""}
+              desktop={Boolean(screens.md)}
+              onSelect={setSelectedTrendKey}
+            />
+          </div>
+          {selectedTrend ? (
+            <TrendPeriodAction
+              row={selectedTrend}
+              onOpen={(row) =>
+                navigate(
+                  `/transactions?${trendPeriodQuery(row)}&direction=expense`,
+                )
+              }
+            />
+          ) : (
+            <ChartSummary rows={chartData} />
+          )}
+        </Card>
+      )}
       {contributionRows.length > 0 && (
         <Card
           title="分类变化贡献"
@@ -857,229 +748,7 @@ export function AnalyticsPage() {
           )}
         </Card>
       </div>
-      <Card className="expense-calendar-card" title="每日支出日历">
-        <div className="expense-calendar-layout">
-          <aside className="expense-calendar-side">
-            <Typography.Text className="expense-calendar-eyebrow">
-              按月查看
-            </Typography.Text>
-            <Typography.Title level={4}>
-              {dayjs(calendarMonthStart).format("YYYY年M月")}
-            </Typography.Title>
-            <Typography.Paragraph type="secondary">
-              每格代表一天，颜色越深支出越高。点击日期查看当天账目。
-            </Typography.Paragraph>
-            <div className="expense-calendar-controls">
-              <Button
-                icon={<ArrowLeftOutlined />}
-                disabled={!canGoPreviousMonth}
-                onClick={() => setParam("calendarMonth", previousCalendarMonth)}
-                aria-label="上一个月"
-              />
-              {calendarMonthPicker}
-              <Button
-                icon={<ArrowRightOutlined />}
-                disabled={!canGoNextMonth}
-                onClick={() => setParam("calendarMonth", nextCalendarMonth)}
-                aria-label="下一个月"
-              />
-            </div>
-            <ExpenseLegend thresholds={heatThresholds} />
-            {customRange && (
-              <Typography.Text
-                className="expense-calendar-range-note"
-                type="secondary"
-              >
-                当前自定义范围跨月或跨年时，上方趋势展示整体变化；这里逐月查看每日明细。
-              </Typography.Text>
-            )}
-          </aside>
-          <div
-            className={`expense-calendar-pane${calendarLoading ? " loading" : ""}`}
-          >
-            {calendarError ? (
-              <ErrorState
-                message="日历数据加载失败"
-                onRetry={() => refetchCalendar()}
-              />
-            ) : (
-              <ExpenseMonth
-                year={Number(calendarMonth.slice(0, 4))}
-                month={Number(calendarMonth.slice(5, 7)) - 1}
-                amounts={heatAmounts}
-                thresholds={heatThresholds}
-                minDate={customRange?.[0]}
-                maxDate={customRange?.[1]}
-                onSelect={setSelectedHeatDate}
-                mobile
-              />
-            )}
-          </div>
-        </div>
-      </Card>
-      <Drawer
-        className="expense-day-drawer"
-        title={
-          selectedHeatDate
-            ? dayjs(selectedHeatDate).format("M月D日")
-            : "当天支出"
-        }
-        placement={screens.md ? "right" : "bottom"}
-        height={screens.md ? undefined : "72vh"}
-        open={Boolean(selectedHeatDate)}
-        onClose={() => setSelectedHeatDate("")}
-        destroyOnHidden
-      >
-        <Statistic
-          title="当天支出"
-          value={heatAmounts.get(selectedHeatDate) || 0}
-          precision={2}
-          prefix="¥"
-        />
-        {heatDay && heatDay.total > heatDay.records.length && (
-          <Alert
-            type="info"
-            showIcon
-            message={`当天共 ${heatDay.total} 笔，当前显示前 ${heatDay.records.length} 笔`}
-          />
-        )}
-        <List
-          className="expense-day-list"
-          loading={heatDayLoading}
-          dataSource={heatDay?.records || []}
-          locale={{ emptyText: <Empty description="当天没有支出" /> }}
-          renderItem={(row) => (
-            <List.Item
-              extra={
-                <Typography.Text strong type="danger">
-                  −{money(Math.abs(row.amount))}
-                </Typography.Text>
-              }
-            >
-              <List.Item.Meta
-                title={row.item}
-                description={
-                  <span className="transaction-mobile-description">
-                    <CategoryIcon name={row.secondaryIcon} size="small" />
-                    <span>
-                      {row.category1} / {row.category2}
-                      {row.note ? ` · ${row.note}` : ""}
-                    </span>
-                  </span>
-                }
-              />
-            </List.Item>
-          )}
-        />
-      </Drawer>
     </div>
-  )
-}
-
-function expenseLevel(amount: number, thresholds: number[]) {
-  if (!amount) return 0
-  if (amount <= thresholds[0]) return 1
-  if (amount <= thresholds[1]) return 2
-  if (amount <= thresholds[2]) return 3
-  return 4
-}
-
-function ExpenseLegend({ thresholds }: { thresholds: number[] }) {
-  const labels = [
-    "无",
-    thresholds[0] ? `≤${money(thresholds[0])}` : "低",
-    thresholds[1] ? `≤${money(thresholds[1])}` : "中",
-    thresholds[2] ? `≤${money(thresholds[2])}` : "高",
-    thresholds[2] ? `>${money(thresholds[2])}` : "最高",
-  ]
-  return (
-    <Flex className="expense-legend" align="center" gap={6} wrap>
-      <Typography.Text type="secondary">支出强度</Typography.Text>
-      {labels.map((label, level) => (
-        <Flex key={level} align="center" gap={3}>
-          <span className={`expense-legend-swatch level-${level}`} />
-          <Typography.Text type="secondary">{label}</Typography.Text>
-        </Flex>
-      ))}
-    </Flex>
-  )
-}
-
-function ExpenseMonth({
-  year,
-  month,
-  amounts,
-  thresholds,
-  onSelect,
-  minDate,
-  maxDate,
-  mobile = false,
-}: {
-  year: number
-  month: number
-  amounts: Map<string, number>
-  thresholds: number[]
-  onSelect: (date: string) => void
-  minDate?: string
-  maxDate?: string
-  mobile?: boolean
-}) {
-  const first = dayjs(`${year}-${String(month + 1).padStart(2, "0")}-01`)
-  const days = first.daysInMonth()
-  const leading = (first.day() + 6) % 7
-  const cells = [
-    ...Array(leading).fill(null),
-    ...Array.from({ length: days }, (_, index) => index + 1),
-  ]
-  return (
-    <section
-      className={`expense-month${mobile ? " mobile" : ""}`}
-      aria-label={`${year}年${month + 1}月支出日历`}
-    >
-      {!mobile && <Typography.Title level={5}>{month + 1} 月</Typography.Title>}
-      <div className="expense-weekdays" role="row">
-        {WEEKDAYS.map((weekday) => (
-          <span key={weekday} role="columnheader">
-            {weekday}
-          </span>
-        ))}
-      </div>
-      <div className="expense-days">
-        {cells.map((day, index) => {
-          if (!day)
-            return <span className="expense-day-empty" key={`empty-${index}`} />
-          const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-          const amount = amounts.get(date) || 0
-          const outsideRange = Boolean(
-            (minDate && date < minDate) || (maxDate && date > maxDate),
-          )
-          return (
-            <button
-              type="button"
-              key={date}
-              disabled={outsideRange}
-              className={`expense-day level-${expenseLevel(amount, thresholds)}${outsideRange ? " outside-range" : ""}`}
-              title={
-                outsideRange
-                  ? `${date} · 不在当前统计范围`
-                  : `${date} · 支出 ${money(amount)}`
-              }
-              aria-label={
-                outsideRange
-                  ? `${month + 1}月${day}日，不在当前统计范围`
-                  : `${month + 1}月${day}日，支出${money(amount)}`
-              }
-              onClick={() => onSelect(date)}
-            >
-              <span>{day}</span>
-              {mobile && amount > 0 && (
-                <small>{amount >= 1000 ? "1k+" : Math.round(amount)}</small>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </section>
   )
 }
 
@@ -1117,74 +786,109 @@ function ChartSummary({
   return (
     <Typography.Text type="secondary" className="chart-summary-visible">
       共支出 {money(total)}，最高支出出现在 {peak.period}，金额{" "}
-      {money(peak.amount)}。
+      {money(peak.amount)}。点柱子可查看对应账目。
     </Typography.Text>
   )
 }
 
-function MobileTrendSummary({
+function mobileTrendAxisLabel(row: TrendChartRow) {
+  if (row.key.length === 10) return String(Number(row.key.slice(8)))
+  return row.period
+}
+
+function MobileTrendChart({
   rows,
-  onOpen,
+  selectedKey,
+  desktop = false,
+  onSelect,
 }: {
   rows: TrendChartRow[]
-  onOpen: (row: TrendChartRow) => void
+  selectedKey: string
+  desktop?: boolean
+  onSelect: (key: string) => void
 }) {
-  const active = rows.filter((row) => row.amount > 0)
-  if (!active.length) return null
-  const total = active.reduce((sum, row) => sum + row.amount, 0)
-  const peak = active.reduce((highest, row) =>
-    row.amount > highest.amount ? row : highest,
-  )
-  const concentration = total ? (peak.amount / total) * 100 : 0
+  const max = niceAxisMax(Math.max(0, ...rows.map((row) => row.amount)))
+  const ticks = [0, 1, 2, 3, 4].map((step) => (max / 4) * step)
   return (
-    <div className="mobile-trend-summary" aria-label="支出趋势摘要">
-      <div className="mobile-trend-stat-grid">
-        <div>
-          <span>本期支出</span>
-          <strong>{compactMoney(total)}</strong>
+    <div className={`mobile-trend-chart${desktop ? " is-desktop" : ""}`}>
+      <div className="mobile-trend-plot">
+        <div className="mobile-trend-y" aria-hidden="true">
+          {[...ticks].reverse().map((tick) => (
+            <span key={tick}>{compactMoney(tick)}</span>
+          ))}
         </div>
-        <div>
-          <span>最高支出</span>
-          <strong>{peak.period}</strong>
-        </div>
-        <div>
-          <span>集中度</span>
-          <strong>{concentration.toFixed(1)}%</strong>
+        <div className="mobile-trend-grid">
+          {ticks.map((tick) => (
+            <i key={tick} />
+          ))}
+          <div
+            className="mobile-trend-cols"
+            style={{
+              gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {rows.map((row) => {
+              const selected = row.key === selectedKey
+              const height = max ? (row.amount / max) * 100 : 0
+              return (
+                <button
+                  type="button"
+                  key={row.key}
+                  className={selected ? "is-selected" : undefined}
+                  aria-pressed={selected}
+                  aria-label={`${row.period} 支出 ${money(row.amount)}`}
+                  onClick={() => onSelect(row.key)}
+                >
+                  <span
+                    className="mobile-trend-bar"
+                    style={{
+                      height: `${height}%`,
+                    }}
+                  />
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
-      <div className="mobile-trend-insight">
-        <div>
-          <i aria-hidden="true" />
-          <Typography.Text>
-            <strong>{peak.period}</strong> 支出 {money(peak.amount)}，占本期
-            {concentration.toFixed(1)}%。
-          </Typography.Text>
-        </div>
-        <Button
-          type="link"
-          icon={<ArrowRightOutlined />}
-          iconPosition="end"
-          onClick={() => onOpen(peak)}
+      <div className="mobile-trend-x">
+        <span className="mobile-trend-x-spacer" />
+        <div
+          className="mobile-trend-x-labels"
+          style={{
+            gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))`,
+          }}
         >
-          查看账目
-        </Button>
+          {rows.map((row) => (
+            <span key={row.key}>{mobileTrendAxisLabel(row)}</span>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-function SinglePointSummary({
+function TrendPeriodAction({
   row,
+  onOpen,
 }: {
-  row: { period: string; amount: number }
+  row: TrendChartRow
+  onOpen: (row: TrendChartRow) => void
 }) {
   return (
-    <div className="chart-single-summary">
-      <Typography.Text type="secondary">{row.period} 支出</Typography.Text>
-      <Typography.Text strong>{money(row.amount)}</Typography.Text>
-      <Typography.Text type="secondary">
-        当前范围只有一个时间点，直接显示总额。
-      </Typography.Text>
+    <div className="trend-period-action">
+      <div>
+        <span>{row.period} 支出</span>
+        <strong>{money(row.amount)}</strong>
+      </div>
+      <Button
+        type="link"
+        icon={<ArrowRightOutlined />}
+        iconPosition="end"
+        onClick={() => onOpen(row)}
+      >
+        {trendPeriodActionLabel(row)}
+      </Button>
     </div>
   )
 }

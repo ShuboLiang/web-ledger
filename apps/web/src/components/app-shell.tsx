@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  CalendarOutlined,
   BarChartOutlined,
   BankOutlined,
   BookOutlined,
@@ -46,6 +47,7 @@ const { Header, Sider, Content } = Layout
 const nav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
+  { key: "/heatmap", label: "热力图", icon: <CalendarOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
   { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
   { key: "/finance", label: "资产负债", icon: <BankOutlined /> },
@@ -57,10 +59,11 @@ const nav = [
 const mobileNav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
-  { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
+  { key: "/heatmap", label: "热力", icon: <CalendarOutlined /> },
   { key: "/more", label: "更多", icon: <MoreOutlined /> },
 ]
 const morePaths = new Set([
+  "/analytics",
   "/more",
   "/budgets",
   "/finance",
@@ -73,6 +76,7 @@ const analyticsFilterKey = "qing-zhang-analytics-filter"
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"],
   "/transactions": ["账目明细", "查找、核对和整理每一笔账目"],
+  "/heatmap": ["支出热力", "按天查看支出深浅，点日期看当天账目"],
   "/analytics": ["统计分析", "比较周期、分类与长期变化"],
   "/ai": ["AI 助手", "用自然语言记账和查询"],
   "/budgets": ["预算规划", "控制本月总支出与重点分类"],

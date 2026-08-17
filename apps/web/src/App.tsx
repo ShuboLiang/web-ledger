@@ -15,6 +15,9 @@ const TransactionsPage = lazy(() =>
     default: module.TransactionsPage,
   })),
 )
+const HeatmapPage = lazy(() =>
+  import("@/pages/heatmap").then((module) => ({ default: module.HeatmapPage })),
+)
 const AnalyticsPage = lazy(() =>
   import("@/pages/analytics").then((module) => ({
     default: module.AnalyticsPage,
@@ -75,6 +78,7 @@ export function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="heatmap" element={<HeatmapPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
           <Route path="finance" element={<FinancePage />} />
           <Route path="tags" element={<TagsPage />} />
