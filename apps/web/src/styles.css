@@ -21,6 +21,24 @@ body {
   min-width: 0;
   background: #f1f4f1;
 }
+html.overlay-scroll-lock,
+body.overlay-scroll-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+body.overlay-scroll-lock {
+  position: fixed;
+  left: 0;
+  width: 100%;
+}
+.ant-drawer-mask,
+.ant-modal-mask {
+  touch-action: none;
+}
+.ant-drawer-body,
+.ant-modal-body {
+  overscroll-behavior: contain;
+}
 button,
 input,
 textarea,
@@ -761,36 +779,21 @@ select {
   width: 100%;
 }
 .transaction-category-popup {
+  padding: 0 !important;
+}
+.transaction-category-popup .ant-cascader-menu {
+  min-width: 148px;
+  height: 280px;
+}
+.transaction-tag-popup {
   width: min(340px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px) !important;
   padding: 6px !important;
 }
-.transaction-category-popup .ant-select-item-group {
-  height: auto;
-  padding: 12px 10px 5px;
-  color: #62736f;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-}
-.transaction-category-popup .ant-select-item-group:not(:first-child) {
-  margin-top: 5px;
-  border-top: 1px solid #e8eeea;
-}
-.transaction-category-popup .ant-select-item-option {
-  min-height: 38px;
-  padding: 8px 10px;
-  border-radius: 5px;
-}
-.transaction-category-popup .ant-select-item-option-content {
+.transaction-tag-popup .ant-select-item-option-content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.transaction-category-popup
-  .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
-  background: #e7f1ed;
-  color: #155f57;
-  font-weight: 600;
 }
 .transaction-selection-alert {
   border-color: #b9d6cd;
@@ -825,6 +828,7 @@ select {
 .transaction-search-mobile {
   min-width: 0;
   height: 36px;
+  font-size: 16px;
 }
 .transaction-search-mobile.ant-input-affix-wrapper {
   height: 36px;
@@ -914,10 +918,45 @@ select {
 .mobile-filter-drawer .advanced-filter-panel {
   width: 100%;
   padding: 0;
+  overflow: hidden;
 }
 .mobile-filter-drawer .ant-drawer-body,
 .mobile-time-drawer .ant-drawer-body {
   padding-top: 12px;
+  overflow-x: hidden;
+}
+.mobile-filter-drawer .ant-drawer-body {
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+.mobile-category-cascader {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d7dfd9;
+  border-radius: 8px;
+}
+.mobile-category-cascader .ant-cascader-menus {
+  width: 100%;
+}
+.mobile-category-cascader .ant-cascader-menu {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 50%;
+  height: 260px;
+}
+.mobile-tag-checks {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+.mobile-tag-checks .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+  min-width: 0;
+  padding: 6px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .analytics-toolbar {
   position: sticky;
@@ -927,6 +966,63 @@ select {
 }
 .analytics-period-picker {
   width: 160px;
+}
+.mobile-date-trigger {
+  display: inline-flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 11px;
+  border: 1px solid #d7dfd9;
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: #102a2d;
+  font: inherit;
+  text-align: left;
+}
+.mobile-date-trigger:disabled {
+  opacity: 0.55;
+}
+.mobile-date-trigger .is-placeholder {
+  color: #687775;
+}
+.mobile-date-sheet .ant-drawer-content {
+  border-radius: 16px 16px 0 0;
+}
+.mobile-date-sheet .ant-picker-calendar {
+  margin-bottom: 8px;
+  background: transparent;
+}
+.mobile-date-grid-nav {
+  margin-bottom: 12px;
+}
+.mobile-date-grid-nav strong {
+  font-size: 16px;
+}
+.mobile-date-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.mobile-date-grid button {
+  height: 44px;
+  border: 1px solid #d7dfd9;
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: #102a2d;
+  font: inherit;
+}
+.mobile-date-grid button.is-selected {
+  border-color: #176b62;
+  background: #e7f1ed;
+  color: #155f57;
+  font-weight: 600;
+}
+.mobile-date-grid button:disabled {
+  opacity: 0.4;
 }
 .analytics-range-picker {
   width: 280px;
@@ -2789,11 +2885,11 @@ button.expense-category-row:focus-visible,
 .mobile-nav {
   position: fixed;
   z-index: 50;
-  right: 12px;
+  right: 8px;
   bottom: 12px;
-  left: 12px;
-  height: 66px;
-  padding: 0 8px;
+  left: 8px;
+  height: 64px;
+  padding: 0 4px;
   border: 1px solid rgba(168, 226, 213, 0.1);
   border-radius: 16px;
   background: #0b2527;
@@ -2803,16 +2899,19 @@ button.expense-category-row:focus-visible,
   height: 100%;
 }
 .mobile-nav .mobile-nav-item.ant-btn {
-  width: 54px;
-  height: 54px;
+  width: auto;
+  min-width: 0;
+  max-width: 48px;
+  height: 52px;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 4px;
+  gap: 2px;
+  padding: 4px 0;
   color: #94a3b8;
-  font-size: 18px;
+  font-size: 16px;
 }
 .mobile-nav .mobile-nav-item.ant-btn > span {
   margin-inline-start: 0;
@@ -2821,13 +2920,14 @@ button.expense-category-row:focus-visible,
   font-size: 9px;
 }
 .mobile-nav .mobile-nav-item.ant-btn .anticon {
-  font-size: 18px;
+  font-size: 16px;
 }
 .mobile-nav .mobile-nav-item.ant-btn.active {
   color: #a8e2d5;
   background: rgba(168, 226, 213, 0.09);
 }
 .mobile-add {
+  flex: 0 0 auto;
   margin-top: -28px;
   box-shadow: 0 0 0 5px #f1f4f1;
 }
@@ -2909,6 +3009,36 @@ button.expense-category-row:focus-visible,
 }
 
 @media (max-width: 767px) {
+  /* Prevent iOS Safari auto-zoom when focusing inputs below 16px. */
+  .ant-input,
+  .ant-input-affix-wrapper input,
+  .ant-input-number-input,
+  .ant-picker-input > input,
+  .ant-select-selection-search-input,
+  .ant-select-dropdown .ant-select-selection-search-input {
+    font-size: 16px !important;
+  }
+  .ant-picker-dropdown {
+    position: fixed !important;
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100vw !important;
+    max-height: min(52vh, 420px) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    overflow: auto;
+    border-radius: 16px 16px 0 0 !important;
+    box-shadow: 0 -12px 40px rgba(16, 42, 45, 0.18) !important;
+    transform: none !important;
+  }
+  .ant-picker-dropdown .ant-picker-panel-container,
+  .ant-picker-dropdown .ant-picker-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
   [data-chart-source-type="Ant Design Charts"] {
     pointer-events: none;
     touch-action: pan-y;

@@ -10,7 +10,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Drawer,
   Empty,
   Flex,
@@ -34,8 +33,17 @@ import {
   type Dashboard,
   type Transaction,
 } from "@/lib/api"
-import { compactMoney, money, readPersist, writePersist } from "@/lib/utils"
+import { compactMoney, money } from "@/lib/utils"
+import {
+  isAnalyticsScope,
+  readAnalyticsAnchor,
+  readAnalyticsScope,
+  writeAnalyticsAnchor,
+  writeAnalyticsScope,
+} from "@/lib/analytics-scope"
+import { usePickerInputReadOnly } from "@/lib/use-viewport"
 import { ExpenseCategoryOverview } from "@/components/expense-category-overview"
+import { DatePicker } from "@/components/sheet-date-picker"
 
 type Scope = "day" | "week" | "month" | "year"
 type TrendChartRow = {
@@ -45,7 +53,6 @@ type TrendChartRow = {
   start?: string
   end?: string
 }
-const analyticsFilterKey = "qing-zhang-analytics-filter"
 type RangeAnalytics = {
   start: string
   end: string
@@ -73,6 +80,23 @@ const shiftPeriod = (date: string, scope: Scope, direction: -1 | 1) =>
       : dayjs(date).add(direction, scope).startOf(scope).format("YYYY-MM-DD")
 const isScope = (value: string | null): value is Scope =>
   Boolean(value && scopes.includes(value as Scope))
+const currentPeriodLabel = (value: Scope) =>
+  value === "day"
+    ? "今天"
+    : value === "week"
+      ? "本周"
+      : value === "year"
+        ? "本年"
+        : "本月"
+const isCurrentPeriod = (date: string, value: Scope) => {
+  const today = dayjs()
+  const selectedDate = dayjs(date)
+  if (value === "day") return selectedDate.isSame(today, "day")
+  if (value === "week")
+    return startOfWeek(date) === startOfWeek(today.format("YYYY-MM-DD"))
+  if (value === "month") return selectedDate.isSame(today, "month")
+  return selectedDate.isSame(today, "year")
+}
 const dateText = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -182,6 +206,7 @@ export function AnalyticsPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const screens = Grid.useBreakpoint()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const [customMode, setCustomMode] = useState(false)
   const [mobileRangeDraft, setMobileRangeDraft] = useState<
     [string, string] | null
@@ -202,13 +227,21 @@ export function AnalyticsPage() {
       return next
     })
   useEffect(() => {
-    const saved = readPersist(analyticsFilterKey)
-    if (!params.toString() && saved) {
-      setParams(new URLSearchParams(saved.replace(/^\?/, "")), { replace: true })
+    if (!params.toString()) {
+      const savedScope = readAnalyticsScope()
+      const savedAnchor = readAnalyticsAnchor()
+      if (savedScope || savedAnchor) {
+        const next = new URLSearchParams()
+        if (savedScope) next.set("scope", savedScope)
+        if (savedAnchor) next.set("anchor", savedAnchor)
+        setParams(next, { replace: true })
+      }
       return
     }
-    if (params.toString())
-      writePersist(analyticsFilterKey, `?${params.toString()}`)
+    const currentScope = params.get("scope")
+    if (isAnalyticsScope(currentScope)) writeAnalyticsScope(currentScope)
+    if (params.get("start") && params.get("end")) return
+    writeAnalyticsAnchor(params.get("anchor") || "")
   }, [params, setParams])
   useEffect(() => {
     setSelectedTrendKey("")
@@ -227,6 +260,16 @@ export function AnalyticsPage() {
     setCustomMode(false)
   }
   const setAnchor = (value: string) => setParam("anchor", value)
+  const goToCurrentPeriod = () => {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete("start")
+      next.delete("end")
+      next.set("anchor", dayjs().format("YYYY-MM-DD"))
+      return next
+    })
+    setCustomMode(false)
+  }
   const clearCustomRange = () => {
     setParams((current) => {
       const next = new URLSearchParams(current)
@@ -358,6 +401,9 @@ export function AnalyticsPage() {
     interaction: { tooltip: false },
   }
   const currentRange = rangeText(activeRange)
+  const showJumpToCurrent =
+    Boolean(customRange) || !isCurrentPeriod(selected, scope)
+  const jumpToCurrentLabel = currentPeriodLabel(scope)
   const picker = scope === "day" ? "date" : scope
   const pickerFormat =
     scope === "day"
@@ -373,6 +419,7 @@ export function AnalyticsPage() {
       picker={picker}
       format={pickerFormat}
       allowClear={false}
+      inputReadOnly={pickerInputReadOnly}
       value={dayjs(selected)}
       disabled={Boolean(customRange)}
       onChange={(value) => setAnchor(value?.format("YYYY-MM-DD") || "")}
@@ -390,6 +437,7 @@ export function AnalyticsPage() {
   const rangePicker = (
     <DatePicker.RangePicker
       className="analytics-range-picker"
+      inputReadOnly={pickerInputReadOnly}
       onChange={(values) => {
         const startValue = values?.[0]
         const endValue = values?.[1]
@@ -415,6 +463,7 @@ export function AnalyticsPage() {
           <Typography.Text>开始日期</Typography.Text>
           <DatePicker
             allowClear={false}
+            inputReadOnly={pickerInputReadOnly}
             value={dayjs(mobileRangeDraft[0])}
             maxDate={dayjs(mobileRangeDraft[1])}
             format="YYYY年M月D日"
@@ -432,6 +481,7 @@ export function AnalyticsPage() {
           <Typography.Text>结束日期</Typography.Text>
           <DatePicker
             allowClear={false}
+            inputReadOnly={pickerInputReadOnly}
             value={dayjs(mobileRangeDraft[1])}
             minDate={dayjs(mobileRangeDraft[0])}
             format="YYYY年M月D日"
@@ -486,6 +536,9 @@ export function AnalyticsPage() {
                 onClick={() => setAnchor(shiftPeriod(selected, scope, 1))}
                 aria-label="下一周期"
               />
+              {showJumpToCurrent && (
+                <Button onClick={goToCurrentPeriod}>{jumpToCurrentLabel}</Button>
+              )}
               <Button
                 type={customMode || customRange ? "primary" : "default"}
                 onClick={toggleCustom}
@@ -541,13 +594,20 @@ export function AnalyticsPage() {
                   {currentRange}
                 </Typography.Text>
               </Flex>
-              <Button
-                type="link"
-                icon={<CalendarOutlined />}
-                onClick={toggleCustom}
-              >
-                {customRange ? "退出" : "自定义"}
-              </Button>
+              <Space size={4}>
+                {showJumpToCurrent && (
+                  <Button type="link" onClick={goToCurrentPeriod}>
+                    {jumpToCurrentLabel}
+                  </Button>
+                )}
+                <Button
+                  type="link"
+                  icon={<CalendarOutlined />}
+                  onClick={toggleCustom}
+                >
+                  {customRange ? "退出" : "自定义"}
+                </Button>
+              </Space>
             </Flex>
           </Flex>
         )}

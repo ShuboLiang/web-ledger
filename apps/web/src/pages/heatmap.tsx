@@ -7,7 +7,6 @@ import {
   Alert,
   Button,
   Card,
-  DatePicker,
   Drawer,
   Empty,
   Flex,
@@ -28,6 +27,8 @@ import {
 } from "@/components/expense-heatmap"
 import { api, type Transaction } from "@/lib/api"
 import { money } from "@/lib/utils"
+import { DatePicker } from "@/components/sheet-date-picker"
+import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
 type TransactionPage = { records: Transaction[]; total: number }
 
@@ -35,6 +36,7 @@ export function HeatmapPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const screens = Grid.useBreakpoint()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const [selectedDate, setSelectedDate] = useState("")
   const month = params.get("month") || dayjs().format("YYYY-MM")
   const monthStart = `${month}-01`
@@ -110,6 +112,7 @@ export function HeatmapPage() {
               <DatePicker
                 picker="month"
                 allowClear={false}
+                inputReadOnly={pickerInputReadOnly}
                 format="YYYY年M月"
                 value={dayjs(monthStart)}
                 disabledDate={(value) => value.format("YYYY-MM") > dayjs().format("YYYY-MM")}

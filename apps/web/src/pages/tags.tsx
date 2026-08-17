@@ -11,7 +11,6 @@ import {
   App,
   Button,
   Card,
-  DatePicker,
   Drawer,
   Empty,
   Flex,
@@ -36,6 +35,8 @@ import {
   type TagOverview,
 } from "@/lib/api"
 import { money } from "@/lib/utils"
+import { DatePicker } from "@/components/sheet-date-picker"
+import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
 const tagColors = [
   "#0f766e",
@@ -50,6 +51,7 @@ const tagColors = [
 
 export function TagsPage() {
   const screens = Grid.useBreakpoint()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message, modal } = App.useApp()
@@ -163,6 +165,7 @@ export function TagsPage() {
             <DatePicker
               picker={scope}
               allowClear={false}
+              inputReadOnly={pickerInputReadOnly}
               value={dayjs(`${month}-01`)}
               format={scope === "year" ? "YYYY年" : "YYYY年M月"}
               onChange={(value) => value && setMonth(value.format("YYYY-MM"))}

@@ -34,7 +34,8 @@ import {
   type Transaction,
 } from "@/lib/api"
 import { useQuickStore, type QuickResult } from "@/lib/quick-store"
-import { compactMoney, money, readPersist } from "@/lib/utils"
+import { compactMoney, money } from "@/lib/utils"
+import { analyticsPath } from "@/lib/analytics-scope"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 import { CategoryIcon } from "@/components/category-icon"
 
@@ -201,10 +202,7 @@ export function DashboardPage() {
             extra={
               <Button
                 type="link"
-                onClick={() => {
-                  const saved = readPersist("qing-zhang-analytics-filter")
-                  navigate(saved ? `/analytics${saved.startsWith("?") ? saved : `?${saved}`}` : "/analytics")
-                }}
+                onClick={() => navigate(analyticsPath())}
               >
                 打开完整分析 <ArrowRightOutlined />
               </Button>

@@ -1,23 +1,14 @@
 import {
   BankOutlined,
-  BarChartOutlined,
   RightOutlined,
   RobotOutlined,
   SettingOutlined,
   TagsOutlined,
-  WalletOutlined,
 } from "@ant-design/icons"
 import { Avatar, Card, List, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
 
 const entries = [
-  {
-    path: "/analytics",
-    icon: <BarChartOutlined />,
-    title: "统计分析",
-    description: "比较周期、分类构成和支出趋势",
-    tone: "mint",
-  },
   {
     path: "/finance",
     icon: <BankOutlined />,
@@ -31,13 +22,6 @@ const entries = [
     title: "AI 助手",
     description: "自然语言记账、查账和消费分析",
     tone: "mint",
-  },
-  {
-    path: "/budgets",
-    icon: <WalletOutlined />,
-    title: "预算规划",
-    description: "查看本月预算、剩余金额和分类限额",
-    tone: "gold",
   },
   {
     path: "/tags",
@@ -69,7 +53,7 @@ export function MorePage() {
       <Card className="more-intro">
         <Typography.Title level={4}>所有功能，都能从这里到达</Typography.Title>
         <Typography.Paragraph type="secondary">
-          高频操作留在底部导航；规划和管理功能集中在这里，手机端不会再出现入口缺失。
+          常用功能在底部就能进；资产、标签、分类和设置集中在这里。
         </Typography.Paragraph>
       </Card>
       <Card styles={{ body: { padding: 0 } }}>

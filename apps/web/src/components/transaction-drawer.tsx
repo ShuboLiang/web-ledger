@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   App,
   Button,
-  DatePicker,
   Drawer,
   Form,
   Input,
@@ -18,6 +17,8 @@ import { useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
 import { CategoryIcon } from "@/components/category-icon"
+import { DatePicker } from "@/components/sheet-date-picker"
+import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 
 type FormValues = {
   date: any
@@ -44,6 +45,8 @@ export function TransactionDrawer({
   const { message } = App.useApp()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const searchableSelect = useSearchableSelect()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const { data } = useQuery({
     queryKey: ["dictionaries"],
     queryFn: () => api<Dictionaries>("/api/dictionaries"),
@@ -219,7 +222,10 @@ export function TransactionDrawer({
             name="date"
             rules={[{ required: true, message: "请选择日期" }]}
           >
-            <DatePicker style={{ width: "100%" }} />
+            <DatePicker
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
           </Form.Item>
           <Form.Item label="收支" name="direction" rules={[{ required: true }]}>
             <Radio.Group
@@ -303,7 +309,7 @@ export function TransactionDrawer({
           }
         >
           <Select
-            showSearch
+            showSearch={searchableSelect}
             optionFilterProp="label"
             placeholder="请选择账户"
             options={accountOptions}
@@ -317,6 +323,9 @@ export function TransactionDrawer({
           <Select
             mode="multiple"
             allowClear
+            showSearch={searchableSelect}
+            popupClassName="transaction-tag-popup"
+            popupMatchSelectWidth
             maxTagCount="responsive"
             placeholder={
               data?.tags?.length ? "可选多个标签" : "请先到标签页面新增"

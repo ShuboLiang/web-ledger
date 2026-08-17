@@ -41,7 +41,9 @@ import { useEffect, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type AuthUser } from "@/lib/api"
-import { clearPersist, readPersist } from "@/lib/utils"
+import { clearPersist } from "@/lib/utils"
+import { analyticsPath } from "@/lib/analytics-scope"
+import { useSearchableSelect, useMobileSheetFocusGuard, useOverlayScrollLock } from "@/lib/use-viewport"
 
 const { Header, Sider, Content } = Layout
 const nav = [
@@ -60,19 +62,18 @@ const mobileNav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
   { key: "/heatmap", label: "热力", icon: <CalendarOutlined /> },
+  { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
+  { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
   { key: "/more", label: "更多", icon: <MoreOutlined /> },
 ]
 const morePaths = new Set([
-  "/analytics",
   "/more",
-  "/budgets",
   "/finance",
   "/tags",
   "/ai",
   "/management",
   "/settings",
 ])
-const analyticsFilterKey = "qing-zhang-analytics-filter"
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"],
   "/transactions": ["账目明细", "查找、核对和整理每一笔账目"],
@@ -92,6 +93,9 @@ export function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchValue, setSearchValue] = useState("")
   const screens = Grid.useBreakpoint()
+  const searchableSelect = useSearchableSelect()
+  useMobileSheetFocusGuard()
+  useOverlayScrollLock()
   const desktop = Boolean(screens.lg)
   const location = useLocation()
   const navigate = useNavigate()
@@ -116,12 +120,7 @@ export function AppShell() {
     },
   })
   const [title, subtitle] = titles[location.pathname] || titles["/dashboard"]
-  const analyticsHref = () => {
-    const saved = readPersist(analyticsFilterKey)
-    return saved
-      ? `/analytics${saved.startsWith("?") ? saved : `?${saved}`}`
-      : "/analytics"
-  }
+  const analyticsHref = () => analyticsPath()
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -286,7 +285,7 @@ export function AppShell() {
       {!desktop && (
         <div className="mobile-nav">
           <Flex align="center" justify="space-around">
-            {mobileNav.slice(0, 2).map((item) => (
+            {mobileNav.slice(0, 3).map((item) => (
               <Button
                 type="text"
                 key={item.key}
@@ -310,7 +309,7 @@ export function AppShell() {
               aria-label="记一笔"
               onClick={() => setDrawer(true)}
             />
-            {mobileNav.slice(2).map((item) => {
+            {mobileNav.slice(3).map((item) => {
               const active =
                 item.key === "/more"
                   ? morePaths.has(location.pathname)
@@ -345,7 +344,7 @@ export function AppShell() {
           可搜索项目、备注、一级分类和二级分类，结果会在账目工作区中展示。
         </Typography.Paragraph>
         <Input.Search
-          autoFocus
+          autoFocus={searchableSelect}
           allowClear
           size="large"
           value={searchValue}

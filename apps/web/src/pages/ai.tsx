@@ -22,7 +22,6 @@ import {
   Badge,
   Button,
   Card,
-  DatePicker,
   Drawer,
   Dropdown,
   Empty,
@@ -44,7 +43,9 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { api, type Dictionaries } from "@/lib/api"
 import { conversationId, money } from "@/lib/utils"
+import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 import { CategoryIcon } from "@/components/category-icon"
+import { DatePicker } from "@/components/sheet-date-picker"
 
 type Message = {
   id: string
@@ -141,6 +142,8 @@ const aiConversationStorageKey = "qing-zhang-ai-conversation"
 export function AiPage() {
   const queryClient = useQueryClient()
   const screens = Grid.useBreakpoint()
+  const searchableSelect = useSearchableSelect()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const { message, modal } = App.useApp()
   const [id, setId] = useState<string>("")
   const [input, setInput] = useState("")
@@ -1240,7 +1243,10 @@ export function AiPage() {
               name="date"
               rules={[{ required: true, message: "请选择日期" }]}
             >
-              <DatePicker style={{ width: "100%" }} />
+              <DatePicker
+                style={{ width: "100%" }}
+                inputReadOnly={pickerInputReadOnly}
+              />
             </Form.Item>
             <Form.Item
               label="收支"
@@ -1323,7 +1329,7 @@ export function AiPage() {
             }
           >
             <Select
-              showSearch
+              showSearch={searchableSelect}
               optionFilterProp="label"
               placeholder="请选择账户"
               options={(dictionaries?.accounts || []).map((account) => ({
@@ -1335,6 +1341,7 @@ export function AiPage() {
           <Form.Item label="标签" name="tagNames">
             <Select
               mode="tags"
+              showSearch={searchableSelect}
               maxTagCount="responsive"
               placeholder="可选择或输入标签"
               options={(dictionaries?.tags || []).map((tag) => ({

@@ -18,8 +18,8 @@ import {
   Badge,
   Button,
   Card,
+  Cascader,
   Checkbox,
-  DatePicker,
   Drawer,
   Dropdown,
   Empty,
@@ -43,9 +43,11 @@ import dayjs, { type Dayjs } from "dayjs"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
+import { DatePicker } from "@/components/sheet-date-picker"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
 import { CategoryIcon } from "@/components/category-icon"
 import { money, readPersist, writePersist } from "@/lib/utils"
+import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 
 type Page = {
   records: Transaction[]
@@ -103,6 +105,8 @@ function savedTransactionState(source: URLSearchParams) {
 export function TransactionsPage() {
   const [params, setParams] = useSearchParams()
   const screens = Grid.useBreakpoint()
+  const searchableSelect = useSearchableSelect()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const queryClient = useQueryClient()
   const { message, modal } = App.useApp()
   const searchRef = useRef<any>(null)
@@ -201,50 +205,25 @@ export function TransactionsPage() {
     ...new Set(dictionaries?.categories.map((row) => row.category1)),
   ]
   const categoryOptions = primary.map((category1) => ({
-    label: (
-      <span className="category-select-label">
-        <CategoryIcon
-          name={
-            dictionaries?.categories.find((row) => row.category1 === category1)
-              ?.primaryIcon
-          }
-          size="small"
-        />
-        {category1}
-      </span>
-    ),
-    options: [
-      {
-        label: `全部${category1}`,
-        value: JSON.stringify([category1]),
-        searchText: `${category1} 全部`,
-      },
-      ...[
-        ...new Set(
-          dictionaries?.categories
-            .filter((row) => row.category1 === category1)
-            .map((row) => row.category2),
-        ),
-      ].map((category2) => ({
-        label: (
-          <span className="category-select-label">
-            <CategoryIcon
-              name={
-                dictionaries?.categories.find(
-                  (row) =>
-                    row.category1 === category1 && row.category2 === category2,
-                )?.secondaryIcon
-              }
-              size="small"
-            />
-            {category2}
-          </span>
-        ),
-        value: JSON.stringify([category1, category2]),
-        searchText: `${category1} ${category2}`,
-      })),
-    ],
+    value: category1,
+    label: category1,
+    children: [
+      ...new Set(
+        dictionaries?.categories
+          .filter((row) => row.category1 === category1)
+          .map((row) => row.category2),
+      ),
+    ].map((category2) => ({
+      value: category2,
+      label: category2,
+    })),
   }))
+  const categoryValue = params.get("category1")
+    ? [
+        params.get("category1")!,
+        ...(params.get("category2") ? [params.get("category2")!] : []),
+      ]
+    : undefined
   const remove = useMutation({
     mutationFn: (id: number) =>
       api(`/api/transactions/${id}`, { method: "DELETE" }),
@@ -549,20 +528,29 @@ export function TransactionsPage() {
       next.set("page", "1")
       return next
     })
-  const setCategoryFilter = (value?: string) => {
-    const selected = value ? (JSON.parse(value) as string[]) : []
+  const setCategoryFilter = (selected?: (string | number | null)[]) => {
+    const path = (selected || []).map(String).filter(Boolean)
     setParams((current) => {
       const next = new URLSearchParams(current)
-      selected[0]
-        ? next.set("category1", selected[0])
-        : next.delete("category1")
-      selected[1]
-        ? next.set("category2", selected[1])
-        : next.delete("category2")
+      path[0] ? next.set("category1", path[0]) : next.delete("category1")
+      path[1] ? next.set("category2", path[1]) : next.delete("category2")
       next.set("page", "1")
       return next
     })
   }
+  const setTagFilter = (values: string[]) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete("tagId")
+      if (values.length) next.set("tagIds", values.join(","))
+      else {
+        next.delete("tagIds")
+        next.delete("tagMatch")
+      }
+      if (values.length <= 1) next.delete("tagMatch")
+      next.set("page", "1")
+      return next
+    })
   const timePresetButtons = (
     <div className="transaction-time-presets">
       <Button
@@ -596,6 +584,7 @@ export function TransactionsPage() {
         <DatePicker.RangePicker
           value={selectedRange}
           allowClear
+          inputReadOnly={pickerInputReadOnly}
           onChange={(values) => {
             if (values?.[0] && values?.[1]) {
               setTimeRange([values[0], values[1]])
@@ -620,6 +609,7 @@ export function TransactionsPage() {
             <DatePicker
               value={selectedRange?.[0] || null}
               maxDate={selectedRange?.[1]}
+              inputReadOnly={pickerInputReadOnly}
               placeholder="选择开始日期"
               format="YYYY年M月D日"
               onChange={(value) => {
@@ -637,6 +627,7 @@ export function TransactionsPage() {
             <DatePicker
               value={selectedRange?.[1] || null}
               minDate={selectedRange?.[0]}
+              inputReadOnly={pickerInputReadOnly}
               placeholder="选择结束日期"
               format="YYYY年M月D日"
               onChange={(value) => {
@@ -680,31 +671,27 @@ export function TransactionsPage() {
       timeTrigger(className)
     )
   const renderCategoryFilter = (className = "") => (
-    <Select
+    <Cascader
       className={className}
       allowClear
-      showSearch
+      changeOnSelect
+      expandTrigger="hover"
+      showSearch={
+        searchableSelect
+          ? {
+              filter: (input, path) =>
+                path.some((option) =>
+                  String(option.value || option.label || "")
+                    .toLocaleLowerCase()
+                    .includes(input.trim().toLocaleLowerCase()),
+                ),
+            }
+          : false
+      }
       popupClassName="transaction-category-popup"
-      popupMatchSelectWidth={false}
       placeholder="全部分类"
-      value={
-        params.get("category1")
-          ? JSON.stringify([
-              params.get("category1"),
-              ...(params.get("category2") ? [params.get("category2")] : []),
-            ])
-          : undefined
-      }
+      value={categoryValue}
       options={categoryOptions}
-      filterOption={(input, option) =>
-        String(
-          option && "searchText" in option
-            ? option.searchText
-            : option?.label || "",
-        )
-          .toLocaleLowerCase()
-          .includes(input.trim().toLocaleLowerCase())
-      }
       onChange={setCategoryFilter}
     />
   )
@@ -719,7 +706,9 @@ export function TransactionsPage() {
         className={`transaction-tag-filter ${className}`.trim()}
         mode="multiple"
         allowClear
-        showSearch
+        showSearch={searchableSelect}
+        popupClassName="transaction-tag-popup"
+        popupMatchSelectWidth={Boolean(screens.md) ? false : true}
         maxTagCount={stacked ? 2 : "responsive"}
         placeholder="筛选标签"
         value={selectedTagIds}
@@ -728,20 +717,7 @@ export function TransactionsPage() {
           value: tag.id,
           label: tag.name,
         }))}
-        onChange={(values) =>
-          setParams((current) => {
-            const next = new URLSearchParams(current)
-            next.delete("tagId")
-            if (values.length) next.set("tagIds", values.join(","))
-            else {
-              next.delete("tagIds")
-              next.delete("tagMatch")
-            }
-            if (values.length <= 1) next.delete("tagMatch")
-            next.set("page", "1")
-            return next
-          })
-        }
+        onChange={setTagFilter}
       />
       {selectedTagIds.length > 1 && (
         <Segmented
@@ -767,20 +743,51 @@ export function TransactionsPage() {
   )
   const renderMobileFilters = () => (
     <div className="advanced-filter-panel">
-      <Flex vertical gap={14}>
-        <Flex vertical gap={6}>
+      <Flex vertical gap={16}>
+        <Flex vertical gap={8}>
           <Typography.Text type="secondary">分类</Typography.Text>
-          {renderCategoryFilter()}
+          <Cascader.Panel
+            className="mobile-category-cascader"
+            changeOnSelect
+            value={categoryValue}
+            options={categoryOptions}
+            onChange={setCategoryFilter}
+          />
         </Flex>
-        <Flex vertical gap={6}>
+        <Flex vertical gap={8}>
           <Typography.Text type="secondary">标签</Typography.Text>
-          {renderTagFilter("transaction-tag-filter-mobile", true)}
+          {(dictionaries?.tags || []).length ? (
+            <Checkbox.Group
+              className="mobile-tag-checks"
+              value={selectedTagIds}
+              options={(dictionaries?.tags || []).map((tag) => ({
+                label: tag.name,
+                value: tag.id,
+              }))}
+              onChange={(values) => setTagFilter(values.map(String))}
+            />
+          ) : (
+            <Typography.Text type="secondary">还没有标签</Typography.Text>
+          )}
+          {selectedTagIds.length > 1 && (
+            <Segmented
+              block
+              size="small"
+              className="transaction-tag-match"
+              value={tagMatch}
+              options={[
+                { label: "任一标签", value: "any" },
+                { label: "全部标签", value: "all" },
+              ]}
+              onChange={(value) =>
+                set("tagMatch", value === "all" ? "all" : "")
+              }
+            />
+          )}
         </Flex>
-        <Flex justify="flex-end">
-          <Button type="primary" onClick={() => setFilterOpen(false)}>
-            完成
-          </Button>
-        </Flex>
+        <Button type="primary" onClick={() => setFilterOpen(false)}>
+          完成
+        </Button>
       </Flex>
     </div>
   )

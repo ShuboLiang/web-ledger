@@ -13,7 +13,6 @@ import {
   Card,
   Checkbox,
   Col,
-  DatePicker,
   Drawer,
   Empty,
   Flex,
@@ -41,6 +40,8 @@ import {
   type FinanceOverview,
 } from "@/lib/api"
 import { money } from "@/lib/utils"
+import { DatePicker } from "@/components/sheet-date-picker"
+import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
 type Panel = "account" | "transfer" | "liability" | "reconcile" | null
 const accountTypeOptions = [
@@ -62,6 +63,7 @@ const transferKindText: Record<string, string> = {
 
 export function FinancePage() {
   const screens = Grid.useBreakpoint()
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const queryClient = useQueryClient()
   const { message, modal } = App.useApp()
   const [panel, setPanel] = useState<Panel>(null)
@@ -665,7 +667,10 @@ export function FinancePage() {
                 rules={[{ required: true }]}
                 extra="只计算这一天及之后的账单与资金移动。"
               >
-                <DatePicker style={{ width: "100%" }} />
+                <DatePicker
+                  style={{ width: "100%" }}
+                  inputReadOnly={pickerInputReadOnly}
+                />
               </Form.Item>
             </>
           )}
@@ -774,7 +779,10 @@ export function FinancePage() {
           }
         >
           <Form.Item label="日期" name="date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: "100%" }} />
+            <DatePicker
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
           </Form.Item>
           <div className="form-grid-2">
             <Form.Item
@@ -897,14 +905,20 @@ export function FinancePage() {
               name="startDate"
               rules={[{ required: true }]}
             >
-              <DatePicker style={{ width: "100%" }} />
+              <DatePicker
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
             </Form.Item>
             <Form.Item
               label="首次还款日"
               name="firstDueDate"
               rules={[{ required: true }]}
             >
-              <DatePicker style={{ width: "100%" }} />
+              <DatePicker
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
             </Form.Item>
           </div>
           <Form.Item
@@ -984,7 +998,10 @@ export function FinancePage() {
           }
         >
           <Form.Item label="结清日期" name="date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: "100%" }} />
+            <DatePicker
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
           </Form.Item>
           <Form.Item
             label="付款账户"
@@ -1055,10 +1072,14 @@ function PaymentFields({
 }: {
   assetOptions: { value: string; label: string }[]
 }) {
+  const pickerInputReadOnly = usePickerInputReadOnly()
   return (
     <>
       <Form.Item label="还款日期" name="date" rules={[{ required: true }]}>
-        <DatePicker style={{ width: "100%" }} />
+        <DatePicker
+          style={{ width: "100%" }}
+          inputReadOnly={pickerInputReadOnly}
+        />
       </Form.Item>
       <Form.Item
         label="付款账户"

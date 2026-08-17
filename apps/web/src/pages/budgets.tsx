@@ -13,7 +13,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Drawer,
   Dropdown,
   Empty,
@@ -32,7 +31,9 @@ import dayjs from "dayjs"
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { CategoryIcon } from "@/components/category-icon"
+import { DatePicker } from "@/components/sheet-date-picker"
 import { api } from "@/lib/api"
+import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
 type Category = {
   id: string
@@ -62,6 +63,7 @@ type BudgetData = {
 const budgetMonthStorageKey = "qing-zhang-budget-month"
 
 export function BudgetsPage() {
+  const pickerInputReadOnly = usePickerInputReadOnly()
   const [params, setParams] = useSearchParams()
   const requestedMonth = params.get("month") || ""
   const storedMonth = sessionStorage.getItem(budgetMonthStorageKey) || ""
@@ -217,6 +219,7 @@ export function BudgetsPage() {
               className="budget-month-picker"
               picker="month"
               allowClear={false}
+              inputReadOnly={pickerInputReadOnly}
               value={dayjs(`${month}-01`)}
               onChange={changeMonth}
             />
@@ -329,7 +332,11 @@ export function BudgetsPage() {
           onFinish={(values) => save.mutate(values)}
         >
           <Form.Item name="month" label="月份" rules={[{ required: true }]}>
-            <DatePicker picker="month" style={{ width: "100%" }} />
+            <DatePicker
+              picker="month"
+              style={{ width: "100%" }}
+              inputReadOnly={pickerInputReadOnly}
+            />
           </Form.Item>
           <Form.Item
             name="category1"

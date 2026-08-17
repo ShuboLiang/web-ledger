@@ -128,6 +128,7 @@ import {
   WomanOutlined,
 } from "@ant-design/icons"
 import { Empty, Input, Popover, Typography } from "antd"
+import { useSearchableSelect } from "@/lib/use-viewport"
 import type { ComponentType } from "react"
 import { useMemo, useState } from "react"
 
@@ -324,6 +325,7 @@ export function CategoryIconPicker({
   onChange?: (value: string) => void
 }) {
   const [query, setQuery] = useState("")
+  const searchableSelect = useSearchableSelect()
   const selected = iconMap.get(value || "") || iconMap.get("folder")!
   const normalizedQuery = query.trim().toLowerCase()
   const filtered = useMemo(
@@ -353,7 +355,7 @@ export function CategoryIconPicker({
         <div className="category-icon-library-shell">
           <Input
             allowClear
-            autoFocus
+            autoFocus={searchableSelect}
             prefix={<SearchOutlined />}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
