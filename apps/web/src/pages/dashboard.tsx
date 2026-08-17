@@ -86,8 +86,17 @@ export function DashboardPage() {
   if (isLoading || !data) return <Skeleton active paragraph={{ rows: 12 }} />
 
   const flow = data.cashflow.month
+  const weekFlow = data.cashflow.week
+  const monthComparison = data.comparison.month
   const days = Math.max(1, Number(data.anchor.slice(8)))
-  const netPositive = flow.balance >= 0
+  const balanceSummary =
+    flow.balance === 0
+      ? "收支平衡"
+      : `${flow.balance > 0 ? "结余" : "超支"} ${money(Math.abs(flow.balance))}`
+  const monthChangeText =
+    monthComparison.change == null
+      ? "—"
+      : `${monthComparison.change > 0 ? "+" : ""}${(monthComparison.change * 100).toFixed(1)}%`
   const trendConfig: any = {
     data: data.series.day,
     xField: "label",
@@ -137,31 +146,15 @@ export function DashboardPage() {
               </Flex>
               <Statistic
                 className="statement-value"
-                title={netPositive ? "本月净结余" : "本月净流出"}
-                value={Math.abs(flow.balance)}
+                title="本月支出"
+                value={flow.expense}
                 precision={2}
                 prefix="¥"
               />
-              <Typography.Text type="secondary">
-                本月每一笔收支，已汇总至这张月度结单。
+              <Typography.Text type="secondary" className="statement-summary">
+                收入 {money(flow.income)} · {balanceSummary}
               </Typography.Text>
               <Row className="statement-ledger" gutter={18}>
-                <Col span={8}>
-                  <Statistic
-                    title="支出"
-                    value={flow.expense}
-                    precision={2}
-                    prefix="¥"
-                  />
-                </Col>
-                <Col span={8}>
-                  <Statistic
-                    title="收入"
-                    value={flow.income}
-                    precision={2}
-                    prefix="¥"
-                  />
-                </Col>
                 <Col span={8}>
                   <Statistic
                     title="日均"
@@ -169,6 +162,24 @@ export function DashboardPage() {
                     precision={2}
                     prefix="¥"
                   />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="本周"
+                    value={weekFlow.expense}
+                    precision={2}
+                    prefix="¥"
+                  />
+                </Col>
+                <Col span={8}>
+                  <div className="statement-inline-metric">
+                    <Typography.Text className="statement-inline-metric-label">
+                      较上月
+                    </Typography.Text>
+                    <Typography.Text className="statement-inline-metric-value">
+                      {monthChangeText}
+                    </Typography.Text>
+                  </div>
                 </Col>
               </Row>
               <Button

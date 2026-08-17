@@ -372,6 +372,26 @@ select {
   font-size: clamp(38px, 4vw, 56px);
   letter-spacing: -0.025em;
 }
+.statement-summary {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.statement-inline-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.statement-inline-metric-label {
+  color: #9ab4b0 !important;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.statement-inline-metric-value {
+  color: inherit;
+  font-family: Bahnschrift, "DIN Alternate", sans-serif;
+  font-size: 21px;
+}
 .statement-ledger {
   width: 100%;
   margin-top: auto;
@@ -612,6 +632,24 @@ select {
 }
 .transaction-direction-filter {
   grid-area: direction;
+  padding: 4px;
+}
+.transaction-direction-filter .ant-segmented-group {
+  display: flex;
+  width: 100%;
+}
+.transaction-direction-filter .ant-segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.transaction-direction-filter .ant-segmented-item-label {
+  min-height: 32px;
+  line-height: 32px;
+  padding-inline: 10px;
+}
+.transaction-filter-primary .transaction-time-trigger {
+  height: 40px;
+  padding-inline: 12px;
 }
 .transaction-category-filter {
   grid-area: category;
@@ -2888,38 +2926,16 @@ button.expense-category-row:focus-visible,
   }
   .transaction-filter-mobile .ant-input-affix-wrapper,
   .transaction-filter-mobile .ant-input-search-button,
-  .transaction-filter-mobile .ant-segmented,
   .transaction-filter-mobile .ant-btn {
     height: 40px;
   }
   .transaction-filter-mobile .transaction-direction-filter {
     width: 100%;
-    padding: 4px;
-  }
-  .transaction-filter-mobile
-    .transaction-direction-filter
-    .ant-segmented-group {
-    display: flex;
-    width: 100%;
-    height: 100%;
-  }
-  .transaction-filter-mobile .transaction-direction-filter .ant-segmented-item {
-    width: 33.3333%;
-    min-width: 0;
-    height: 100%;
-    flex: 0 0 33.3333%;
-  }
-  .transaction-filter-mobile
-    .transaction-direction-filter
-    .ant-segmented-item-label {
-    width: 100%;
-    min-height: 32px;
-    padding-inline: 0;
-    line-height: 32px;
   }
   .transaction-filter-mobile .transaction-time-trigger-mobile {
     grid-area: auto;
     width: 100%;
+    height: 40px;
   }
   .transaction-filter-mobile .transaction-filter-summary {
     min-height: 24px;
