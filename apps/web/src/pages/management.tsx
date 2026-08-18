@@ -176,6 +176,7 @@ export function ManagementPage() {
     <div className="page-stack">
       <Card
         loading={isLoading}
+        className="section-card"
         title={
           <div>
             <Typography.Text strong>一级分类与二级分类</Typography.Text>

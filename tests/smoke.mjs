@@ -122,7 +122,23 @@ try {
   const publicSettings = await request("/api/ai/settings")
   assert.equal(publicSettings.hasApiKey, true)
   assert.equal("apiKey" in publicSettings, false)
+  assert.equal(publicSettings.customPrompt, "")
   assert.ok(publicSettings.profiles.length >= 1)
+  const savedPrompt = await request("/api/ai/settings/prompt", {
+    method: "PUT",
+    body: JSON.stringify({ customPrompt: "餐饮优先记外卖" }),
+  })
+  assert.equal(savedPrompt.customPrompt, "餐饮优先记外卖")
+  assert.equal((await request("/api/ai/settings")).customPrompt, "餐饮优先记外卖")
+  assert.equal(
+    (
+      await request("/api/ai/settings/prompt", {
+        method: "PUT",
+        body: JSON.stringify({ customPrompt: "  " }),
+      })
+    ).customPrompt,
+    "",
+  )
   const defaultThinkingSettings = await request(
     `/api/ai/settings/profiles/${publicSettings.id}`,
     {

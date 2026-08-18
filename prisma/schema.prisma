@@ -233,6 +233,7 @@ model User {
   displayName  String        @map("display_name") @db.VarChar(60)
   passwordHash String        @map("password_hash") @db.Text
   tokenVersion Int           @default(0) @map("token_version")
+  aiCustomPrompt String      @default("") @map("ai_custom_prompt") @db.Text
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   ledger       Ledger?

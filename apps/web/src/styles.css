@@ -1948,6 +1948,20 @@ button.expense-category-row:focus-visible,
   font-size: 12px;
   font-weight: 400;
 }
+.section-card .ant-card-head {
+  min-height: auto;
+  padding: 16px 24px;
+}
+.section-card .ant-card-head-wrapper {
+  align-items: flex-start;
+  gap: 12px;
+}
+.section-card .ant-card-head-title {
+  display: block;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
 .category-card {
   height: 100%;
 }
@@ -3308,6 +3322,9 @@ button.expense-category-row:focus-visible,
   }
   .analytics-range-drawer .ant-drawer-body {
     padding-top: 12px;
+  }
+  .section-card .ant-card-head {
+    padding: 14px 16px;
   }
   .expense-structure-card .ant-card-head {
     padding-inline: 16px;

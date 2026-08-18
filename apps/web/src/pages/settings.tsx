@@ -201,6 +201,7 @@ function AiModelSettings() {
     <div className="page-stack">
       <Card
         loading={isLoading}
+        className="section-card"
         title={
           <div>
             <Typography.Text strong>AI 模型配置</Typography.Text>
@@ -437,6 +438,71 @@ function AiModelSettings() {
           </Form>
         )}
       </Card>
+      <AiAssistantPrompt settings={data} loading={isLoading} />
     </div>
+  )
+}
+
+function AiAssistantPrompt({
+  settings,
+  loading,
+}: {
+  settings: any
+  loading: boolean
+}) {
+  const queryClient = useQueryClient()
+  const { message } = App.useApp()
+  const [form] = Form.useForm<{ customPrompt: string }>()
+  useEffect(() => {
+    form.setFieldsValue({ customPrompt: settings?.customPrompt || "" })
+  }, [settings?.customPrompt, form])
+  const save = useMutation({
+    mutationFn: (values: { customPrompt: string }) =>
+      api("/api/ai/settings/prompt", {
+        method: "PUT",
+        body: JSON.stringify(values),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["ai-settings"] })
+      message.success("助手提示词已保存，新对话或下一轮提问起生效")
+    },
+    onError: (error: Error) => message.error(error.message),
+  })
+  return (
+    <Card
+      loading={loading}
+      className="section-card"
+      title={
+        <div>
+          <Typography.Text strong>助手提示词</Typography.Text>
+          <Typography.Paragraph type="secondary" className="card-subtitle">
+            补充你的记账习惯，例如常用账户、分类偏好或回答风格。不会替换内置记账规则。
+          </Typography.Paragraph>
+        </div>
+      }
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) => save.mutate(values)}
+      >
+        <Form.Item
+          name="customPrompt"
+          extra="最多 4000 字。留空并保存可清除自定义提示词。"
+        >
+          <Input.TextArea
+            autoSize={{ minRows: 5, maxRows: 12 }}
+            maxLength={4000}
+            showCount
+            placeholder="例如：餐饮尽量记到「餐饮/外卖」；日常付款账户是招商银行卡；回答尽量简短。"
+          />
+        </Form.Item>
+        <Flex justify="flex-end">
+          <Button type="primary" htmlType="submit" loading={save.isPending}>
+            保存提示词
+          </Button>
+        </Flex>
+      </Form>
+    </Card>
   )
 }

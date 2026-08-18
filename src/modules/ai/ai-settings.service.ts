@@ -78,9 +78,14 @@ export class AiSettingsService {
   async get() {
     const profiles = await this.list()
     const active = profiles.find((profile) => profile.isDefault) || profiles[0]
+    const user = await this.prisma.user.findUnique({
+      where: { id: this.currentUser.userId },
+      select: { aiCustomPrompt: true },
+    })
+    const customPrompt = user?.aiCustomPrompt || ""
     return active
-      ? { ...active, configured: active.hasApiKey, profiles }
-      : { configured: false, hasApiKey: false, profiles }
+      ? { ...active, configured: active.hasApiKey, profiles, customPrompt }
+      : { configured: false, hasApiKey: false, profiles, customPrompt }
   }
 
   private writeModelsFile(value: any) {
@@ -130,7 +135,15 @@ export class AiSettingsService {
     })
     if (!row) throw new Error("请先在“设置 → AI 模型”中新建并启用一个模型配置")
     this.writeModelsFile(row)
-    return { ...row, modelsPath: this.modelsPath }
+    const user = await this.prisma.user.findUnique({
+      where: { id: this.currentUser.userId },
+      select: { aiCustomPrompt: true },
+    })
+    return {
+      ...row,
+      modelsPath: this.modelsPath,
+      customPrompt: user?.aiCustomPrompt || "",
+    }
   }
 
   private normalize(input: Record<string, any>, current?: any) {
@@ -245,6 +258,18 @@ export class AiSettingsService {
         : await this.create({ ...input, isDefault: true })
     }
     await this.setDefault(saved.id)
+    return this.get()
+  }
+
+  async savePrompt(input: Record<string, any>) {
+    const customPrompt = String(input?.customPrompt ?? "")
+      .replace(/\u0000/g, "")
+      .trim()
+      .slice(0, 4000)
+    await this.prisma.user.update({
+      where: { id: this.currentUser.userId },
+      data: { aiCustomPrompt: customPrompt },
+    })
     return this.get()
   }
 }

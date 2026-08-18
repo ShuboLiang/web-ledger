@@ -60,6 +60,11 @@ export class AiController {
     return this.ai.saveSettings(body)
   }
 
+  @Put("settings/prompt")
+  async savePrompt(@Body() body: Record<string, unknown>) {
+    return this.settings.savePrompt(body)
+  }
+
   @Post("settings/profiles")
   async createProfile(@Body() body: Record<string, unknown>) {
     return this.settings.create(body)
