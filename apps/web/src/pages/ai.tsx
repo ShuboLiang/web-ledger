@@ -41,7 +41,7 @@ import dayjs from "dayjs"
 import { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { api, type Dictionaries } from "@/lib/api"
+import { api, type Dictionaries, UNACCOUNTED_ACCOUNT_ID, UNACCOUNTED_ACCOUNT_LABEL } from "@/lib/api"
 import { conversationId, money } from "@/lib/utils"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 import { CategoryIcon } from "@/components/category-icon"
@@ -708,17 +708,24 @@ export function AiPage() {
       category1: row.category1 || "",
       category2: row.category2 || "",
       accountId:
-        row.accountId ||
-        dictionaries?.accounts?.find((account) => account.isDefault)?.id ||
-        dictionaries?.accounts?.[0]?.id ||
-        "",
+        row.accountId === UNACCOUNTED_ACCOUNT_ID
+          ? undefined
+          : row.accountId ||
+            (row.label === "新增"
+              ? dictionaries?.accounts?.find((account) => account.isDefault)
+                  ?.id || dictionaries?.accounts?.[0]?.id
+              : undefined),
       tagNames: row.tagNames || row.tags?.map((tag: any) => tag.name) || [],
       note: row.note || "",
     })
   }
   const submitProposalEdit = (values: ProposalFormValues) => {
     if (!editingProposal) return
-    const record = { ...values, date: values.date.format("YYYY-MM-DD") }
+    const record = {
+      ...values,
+      date: values.date.format("YYYY-MM-DD"),
+      accountId: values.accountId || UNACCOUNTED_ACCOUNT_ID,
+    }
     const next = proposals.map((proposal, proposalIndex) => {
       if (proposalIndex !== editingProposal.proposalIndex) return proposal
       if (proposal.type === "create")
@@ -901,7 +908,19 @@ export function AiPage() {
                   ? `将图标设置为 ${row.icon}`
                   : row.isFinanceOperation
                     ? `${row.date || ""}${row.date && row.detail ? " · " : ""}${row.detail || ""}`
-                    : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
+                    : `${row.date || ""} · ${row.category1 || ""} ${row.category2 ? `/ ${row.category2}` : ""}${
+                        row.accountId === UNACCOUNTED_ACCOUNT_ID
+                          ? ` · ${UNACCOUNTED_ACCOUNT_LABEL}`
+                          : row.accountId
+                            ? ` · ${
+                                dictionaries?.accounts?.find(
+                                  (account) => account.id === row.accountId,
+                                )?.name || "账户"
+                              }`
+                            : row.label === "新增"
+                              ? " · 默认账户"
+                              : ` · ${UNACCOUNTED_ACCOUNT_LABEL}`
+                      }${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
               </Typography.Text>
             </Card>
           </List.Item>
@@ -1297,17 +1316,13 @@ export function AiPage() {
                 : "付款账户"
             }
             name="accountId"
-            rules={[{ required: true, message: "请选择账户" }]}
-            extra={
-              (dictionaries?.accounts?.length || 0) > 1
-                ? "默认账户已预选，可以按实际情况调整。"
-                : "当前只有一个可记账账户。"
-            }
+            extra="可清空。不选账户时只记消费，不改变任何账户余额。"
           >
             <Select
+              allowClear
               showSearch={searchableSelect}
               optionFilterProp="label"
-              placeholder="请选择账户"
+              placeholder="不记账户"
               options={(dictionaries?.accounts || []).map((account) => ({
                 value: account.id,
                 label: `${account.name}${account.isDefault ? "（默认）" : ""}`,

@@ -44,7 +44,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
 import { DatePicker } from "@/components/sheet-date-picker"
-import { api, type Dictionaries, type Transaction } from "@/lib/api"
+import { api, type Dictionaries, type Transaction, UNACCOUNTED_ACCOUNT_ID, UNACCOUNTED_ACCOUNT_LABEL } from "@/lib/api"
 import { CategoryIcon } from "@/components/category-icon"
 import { money, readPersist, writePersist } from "@/lib/utils"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
@@ -82,6 +82,7 @@ const transactionFilterKeys = [
   "tagId",
   "tagIds",
   "tagMatch",
+  "accountId",
 ] as const
 const transactionStateKeys = [
   ...transactionFilterKeys,
@@ -319,7 +320,7 @@ export function TransactionsPage() {
       render: (value) => (
         <span className="transaction-account-label">
           <WalletOutlined />
-          <span>{value || "未指定账户"}</span>
+          <span>{value || UNACCOUNTED_ACCOUNT_LABEL}</span>
         </span>
       ),
     },
@@ -382,7 +383,7 @@ export function TransactionsPage() {
           row.category1,
           row.category2,
           row.tags?.map((tag) => tag.name).join("|") || "",
-          row.accountName || "",
+          row.accountName || UNACCOUNTED_ACCOUNT_LABEL,
           row.note,
           row.amount,
         ]
@@ -450,6 +451,7 @@ export function TransactionsPage() {
       "tagId",
       "tagIds",
       "tagMatch",
+      "accountId",
     ])
   const today = dayjs().startOf("day")
   const weekStart = today.subtract((today.day() + 6) % 7, "day")
@@ -695,6 +697,25 @@ export function TransactionsPage() {
       onChange={setCategoryFilter}
     />
   )
+  const accountFilterOptions = [
+    { value: UNACCOUNTED_ACCOUNT_ID, label: UNACCOUNTED_ACCOUNT_LABEL },
+    ...(dictionaries?.accounts || []).map((account) => ({
+      value: account.id,
+      label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+    })),
+  ]
+  const renderAccountFilter = (className = "") => (
+    <Select
+      className={`transaction-account-filter ${className}`.trim()}
+      allowClear
+      showSearch={searchableSelect}
+      optionFilterProp="label"
+      placeholder="全部账户"
+      value={params.get("accountId") || undefined}
+      options={accountFilterOptions}
+      onChange={(value) => set("accountId", value || "")}
+    />
+  )
   const renderTagFilter = (className = "", stacked = !screens.md) => (
     <Flex
       gap={8}
@@ -755,6 +776,10 @@ export function TransactionsPage() {
           />
         </Flex>
         <Flex vertical gap={8}>
+          <Typography.Text type="secondary">账户</Typography.Text>
+          {renderAccountFilter()}
+        </Flex>
+        <Flex vertical gap={8}>
           <Typography.Text type="secondary">标签</Typography.Text>
           {(dictionaries?.tags || []).length ? (
             <Checkbox.Group
@@ -810,6 +835,16 @@ export function TransactionsPage() {
       label: `搜索：${params.get("query")}`,
       clear: () => clearFilterKeys(["query"]),
     },
+    params.get("accountId") && {
+      key: "account",
+      label:
+        params.get("accountId") === UNACCOUNTED_ACCOUNT_ID
+          ? UNACCOUNTED_ACCOUNT_LABEL
+          : dictionaries?.accounts?.find(
+              (account) => account.id === params.get("accountId"),
+            )?.name || "账户",
+      clear: () => clearFilterKeys(["accountId"]),
+    },
     selectedTagIds.length > 0 && {
       key: "tag",
       label:
@@ -822,7 +857,9 @@ export function TransactionsPage() {
   ].filter(Boolean) as { key: string; label: string; clear: () => void }[]
   const activeFilterCount = filterChips.length
   const mobileMoreFilterCount =
-    Number(Boolean(params.get("category1"))) + selectedTagIds.length
+    Number(Boolean(params.get("category1"))) +
+    Number(Boolean(params.get("accountId"))) +
+    selectedTagIds.length
   const mobileActiveFilterChips = filterChips.filter(
     (chip) => !["time", "direction"].includes(chip.key),
   )
@@ -1003,6 +1040,7 @@ export function TransactionsPage() {
               />
             </div>
             <div className="transaction-filter-secondary">
+              {renderAccountFilter()}
               {renderTagFilter("transaction-tag-filter")}
               {renderFilterSummary()}
               <Flex
@@ -1063,7 +1101,7 @@ export function TransactionsPage() {
                 <Button
                   className="transaction-mobile-icon-btn"
                   icon={<FilterOutlined />}
-                  aria-label="筛选分类和标签"
+                  aria-label="筛选分类、账户和标签"
                   onClick={() => setFilterOpen(true)}
                 />
               </Badge>
@@ -1220,7 +1258,7 @@ export function TransactionsPage() {
                       </span>
                       <span className="transaction-account-label">
                         <WalletOutlined />
-                        <span>{row.accountName || "未指定账户"}</span>
+                        <span>{row.accountName || UNACCOUNTED_ACCOUNT_LABEL}</span>
                       </span>
                       {!!row.tags?.length && (
                         <span className="transaction-tag-line">
@@ -1267,7 +1305,7 @@ export function TransactionsPage() {
       {!screens.md && (
         <Drawer
           className="mobile-filter-drawer"
-          title="分类与标签"
+          title="分类、账户与标签"
           placement="bottom"
           height="auto"
           open={filterOpen}

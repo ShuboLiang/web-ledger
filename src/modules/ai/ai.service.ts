@@ -48,6 +48,10 @@ const displayFieldValue = (
     ? value === "income"
       ? "收入"
       : "支出"
+    : field === "accountId"
+      ? !value || value === "none"
+        ? "不记账户"
+        : String(value)
     : Array.isArray(value)
       ? value.join("、") || "空"
       : String(value || "空")
@@ -117,7 +121,14 @@ export class AiService {
         item: normalized.item,
         category1: normalized.category1,
         category2: normalized.category2,
-        ...(source.accountId ? { accountId: String(source.accountId) } : {}),
+        ...(Object.prototype.hasOwnProperty.call(source, "accountId")
+          ? {
+              accountId:
+                !source.accountId || String(source.accountId).trim() === "none"
+                  ? "none"
+                  : String(source.accountId),
+            }
+          : {}),
         tagNames: [
           ...new Set(
             (Array.isArray(source.tagNames)
@@ -274,6 +285,12 @@ export class AiService {
           项目: record.item,
           一级分类: record.category1,
           二级分类: record.category2,
+          账户:
+            !record.accountId || record.accountId === "none"
+              ? record.accountId === "none"
+                ? "不记账户"
+                : "默认账户"
+              : record.accountId,
           备注: record.note || "",
           人工微调: Boolean(proposal._humanEdited),
         }))

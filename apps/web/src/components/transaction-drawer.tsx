@@ -15,7 +15,13 @@ import {
 import dayjs from "dayjs"
 import { useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { api, type Dictionaries, type Transaction } from "@/lib/api"
+import {
+  api,
+  isUnaccountedAccountId,
+  UNACCOUNTED_ACCOUNT_ID,
+  type Dictionaries,
+  type Transaction,
+} from "@/lib/api"
 import { money } from "@/lib/utils"
 import { CategoryIcon } from "@/components/category-icon"
 import { DatePicker } from "@/components/sheet-date-picker"
@@ -110,10 +116,12 @@ export function TransactionDrawer({
       item: record?.item || "",
       category1,
       category2,
-      accountId:
-        record?.accountId ||
-        data?.accounts?.find((account) => account.isDefault)?.id ||
-        data?.accounts?.[0]?.id,
+      accountId: record
+        ? isUnaccountedAccountId(record.accountId)
+          ? undefined
+          : record.accountId || undefined
+        : data?.accounts?.find((account) => account.isDefault)?.id ||
+          data?.accounts?.[0]?.id,
       tagIds: record?.tagIds || [],
       note: record?.note || "",
     })
@@ -125,6 +133,7 @@ export function TransactionDrawer({
         body: JSON.stringify({
           ...values,
           date: values.date.format("YYYY-MM-DD"),
+          accountId: values.accountId || UNACCOUNTED_ACCOUNT_ID,
         }),
       }),
     onSuccess: async () => {
@@ -306,17 +315,13 @@ export function TransactionDrawer({
         <Form.Item
           label={selectedDirection === "income" ? "收款账户" : "付款账户"}
           name="accountId"
-          rules={[{ required: true, message: "请选择账户" }]}
-          extra={
-            accountOptions.length > 1
-              ? "默认账户已预选，也可以改为本次实际使用的账户。"
-              : "当前只有一个可记账账户，可到账户管理中新增。"
-          }
+          extra="可清空。不选账户时只记消费，不改变任何账户余额。"
         >
           <Select
+            allowClear
             showSearch={searchableSelect}
             optionFilterProp="label"
-            placeholder="请选择账户"
+            placeholder="不记账户"
             options={accountOptions}
           />
         </Form.Item>

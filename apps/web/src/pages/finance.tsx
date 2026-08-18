@@ -32,7 +32,8 @@ import {
 } from "antd"
 import dayjs from "dayjs"
 import { useMemo, useState } from "react"
-import { api, type FinanceAccount, type FinanceOverview } from "@/lib/api"
+import { useNavigate } from "react-router-dom"
+import { api, type FinanceAccount, type FinanceOverview, UNACCOUNTED_ACCOUNT_ID } from "@/lib/api"
 import { money } from "@/lib/utils"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { usePickerInputReadOnly } from "@/lib/use-viewport"
@@ -55,6 +56,7 @@ const quotaAccountTypes = new Set(["credit", "loan"])
 
 export function FinancePage() {
   const screens = Grid.useBreakpoint()
+  const navigate = useNavigate()
   const pickerInputReadOnly = usePickerInputReadOnly()
   const queryClient = useQueryClient()
   const { message, modal } = App.useApp()
@@ -220,7 +222,27 @@ export function FinancePage() {
             </Typography.Title>
             <Typography.Paragraph type="secondary">
               所有账户按可用额度记账。转账和还本金不计入收支，利息与手续费才算支出。
+              {data?.summary.unaccountedCount
+                ? ` 本月有 ${data.summary.unaccountedCount} 笔未记账户的账目，会计入收支和预算，但不会改变账户余额。`
+                : ""}
             </Typography.Paragraph>
+            {Boolean(data?.summary.unaccountedCount) && (
+              <Button
+                type="link"
+                style={{ paddingInline: 0 }}
+                onClick={() =>
+                  navigate(
+                    `/transactions?accountId=${UNACCOUNTED_ACCOUNT_ID}${
+                      data?.summary.unaccountedMonth
+                        ? `&month=${data.summary.unaccountedMonth}`
+                        : ""
+                    }`,
+                  )
+                }
+              >
+                查看未记账户的账目
+              </Button>
+            )}
           </div>
           <Space wrap className="finance-actions">
             <Button

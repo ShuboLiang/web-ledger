@@ -522,6 +522,82 @@ try {
       .records[0].accountName,
     "测试账户",
   )
+  const omittedAccountRecord = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-11",
+      amount: 4,
+      direction: "expense",
+      item: "省略账户测试",
+      category1: "其他",
+      category2: "测试",
+    }),
+  })
+  assert.ok(omittedAccountRecord.records[0].accountId)
+  const unaccountedRecord = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-11",
+      amount: 7,
+      direction: "expense",
+      item: "不记账户测试",
+      category1: "其他",
+      category2: "测试",
+      accountId: "none",
+    }),
+  })
+  assert.equal(unaccountedRecord.records[0].accountId, null)
+  assert.equal(unaccountedRecord.records[0].accountName, "不记账户")
+  assert.equal(
+    (
+      await request(
+        "/api/transactions?accountId=none&query=不记账户测试&page=1&pageSize=20",
+      )
+    ).total,
+    1,
+  )
+  assert.equal(
+    (
+      await request(
+        `/api/transactions?accountId=${account.id}&query=账户测试&page=1&pageSize=20`,
+      )
+    ).total,
+    1,
+  )
+  const clearedAccount = await request(
+    `/api/transactions/${omittedAccountRecord.records[0].id}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        date: "2026-08-11",
+        amount: 4,
+        direction: "expense",
+        item: "省略账户测试",
+        category1: "其他",
+        category2: "测试",
+        accountId: "none",
+      }),
+    },
+  )
+  assert.equal(clearedAccount.record.accountId, null)
+  const restoredAccount = await request(
+    `/api/transactions/${omittedAccountRecord.records[0].id}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        date: "2026-08-11",
+        amount: 4,
+        direction: "expense",
+        item: "省略账户测试",
+        category1: "其他",
+        category2: "测试",
+        accountId: account.id,
+      }),
+    },
+  )
+  assert.equal(restoredAccount.record.accountId, account.id)
+  const financeUnaccounted = await request("/api/finance")
+  assert.ok(financeUnaccounted.summary.unaccountedCount >= 1)
 
   const hospitalityTag = await request("/api/tags", {
     method: "POST",
@@ -959,9 +1035,12 @@ try {
     finance.accounts.find((row) => row.id === financeAccount.id).name,
     "还款银行卡",
   )
-  assert.equal(finance.recentTransfers[0].note, "Agent 转账测试")
-  const reversibleTransferId = finance.recentTransfers[0].id
-  assert.equal(finance.recentTransfers[0].reversible, true)
+  const agentTransfer = finance.recentTransfers.find(
+    (row) => row.note === "Agent 转账测试",
+  )
+  assert.ok(agentTransfer)
+  const reversibleTransferId = agentTransfer.id
+  assert.equal(agentTransfer.reversible, true)
   await request(`/api/finance/transfers/${reversibleTransferId}`, {
     method: "DELETE",
   })

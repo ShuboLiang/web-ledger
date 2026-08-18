@@ -62,6 +62,24 @@ const cleanIcon = (value: unknown, fallback: string) => {
   const icon = clean(value, 40)
   return /^[a-z0-9-]{1,40}$/.test(icon) ? icon : fallback
 }
+const UNACCOUNTED_ACCOUNT_ID = "none"
+const UNACCOUNTED_ACCOUNT_LABEL = "不记账户"
+const hasOwnAccountId = (record: unknown) =>
+  Boolean(
+    record &&
+      typeof record === "object" &&
+      Object.prototype.hasOwnProperty.call(record, "accountId"),
+  )
+const isUnaccountedAccountId = (value: unknown) => {
+  if (value === null || value === undefined) return true
+  const text = String(value).trim().toLowerCase()
+  return !text || text === UNACCOUNTED_ACCOUNT_ID
+}
+const requestedAccountAction = (record: unknown): "omit" | "none" | string => {
+  if (!hasOwnAccountId(record)) return "omit"
+  const value = (record as { accountId?: unknown }).accountId
+  return isUnaccountedAccountId(value) ? "none" : clean(value, 100)
+}
 type LedgerDatabase = Prisma.TransactionClient
 
 @Injectable({ scope: Scope.REQUEST })
@@ -125,7 +143,7 @@ export class LedgerService {
       ...row,
       date: dateText(row.date),
       amount: Number(row.amount),
-      accountName: row.account?.name || "未指定",
+      accountName: row.account?.name || UNACCOUNTED_ACCOUNT_LABEL,
       primaryIcon: row.category?.primaryIcon,
       secondaryIcon: row.category?.secondaryIcon,
       tags,
@@ -265,7 +283,9 @@ export class LedgerService {
     if (secondary) where.category2 = secondary
     if (selectedDirection)
       where.amount = selectedDirection === "expense" ? { lt: 0 } : { gt: 0 }
-    if (clean(accountId, 100)) where.accountId = clean(accountId, 100)
+    const selectedAccountId = clean(accountId, 100)
+    if (selectedAccountId === UNACCOUNTED_ACCOUNT_ID) where.accountId = null
+    else if (selectedAccountId) where.accountId = selectedAccountId
     const selectedTagIds = [
       ...new Set(
         [
@@ -728,6 +748,21 @@ export class LedgerService {
     if (account.type === "loan")
       throw new BadRequestException("贷款账户不能直接用于普通记账")
     return account
+  }
+
+  private async resolveCreateAccount(
+    database: LedgerDatabase,
+    ledgerId: string,
+    record: unknown,
+    defaultAccountId: string,
+  ) {
+    const requested = requestedAccountAction(record)
+    if (requested === "none") return null
+    return this.usableTransactionAccount(
+      database,
+      ledgerId,
+      requested === "omit" ? defaultAccountId : requested,
+    )
   }
 
   private async accountBalanceWithDatabase(
@@ -1338,7 +1373,14 @@ export class LedgerService {
   async financeOverview() {
     const { ledgerId } = await this.context()
     const cutoff = today()
-    const [accounts, balances, transfers, adjustments] = await Promise.all([
+    const monthStart = new Date(
+      Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth(), 1),
+    )
+    const monthEnd = new Date(
+      Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth() + 1, 1),
+    )
+    const [accounts, balances, transfers, adjustments, unaccountedCount] =
+      await Promise.all([
       this.prisma.account.findMany({
         where: { ledgerId },
         orderBy: [
@@ -1364,6 +1406,13 @@ export class LedgerService {
         orderBy: [{ date: "desc" }, { createdAt: "desc" }],
         take: 12,
       }),
+      this.prisma.transaction.count({
+        where: {
+          ledgerId,
+          accountId: null,
+          date: { gte: monthStart, lt: monthEnd },
+        },
+      }),
     ])
     const accountRows = accounts.map((account) =>
       this.presentAccount(account, balances.get(account.id) || 0),
@@ -1385,6 +1434,8 @@ export class LedgerService {
         assets: assetTotal,
         liabilities: liabilityTotal,
         netWorth: Number((assetTotal - liabilityTotal).toFixed(2)),
+        unaccountedCount,
+        unaccountedMonth: dateText(cutoff).slice(0, 7),
       },
       accounts: accountRows,
       recentTransfers: [
@@ -1432,7 +1483,6 @@ export class LedgerService {
   ) {
     const normalized = records.map((record) => ({
       ...normalizeRecord(record),
-      accountId: clean(record?.accountId, 100),
       primaryIcon: cleanIcon(record?.primaryIcon, "folder"),
       secondaryIcon: cleanIcon(record?.secondaryIcon, "tag"),
     }))
@@ -1445,10 +1495,11 @@ export class LedgerService {
         ledgerId,
         source,
       )
-      const account = await this.usableTransactionAccount(
+      const account = await this.resolveCreateAccount(
         database,
         ledgerId,
-        record.accountId || defaultAccountId,
+        source,
+        defaultAccountId,
       )
       await database.project.upsert({
         where: { ledgerId_name: { ledgerId, name: record.item } },
@@ -1482,7 +1533,7 @@ export class LedgerService {
         data: {
           ledgerId,
           categoryId: category.id,
-          accountId: account.id,
+          accountId: account?.id ?? null,
           date: asDate(record.date),
           amount: new Prisma.Decimal(record.amount),
           item: record.item,
@@ -1581,15 +1632,21 @@ export class LedgerService {
     const tagIds = hasTagChanges
       ? await this.resolveTransactionTagIds(database, ledgerId, changes)
       : []
-    const accountChanged =
-      Boolean(changes.accountId) && changes.accountId !== existingRow!.accountId
-    const account = accountChanged
-      ? await this.usableTransactionAccount(
-          database,
-          ledgerId,
-          changes.accountId,
-        )
-      : null
+    const requestedAccount = requestedAccountAction(changes)
+    const accountData =
+      requestedAccount === "omit"
+        ? {}
+        : requestedAccount === "none"
+          ? { accountId: null }
+          : {
+              accountId: (
+                await this.usableTransactionAccount(
+                  database,
+                  ledgerId,
+                  requestedAccount,
+                )
+              ).id,
+            }
     const row = await database.transaction.update({
       where: { id: Number(id) },
       data: {
@@ -1600,7 +1657,7 @@ export class LedgerService {
         category1: merged.category1,
         category2: merged.category2,
         note: merged.note,
-        ...(account ? { accountId: account.id } : {}),
+        ...accountData,
         ...(hasTagChanges
           ? {
               tags: {

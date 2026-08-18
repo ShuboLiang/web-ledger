@@ -7,7 +7,7 @@ export type Transaction = {
   category2: string
   primaryIcon?: string
   secondaryIcon?: string
-  accountId?: string
+  accountId?: string | null
   accountName?: string
   tagIds?: string[]
   tags?: { id: string; name: string; color: string }[]
@@ -136,6 +136,8 @@ export type FinanceOverview = {
     assets: number
     liabilities: number
     netWorth: number
+    unaccountedCount?: number
+    unaccountedMonth?: string
   }
   accounts: FinanceAccount[]
   recentTransfers: {
@@ -152,6 +154,13 @@ export type FinanceOverview = {
   }[]
 }
 export type AuthUser = { id: string; username: string; displayName: string }
+
+export const UNACCOUNTED_ACCOUNT_ID = "none"
+export const UNACCOUNTED_ACCOUNT_LABEL = "不记账户"
+
+export function isUnaccountedAccountId(value?: string | null) {
+  return !value || value === UNACCOUNTED_ACCOUNT_ID
+}
 
 export async function api<T>(
   url: string,

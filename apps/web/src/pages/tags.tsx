@@ -33,6 +33,7 @@ import {
   type LedgerTag,
   type TagAnalytics,
   type TagOverview,
+  UNACCOUNTED_ACCOUNT_LABEL,
 } from "@/lib/api"
 import { money } from "@/lib/utils"
 import { DatePicker } from "@/components/sheet-date-picker"
@@ -401,7 +402,7 @@ export function TagsPage() {
                       >
                         <List.Item.Meta
                           title={record.item}
-                          description={`${record.date} · ${record.category1} / ${record.category2} · ${record.accountName || "未指定账户"}`}
+                          description={`${record.date} · ${record.category1} / ${record.category2} · ${record.accountName || UNACCOUNTED_ACCOUNT_LABEL}`}
                         />
                       </List.Item>
                     )}

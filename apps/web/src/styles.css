@@ -711,10 +711,14 @@ select {
   display: grid;
   min-width: 0;
   align-items: center;
-  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(140px, 180px) minmax(220px, 320px) minmax(0, 1fr) auto;
   gap: 12px;
   padding-top: 10px;
   border-top: 1px solid #e7ece8;
+}
+.transaction-account-filter {
+  min-width: 0;
+  width: 100%;
 }
 .transaction-table-actions .ant-btn {
   min-width: 116px;
