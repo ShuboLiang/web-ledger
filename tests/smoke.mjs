@@ -533,7 +533,8 @@ try {
       category2: "测试",
     }),
   })
-  assert.ok(omittedAccountRecord.records[0].accountId)
+  assert.equal(omittedAccountRecord.records[0].accountId, null)
+  assert.equal(omittedAccountRecord.records[0].accountName, "不记账户")
   const unaccountedRecord = await request("/api/transactions", {
     method: "POST",
     body: JSON.stringify({
@@ -711,6 +712,21 @@ try {
     }),
   })
   assert.equal(financeAccount.isDefault, true)
+  const omittedWithDefault = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-11",
+      amount: 1,
+      direction: "expense",
+      item: "默认付款测试",
+      category1: "其他",
+      category2: "测试",
+    }),
+  })
+  assert.equal(omittedWithDefault.records[0].accountId, financeAccount.id)
+  await request(`/api/transactions/${omittedWithDefault.records[0].id}`, {
+    method: "DELETE",
+  })
   const renamedFinanceAccount = await request(
     `/api/finance/accounts/${financeAccount.id}`,
     {
@@ -726,8 +742,26 @@ try {
       type: "cash",
       openingBalance: 0,
       balanceDate: "2026-08-01",
+      isDefault: true,
     }),
   })
+  assert.equal(disposableAccount.isDefault, true)
+  const unsetDisposable = await request(
+    `/api/finance/accounts/${disposableAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ isDefault: false }),
+    },
+  )
+  assert.equal(unsetDisposable.isDefault, false)
+  const restoredDisposable = await request(
+    `/api/finance/accounts/${disposableAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ isDefault: true }),
+    },
+  )
+  assert.equal(restoredDisposable.isDefault, true)
   assert.equal(
     (
       await request(`/api/finance/accounts/${disposableAccount.id}`, {
@@ -736,6 +770,14 @@ try {
     ).deleted,
     true,
   )
+  const restoredFinanceDefault = await request(
+    `/api/finance/accounts/${financeAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ isDefault: true }),
+    },
+  )
+  assert.equal(restoredFinanceDefault.isDefault, true)
   const adjustableAccount = await request("/api/finance/accounts", {
     method: "POST",
     body: JSON.stringify({
@@ -789,18 +831,24 @@ try {
     ).status,
     400,
   )
-  assert.equal(
-    (
-      await requestError(
-        `/api/management/accounts/${financeAccount.id}/enabled`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ enabled: false }),
-        },
-      )
-    ).status,
-    400,
+  const disabledDefault = await request(
+    `/api/management/accounts/${financeAccount.id}/enabled`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    },
   )
+  assert.equal(disabledDefault.enabled, false)
+  assert.equal(disabledDefault.isDefault, false)
+  const reenabledFinanceAccount = await request(
+    `/api/finance/accounts/${financeAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: true, isDefault: true }),
+    },
+  )
+  assert.equal(reenabledFinanceAccount.enabled, true)
+  assert.equal(reenabledFinanceAccount.isDefault, true)
   const loanAccount = await request("/api/finance/accounts", {
     method: "POST",
     body: JSON.stringify({

@@ -510,7 +510,11 @@ export function AiPage() {
             proposal.changes?.openingBalance !== undefined
               ? `期初可用额度改为 ${money(proposal.changes.openingBalance)}`
               : "",
-            proposal.changes?.isDefault === true ? "设为默认账户" : "",
+            proposal.changes?.isDefault === true
+              ? "设为默认账户"
+              : proposal.changes?.isDefault === false
+                ? "取消默认账户"
+                : "",
             proposal.changes?.enabled === true ? "启用账户" : "",
             proposal.changes?.enabled === false ? "停用账户" : "",
           ].filter(Boolean)
@@ -713,7 +717,7 @@ export function AiPage() {
           : row.accountId ||
             (row.label === "新增"
               ? dictionaries?.accounts?.find((account) => account.isDefault)
-                  ?.id || dictionaries?.accounts?.[0]?.id
+                  ?.id
               : undefined),
       tagNames: row.tagNames || row.tags?.map((tag: any) => tag.name) || [],
       note: row.note || "",
@@ -918,7 +922,11 @@ export function AiPage() {
                                 )?.name || "账户"
                               }`
                             : row.label === "新增"
-                              ? " · 默认账户"
+                              ? dictionaries?.accounts?.some(
+                                  (account) => account.isDefault,
+                                )
+                                ? " · 默认账户"
+                                : ` · ${UNACCOUNTED_ACCOUNT_LABEL}`
                               : ` · ${UNACCOUNTED_ACCOUNT_LABEL}`
                       }${row.tagNames?.length ? ` · #${row.tagNames.join(" #")}` : ""}`}
               </Typography.Text>

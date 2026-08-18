@@ -112,7 +112,7 @@ export function FinancePage() {
         type: "bank",
         openingBalance: 0,
         balanceDate: dayjs(),
-        isDefault: !assets.length,
+        isDefault: false,
         enabled: true,
       })
     }
@@ -161,6 +161,12 @@ export function FinancePage() {
       url: `/api/finance/accounts/${account.id}`,
       method: "PATCH",
       body: { isDefault: true },
+    })
+  const clearDefault = (account: FinanceAccount) =>
+    action.mutate({
+      url: `/api/finance/accounts/${account.id}`,
+      method: "PATCH",
+      body: { isDefault: false },
     })
   const accountOption = (row: FinanceAccount) => ({
     value: row.id,
@@ -350,9 +356,16 @@ export function FinancePage() {
                         {account.outstanding > 0 ? "当前欠款" : "可用额度"}
                       </Typography.Text>
                       <Space size={2} className="finance-account-controls">
-                        {account.type !== "loan" &&
-                          !account.isDefault &&
-                          account.enabled && (
+                        {account.type !== "loan" && account.enabled ? (
+                          account.isDefault ? (
+                            <Button
+                              type="link"
+                              size="small"
+                              onClick={() => clearDefault(account)}
+                            >
+                              取消默认
+                            </Button>
+                          ) : (
                             <Button
                               type="link"
                               size="small"
@@ -360,7 +373,8 @@ export function FinancePage() {
                             >
                               设为默认
                             </Button>
-                          )}
+                          )
+                        ) : null}
                         <Button
                           type="text"
                           size="small"
@@ -576,9 +590,12 @@ export function FinancePage() {
             </Form.Item>
           )}
           {accountType !== "loan" && editingAccount?.type !== "loan" && (
-            <Form.Item name="isDefault" valuePropName="checked">
+            <Form.Item
+              name="isDefault"
+              valuePropName="checked"
+              extra="可选。不设置时，新账默认不记账户。"
+            >
               <Checkbox
-                disabled={Boolean(editingAccount?.isDefault)}
                 onChange={(event) => {
                   if (event.target.checked)
                     accountForm.setFieldValue("enabled", true)
@@ -590,17 +607,12 @@ export function FinancePage() {
           )}
           {editingAccount && (
             <Form.Item name="enabled" valuePropName="checked">
-              <Checkbox disabled={editingAccount.isDefault || editingIsDefault}>
+              <Checkbox disabled={Boolean(editingIsDefault)}>
                 启用这个账户
               </Checkbox>
             </Form.Item>
           )}
-          {editingAccount?.isDefault && (
-            <Typography.Text type="secondary">
-              默认状态不能直接取消或停用；请先将其他账户设为默认。
-            </Typography.Text>
-          )}
-          {editingAccount && !editingAccount.isDefault && (
+          {editingAccount && (
             <Button
               danger
               type="text"

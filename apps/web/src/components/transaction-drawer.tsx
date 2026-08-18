@@ -120,8 +120,7 @@ export function TransactionDrawer({
         ? isUnaccountedAccountId(record.accountId)
           ? undefined
           : record.accountId || undefined
-        : data?.accounts?.find((account) => account.isDefault)?.id ||
-          data?.accounts?.[0]?.id,
+        : data?.accounts?.find((account) => account.isDefault)?.id,
       tagIds: record?.tagIds || [],
       note: record?.note || "",
     })

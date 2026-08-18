@@ -99,38 +99,22 @@ export class LedgerService {
   }
 
   async context() {
-    return this.contextWith(this.prisma)
+    return { ledgerId: this.currentUser.ledgerId }
   }
 
-  private async contextWith(database: PrismaService | LedgerDatabase) {
-    const ledgerId = this.currentUser.ledgerId
-    let account = await database.account.findFirst({
+  private async defaultPayerAccountId(
+    database: PrismaService | LedgerDatabase,
+    ledgerId: string,
+  ) {
+    const account = await database.account.findFirst({
       where: {
         ledgerId,
         enabled: true,
+        isDefault: true,
         type: { not: "loan" },
       },
-      orderBy: [{ isDefault: "desc" }, { sortOrder: "asc" }],
     })
-    account ||= await database.account.create({
-      data: {
-        ledgerId,
-        name: "默认账户",
-        type: "cash",
-        isDefault: true,
-      },
-    })
-    if (!account.isDefault) {
-      await database.account.updateMany({
-        where: { ledgerId, isDefault: true },
-        data: { isDefault: false },
-      })
-      account = await database.account.update({
-        where: { id: account.id },
-        data: { isDefault: true },
-      })
-    }
-    return { ledgerId, accountId: account.id }
+    return account?.id || null
   }
 
   private serialize(row: any) {
@@ -754,10 +738,11 @@ export class LedgerService {
     database: LedgerDatabase,
     ledgerId: string,
     record: unknown,
-    defaultAccountId: string,
+    defaultAccountId: string | null,
   ) {
     const requested = requestedAccountAction(record)
-    if (requested === "none") return null
+    if (requested === "none" || (requested === "omit" && !defaultAccountId))
+      return null
     return this.usableTransactionAccount(
       database,
       ledgerId,
@@ -894,7 +879,6 @@ export class LedgerService {
         where: { ledgerId, isDefault: true },
         data: { isDefault: false },
       })
-    const existingCount = await database.account.count({ where: { ledgerId } })
     const account = await database.account.create({
       data: {
         ledgerId,
@@ -902,7 +886,7 @@ export class LedgerService {
         type,
         openingBalance: new Prisma.Decimal(openingBalance),
         balanceDate,
-        isDefault: isDefault || (existingCount === 0 && type !== "loan"),
+        isDefault,
       },
     })
     await database.auditLog.create({
@@ -948,20 +932,17 @@ export class LedgerService {
     const account = await this.financeAccount(database, ledgerId, id)
     const name = clean(input?.name ?? account.name, 80)
     if (!name) throw new BadRequestException("请填写账户名称")
-    const isDefault =
+    let isDefault =
       input?.isDefault === undefined
         ? account.isDefault
         : Boolean(input.isDefault)
     if (isDefault && account.type === "loan")
       throw new BadRequestException("贷款账户不能设为日常默认付款账户")
-    if (account.isDefault && input?.isDefault === false)
-      throw new BadRequestException(
-        "默认状态不能直接取消，请先设置其他默认账户",
-      )
     const enabled =
       input?.enabled === undefined ? account.enabled : Boolean(input.enabled)
-    if (isDefault && !enabled)
-      throw new BadRequestException("默认账户不能停用，请先设置其他默认账户")
+    if (input?.isDefault === true && !enabled)
+      throw new BadRequestException("默认付款账户必须保持启用")
+    if (!enabled) isDefault = false
     const openingBalance =
       input?.openingBalance === undefined
         ? Number(account.openingBalance)
@@ -1057,8 +1038,6 @@ export class LedgerService {
     id: unknown,
   ) {
     const account = await this.financeAccount(database, ledgerId, id)
-    if (account.isDefault)
-      throw new BadRequestException("默认账户不能删除，请先设置其他默认账户")
     const [transactions, outgoing, incoming, adjustments] = await Promise.all([
       database.transaction.count({
         where: { ledgerId, accountId: account.id },
@@ -1478,7 +1457,7 @@ export class LedgerService {
   private async addManyWithDatabase(
     database: LedgerDatabase,
     ledgerId: string,
-    defaultAccountId: string,
+    defaultAccountId: string | null,
     records: any[],
   ) {
     const normalized = records.map((record) => ({
@@ -1564,10 +1543,19 @@ export class LedgerService {
   }
 
   async addMany(records: unknown[]) {
-    const { ledgerId, accountId } = await this.context()
-    return this.prisma.$transaction((database) =>
-      this.addManyWithDatabase(database, ledgerId, accountId, records as any[]),
-    )
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction(async (database) => {
+      const defaultAccountId = await this.defaultPayerAccountId(
+        database,
+        ledgerId,
+      )
+      return this.addManyWithDatabase(
+        database,
+        ledgerId,
+        defaultAccountId,
+        records as any[],
+      )
+    })
   }
 
   async update(id: string | number, changes: any) {
@@ -1755,7 +1743,11 @@ export class LedgerService {
       return this.prisma.$transaction((transaction) =>
         this.executeAiOperations(operations, transaction),
       )
-    const { ledgerId, accountId } = await this.contextWith(database)
+    const ledgerId = this.currentUser.ledgerId
+    const defaultAccountId = await this.defaultPayerAccountId(
+      database,
+      ledgerId,
+    )
     const results: any[] = []
     for (const proposal of operations) {
       if (proposal?.type === "create")
@@ -1764,7 +1756,7 @@ export class LedgerService {
           records: await this.addManyWithDatabase(
             database,
             ledgerId,
-            accountId,
+            defaultAccountId,
             proposal.records || [],
           ),
         })
