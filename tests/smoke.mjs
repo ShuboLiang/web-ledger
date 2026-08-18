@@ -183,6 +183,13 @@ try {
   assert.equal(pendingRecordMatches({ item: "新增记录" }, { id: 5 }), false)
   assert.equal(pendingRecordMatches({ id: 5 }, { id: 5 }), true)
   assert.equal(pendingRecordMatches({ item: "新增记录" }, { item: "" }), false)
+  assert.equal(
+    pendingRecordMatches(
+      { type: "adjustment-reverse" },
+      { proposalType: "adjustment-reverse" },
+    ),
+    true,
+  )
 
   const editConversationId = "smoke-edit-proposal"
   await request("/api/ai/conversations", {
@@ -637,6 +644,50 @@ try {
     ).deleted,
     true,
   )
+  const adjustableAccount = await request("/api/finance/accounts", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "待撤销校准账户",
+      type: "cash",
+      openingBalance: 0,
+      balanceDate: "2026-08-01",
+    }),
+  })
+  const createdAdjustment = await request(
+    `/api/finance/accounts/${adjustableAccount.id}/reconcile`,
+    {
+      method: "POST",
+      body: JSON.stringify({ balance: 100, note: "校准后应能撤销" }),
+    },
+  )
+  assert.equal(createdAdjustment.adjusted, 100)
+  const blockedAdjustmentDelete = await requestError(
+    `/api/finance/accounts/${adjustableAccount.id}`,
+    { method: "DELETE" },
+  )
+  assert.equal(blockedAdjustmentDelete.status, 400)
+  assert.match(JSON.stringify(blockedAdjustmentDelete.body), /1 条额度调整/)
+  const financeWithAdjustment = await request("/api/finance")
+  const visibleAdjustment = financeWithAdjustment.recentTransfers.find(
+    (row) => row.kind === "adjustment" && row.note === "校准后应能撤销",
+  )
+  assert.ok(visibleAdjustment)
+  assert.equal(
+    (
+      await request(`/api/finance/adjustments/${visibleAdjustment.id}`, {
+        method: "DELETE",
+      })
+    ).reversed,
+    true,
+  )
+  assert.equal(
+    (
+      await request(`/api/finance/accounts/${adjustableAccount.id}`, {
+        method: "DELETE",
+      })
+    ).deleted,
+    true,
+  )
   assert.equal(
     (
       await requestError(`/api/finance/accounts/${account.id}`, {
@@ -658,48 +709,84 @@ try {
     ).status,
     400,
   )
-  const liability = await request("/api/finance/liabilities", {
+  const loanAccount = await request("/api/finance/accounts", {
     method: "POST",
     body: JSON.stringify({
       name: "测试车贷",
-      kind: "loan",
-      principal: 5000,
-      totalInterest: 500,
-      totalInstallments: 10,
-      startDate: "2026-08-01",
-      firstDueDate: "2026-08-10",
-      fundingMode: "deposit",
-      targetAccountId: financeAccount.id,
+      type: "loan",
+      openingBalance: 0,
+      balanceDate: "2026-08-01",
     }),
   })
+  assert.equal(loanAccount.type, "loan")
+  assert.equal(loanAccount.openingBalance, 0)
+  assert.equal(loanAccount.isDefault, false)
+  const drawdown = await request("/api/finance/transfers", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-01",
+      amount: 5000,
+      fromAccountId: loanAccount.id,
+      toAccountId: financeAccount.id,
+      note: "车贷放款",
+    }),
+  })
+  assert.equal(drawdown.kind, "debt_drawdown")
   let finance = await request("/api/finance")
-  assert.equal(
-    finance.accounts.find((row) => row.id === financeAccount.id).balance,
-    15000,
+  const bankAfterDrawdown = finance.accounts.find(
+    (row) => row.id === financeAccount.id,
   )
-  assert.equal(
-    finance.accounts.find((row) => row.id === liability.accountId).balance,
-    -5000,
+  const loanAfterDrawdown = finance.accounts.find(
+    (row) => row.id === loanAccount.id,
   )
+  assert.equal(bankAfterDrawdown.balance, 15000)
+  assert.equal(loanAfterDrawdown.balance, -5000)
+  assert.equal(loanAfterDrawdown.outstanding, 5000)
+  assert.equal(loanAfterDrawdown.availableQuota, 0)
+  assert.equal(finance.summary.liabilities, 5000)
+  const creditAccount = await request("/api/finance/accounts", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "测试花呗",
+      type: "credit",
+      openingBalance: 38000,
+      balanceDate: "2026-08-01",
+    }),
+  })
+  assert.equal(creditAccount.openingBalance, 38000)
+  assert.equal(creditAccount.availableQuota, 38000)
+  await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-02",
+      direction: "expense",
+      amount: 200,
+      item: "花呗购物",
+      category1: "购物",
+      category2: "日用",
+      accountId: creditAccount.id,
+    }),
+  })
+  finance = await request("/api/finance")
   assert.equal(
-    (
-      await requestError("/api/finance/transfers", {
-        method: "POST",
-        body: JSON.stringify({
-          date: "2026-08-09",
-          amount: 100,
-          fromAccountId: financeAccount.id,
-          toAccountId: liability.accountId,
-        }),
-      })
-    ).status,
-    400,
+    finance.accounts.find((row) => row.id === creditAccount.id).availableQuota,
+    37800,
   )
+  const creditTransfer = await request("/api/finance/transfers", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-09",
+      amount: 100,
+      fromAccountId: financeAccount.id,
+      toAccountId: creditAccount.id,
+    }),
+  })
+  assert.equal(creditTransfer.kind, "debt_payment")
   const reconciliation = await request(
     `/api/finance/accounts/${financeAccount.id}/reconcile`,
     {
       method: "POST",
-      body: JSON.stringify({ balance: 14900, note: "冒烟校准" }),
+      body: JSON.stringify({ balance: 14800, note: "冒烟校准" }),
     },
   )
   assert.equal(reconciliation.adjusted, -100)
@@ -707,108 +794,95 @@ try {
     (await request("/api/finance")).accounts.find(
       (row) => row.id === financeAccount.id,
     ).balance,
-    14900,
+    14800,
   )
-  assert.equal(
-    finance.liabilities.find((row) => row.id === liability.id).nextInstallment
-      .total,
-    550,
-  )
-  assert.equal(
-    (
-      await requestError(`/api/finance/liabilities/${liability.id}/payments`, {
-        method: "POST",
-        body: JSON.stringify({
-          date: "2026-08-10",
-          sourceAccountId: financeAccount.id,
-          principal: 100,
-          interest: 50,
-        }),
-      })
-    ).status,
-    400,
-  )
-  let scheduledPayment = await request(
-    `/api/finance/liabilities/${liability.id}/payments`,
+  const creditIncrease = await request(
+    `/api/finance/accounts/${creditAccount.id}/reconcile`,
     {
       method: "POST",
-      body: JSON.stringify({
-        date: "2026-08-10",
-        sourceAccountId: financeAccount.id,
-        principal: 500,
-        interest: 50,
-        fee: 10,
-      }),
+      body: JSON.stringify({ balance: 42900, note: "花呗提额" }),
     },
   )
+  assert.equal(creditIncrease.adjusted, 5000)
+  finance = await request("/api/finance")
+  assert.equal(
+    finance.accounts.find((row) => row.id === creditAccount.id).availableQuota,
+    42900,
+  )
+  const openingUpdated = await request(
+    `/api/finance/accounts/${creditAccount.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ openingBalance: 43000 }),
+    },
+  )
+  assert.equal(openingUpdated.openingBalance, 43000)
+  assert.equal(openingUpdated.availableQuota, 47900)
+  const repayment = await request("/api/finance/repayments", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-10",
+      fromAccountId: financeAccount.id,
+      toAccountId: loanAccount.id,
+      principal: 500,
+      interest: 50,
+      fee: 10,
+    }),
+  })
+  assert.equal(repayment.principal, 500)
+  assert.equal(repayment.interest, 50)
+  assert.equal(repayment.fee, 10)
   assert.equal(
     (await request("/api/dashboard?anchor=2026-08-10")).totals.day,
     60,
   )
   const financeExpensePage = await request("/api/transactions?date=2026-08-10")
   assert.equal(financeExpensePage.records[0].accountName, "家庭还款卡")
-  assert.equal(
-    (
-      await requestError(
-        `/api/transactions/${financeExpensePage.records[0].id}`,
-        { method: "DELETE" },
-      )
-    ).status,
-    400,
-  )
-  await request(
-    `/api/finance/liabilities/${liability.id}/payments/${scheduledPayment.id}`,
-    { method: "DELETE" },
-  )
+  await request(`/api/transactions/${financeExpensePage.records[0].id}`, {
+    method: "DELETE",
+  })
   assert.equal(
     (await request("/api/dashboard?anchor=2026-08-10")).totals.day,
     0,
   )
-  scheduledPayment = await request(
-    `/api/finance/liabilities/${liability.id}/payments`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        date: "2026-08-10",
-        sourceAccountId: financeAccount.id,
-        principal: 500,
-        interest: 50,
-        fee: 10,
-      }),
-    },
-  )
+  await request("/api/finance/repayments", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-10",
+      fromAccountId: financeAccount.id,
+      toAccountId: loanAccount.id,
+      principal: 500,
+      interest: 50,
+      fee: 10,
+    }),
+  })
   finance = await request("/api/finance")
   assert.equal(
-    finance.liabilities.find((row) => row.id === liability.id)
-      .outstandingPrincipal,
-    4500,
+    finance.accounts.find((row) => row.id === loanAccount.id).outstanding,
+    4000,
   )
-  const settlement = await request(
-    `/api/finance/liabilities/${liability.id}/settlement`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        date: "2026-08-14",
-        sourceAccountId: financeAccount.id,
-        interest: 20,
-        fee: 5,
-      }),
-    },
-  )
-  assert.equal(settlement.settled, true)
+  await request("/api/finance/repayments", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2026-08-14",
+      fromAccountId: financeAccount.id,
+      toAccountId: loanAccount.id,
+      principal: 4000,
+      interest: 20,
+      fee: 5,
+    }),
+  })
   assert.equal(
     (await request("/api/dashboard?anchor=2026-08-14")).totals.day,
     25,
   )
   finance = await request("/api/finance")
-  const settledLiability = finance.liabilities.find(
-    (row) => row.id === liability.id,
-  )
-  assert.equal(settledLiability.outstandingPrincipal, 0)
-  assert.equal(settledLiability.status, "settled")
   assert.equal(
-    settledLiability.installments.filter((row) => row.status === "planned")
-      .length,
+    finance.accounts.find((row) => row.id === loanAccount.id).outstanding,
+    0,
+  )
+  assert.equal(
+    finance.accounts.find((row) => row.id === loanAccount.id).balance,
     0,
   )
 
@@ -878,6 +952,40 @@ try {
   assert.ok(
     !(await request("/api/finance")).recentTransfers.some(
       (row) => row.id === reversibleTransferId,
+    ),
+  )
+  const agentAdjustment = (await request("/api/finance")).recentTransfers.find(
+    (row) => row.kind === "adjustment" && row.note === "Agent 校准测试",
+  )
+  assert.ok(agentAdjustment)
+  const reverseAdjustmentConversationId = "smoke-agent-adjustment-reverse"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: reverseAdjustmentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: reverseAdjustmentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "adjustment-reverse",
+          adjustmentId: agentAdjustment.id,
+          display: {
+            accountName: "还款银行卡",
+            amount: agentAdjustment.amount,
+            note: agentAdjustment.note,
+          },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: reverseAdjustmentConversationId }),
+  })
+  assert.ok(
+    !(await request("/api/finance")).recentTransfers.some(
+      (row) => row.id === agentAdjustment.id,
     ),
   )
   assert.equal(

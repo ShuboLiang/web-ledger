@@ -34,6 +34,7 @@ const moneyValue = (value: unknown) => {
   return Number(amount.toFixed(2))
 }
 const liabilityAccountTypes = new Set(["credit", "loan"])
+const assetAccountTypes = new Set(["cash", "bank", "ewallet"])
 const accountTypes = new Set(["cash", "bank", "ewallet", "credit", "loan"])
 const accountTypeText: Record<string, string> = {
   cash: "现金",
@@ -42,21 +43,17 @@ const accountTypeText: Record<string, string> = {
   credit: "信用账户",
   loan: "贷款账户",
 }
-const addMonthsClamped = (value: Date, months: number) => {
-  const year = value.getUTCFullYear()
-  const month = value.getUTCMonth() + months
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-  return new Date(Date.UTC(year, month, Math.min(value.getUTCDate(), lastDay)))
+const inferTransferKind = (fromType: string, toType: string) => {
+  if (fromType === "loan" && assetAccountTypes.has(toType))
+    return "debt_drawdown"
+  if (assetAccountTypes.has(fromType) && liabilityAccountTypes.has(toType))
+    return "debt_payment"
+  return "transfer"
 }
-const splitMoney = (total: number, count: number) => {
-  const cents = Math.round(total * 100)
-  const base = Math.floor(cents / count)
-  const remainder = cents - base * count
-  return Array.from(
-    { length: count },
-    (_, index) => (base + (index === count - 1 ? remainder : 0)) / 100,
-  )
-}
+const availableQuotaOf = (balance: number) =>
+  Number(Math.max(0, balance).toFixed(2))
+const outstandingOf = (balance: number) =>
+  Number(Math.max(0, -balance).toFixed(2))
 const clean = (value: unknown, max = 80) =>
   String(value ?? "")
     .trim()
@@ -93,7 +90,7 @@ export class LedgerService {
       where: {
         ledgerId,
         enabled: true,
-        type: { in: ["cash", "bank", "ewallet"] },
+        type: { not: "loan" },
       },
       orderBy: [{ isDefault: "desc" }, { sortOrder: "asc" }],
     })
@@ -135,7 +132,6 @@ export class LedgerService {
       tagIds: tags.map((tag: any) => tag.id),
       account: undefined,
       category: undefined,
-      liabilityPayments: undefined,
       created_at: row.createdAt?.toISOString?.() || row.createdAt,
       createdAt: undefined,
       updatedAt: undefined,
@@ -379,9 +375,6 @@ export class LedgerService {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       }),
       this.prisma.account.findMany({
-        // Dictionaries are consumed by ordinary bookkeeping forms. Loan
-        // accounts are managed through the repayment flow and cannot be used
-        // as a transaction account.
         where: { ledgerId, enabled: true, type: { not: "loan" } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       }),
@@ -390,6 +383,10 @@ export class LedgerService {
         orderBy: { createdAt: "asc" },
       }),
     ])
+    const balances = await this.accountBalancesWithDatabase(
+      this.prisma,
+      ledgerId,
+    )
     return {
       projects: projects.map((row) => row.name),
       categories: categories.map(
@@ -404,7 +401,9 @@ export class LedgerService {
         id: row.id,
         name: row.name,
         type: row.type,
+        typeText: accountTypeText[row.type] || row.type,
         isDefault: row.isDefault,
+        availableQuota: availableQuotaOf(balances.get(row.id) || 0),
       })),
       tags: tags.map((row) => ({
         id: row.id,
@@ -773,6 +772,73 @@ export class LedgerService {
     )
   }
 
+  private async accountBalancesWithDatabase(
+    database: PrismaService | LedgerDatabase,
+    ledgerId: string,
+    cutoff = today(),
+  ) {
+    const rows = await database.$queryRaw<
+      Array<{ id: string; balance: Prisma.Decimal }>
+    >(Prisma.sql`
+      SELECT a."id",
+        CASE
+          WHEN a."balance_date" IS NOT NULL AND a."balance_date" > ${cutoff}
+            THEN 0::decimal
+          ELSE a."opening_balance"
+            + COALESCE((
+                SELECT SUM(t."amount") FROM "transactions" t
+                WHERE t."ledger_id" = a."ledger_id"
+                  AND t."account_id" = a."id"
+                  AND t."date" <= ${cutoff}
+                  AND (a."balance_date" IS NULL OR t."date" >= a."balance_date")
+              ), 0)
+            - COALESCE((
+                SELECT SUM(x."amount") FROM "account_transfers" x
+                WHERE x."ledger_id" = a."ledger_id"
+                  AND x."from_account_id" = a."id"
+                  AND x."date" <= ${cutoff}
+                  AND (a."balance_date" IS NULL OR x."date" >= a."balance_date")
+              ), 0)
+            + COALESCE((
+                SELECT SUM(x."amount") FROM "account_transfers" x
+                WHERE x."ledger_id" = a."ledger_id"
+                  AND x."to_account_id" = a."id"
+                  AND x."date" <= ${cutoff}
+                  AND (a."balance_date" IS NULL OR x."date" >= a."balance_date")
+              ), 0)
+            + COALESCE((
+                SELECT SUM(j."amount") FROM "account_adjustments" j
+                WHERE j."ledger_id" = a."ledger_id"
+                  AND j."account_id" = a."id"
+                  AND j."date" <= ${cutoff}
+                  AND (a."balance_date" IS NULL OR j."date" >= a."balance_date")
+              ), 0)
+        END AS "balance"
+      FROM "accounts" a
+      WHERE a."ledger_id" = ${ledgerId}
+    `)
+    return new Map(
+      rows.map((row) => [row.id, Number(Number(row.balance).toFixed(2))]),
+    )
+  }
+
+  private presentAccount(account: any, balance: number) {
+    return {
+      id: account.id,
+      name: account.name,
+      type: account.type,
+      typeText: accountTypeText[account.type] || account.type,
+      openingBalance: Number(account.openingBalance),
+      balanceDate: account.balanceDate ? dateText(account.balanceDate) : null,
+      balance,
+      availableQuota: availableQuotaOf(balance),
+      outstanding: outstandingOf(balance),
+      isLiability: liabilityAccountTypes.has(account.type),
+      isDefault: account.isDefault,
+      enabled: account.enabled,
+    }
+  }
+
   private async createAccountWithDatabase(
     database: LedgerDatabase,
     ledgerId: string,
@@ -782,16 +848,12 @@ export class LedgerService {
     if (!name) throw new BadRequestException("请填写账户名称")
     const type = String(input?.type || "cash")
     if (!accountTypes.has(type)) throw new BadRequestException("账户类型无效")
-    const rawOpeningBalance = moneyValue(input?.openingBalance)
+    const openingBalance = moneyValue(input?.openingBalance)
     const balanceDateText = clean(input?.balanceDate, 10) || dateText(today())
     if (!validDate(balanceDateText))
       throw new BadRequestException("余额起算日期无效")
     const balanceDate = asDate(balanceDateText)
-    const openingBalance = liabilityAccountTypes.has(type)
-      ? -rawOpeningBalance
-      : rawOpeningBalance
-    const isDefault =
-      Boolean(input?.isDefault) && !liabilityAccountTypes.has(type)
+    const isDefault = Boolean(input?.isDefault) && type !== "loan"
     if (isDefault)
       await database.account.updateMany({
         where: { ledgerId, isDefault: true },
@@ -805,9 +867,7 @@ export class LedgerService {
         type,
         openingBalance: new Prisma.Decimal(openingBalance),
         balanceDate,
-        isDefault:
-          isDefault ||
-          (existingCount === 0 && !liabilityAccountTypes.has(type)),
+        isDefault: isDefault || (existingCount === 0 && type !== "loan"),
       },
     })
     await database.auditLog.create({
@@ -824,12 +884,10 @@ export class LedgerService {
         },
       },
     })
-    return {
-      ...account,
-      openingBalance: Number(account.openingBalance),
-      balanceDate: account.balanceDate ? dateText(account.balanceDate) : null,
-      typeText: accountTypeText[account.type] || account.type,
-    }
+    return this.presentAccount(
+      account,
+      await this.accountBalanceWithDatabase(database, ledgerId, account.id),
+    )
   }
 
   async createAccount(input: unknown) {
@@ -859,8 +917,8 @@ export class LedgerService {
       input?.isDefault === undefined
         ? account.isDefault
         : Boolean(input.isDefault)
-    if (isDefault && liabilityAccountTypes.has(account.type))
-      throw new BadRequestException("负债账户不能设为日常默认付款账户")
+    if (isDefault && account.type === "loan")
+      throw new BadRequestException("贷款账户不能设为日常默认付款账户")
     if (account.isDefault && input?.isDefault === false)
       throw new BadRequestException(
         "默认状态不能直接取消，请先设置其他默认账户",
@@ -869,14 +927,10 @@ export class LedgerService {
       input?.enabled === undefined ? account.enabled : Boolean(input.enabled)
     if (isDefault && !enabled)
       throw new BadRequestException("默认账户不能停用，请先设置其他默认账户")
-    if (input?.enabled === false) {
-      const activeLiability = await database.liability.findFirst({
-        where: { ledgerId, accountId: account.id, status: "active" },
-        select: { id: true },
-      })
-      if (activeLiability)
-        throw new BadRequestException("正在还款的负债账户不能停用")
-    }
+    const openingBalance =
+      input?.openingBalance === undefined
+        ? Number(account.openingBalance)
+        : moneyValue(input.openingBalance)
     if (isDefault)
       await database.account.updateMany({
         where: { ledgerId, isDefault: true, id: { not: account.id } },
@@ -888,6 +942,7 @@ export class LedgerService {
         name,
         isDefault,
         enabled,
+        openingBalance: new Prisma.Decimal(openingBalance),
       },
     })
     await database.auditLog.create({
@@ -895,19 +950,20 @@ export class LedgerService {
         action: "update",
         entityType: "account",
         entityId: account.id,
-        payload: { name, isDefault, enabled: updated.enabled },
+        payload: {
+          name,
+          isDefault,
+          enabled: updated.enabled,
+          openingBalance,
+        },
       },
     })
-    return {
-      ...updated,
-      openingBalance: Number(updated.openingBalance),
-      balanceDate: updated.balanceDate ? dateText(updated.balanceDate) : null,
-      balance: await this.accountBalanceWithDatabase(
-        database,
-        ledgerId,
-        updated.id,
-      ),
-    }
+    const balance = await this.accountBalanceWithDatabase(
+      database,
+      ledgerId,
+      updated.id,
+    )
+    return this.presentAccount(updated, balance)
   }
 
   private async reconcileAccountWithDatabase(
@@ -918,14 +974,6 @@ export class LedgerService {
   ) {
     const account = await this.financeAccount(database, ledgerId, id)
     if (!account.enabled) throw new BadRequestException("停用账户不能校准余额")
-    const linkedLiability = await database.liability.findFirst({
-      where: { ledgerId, accountId: account.id },
-      select: { id: true },
-    })
-    if (linkedLiability)
-      throw new BadRequestException(
-        "分期负债不能直接校准，请使用还款或撤销还款",
-      )
     const target = Number(input?.balance)
     if (!Number.isFinite(target))
       throw new BadRequestException("请填写正确余额")
@@ -976,14 +1024,7 @@ export class LedgerService {
     const account = await this.financeAccount(database, ledgerId, id)
     if (account.isDefault)
       throw new BadRequestException("默认账户不能删除，请先设置其他默认账户")
-    const [
-      transactions,
-      outgoing,
-      incoming,
-      liabilities,
-      payments,
-      adjustments,
-    ] = await Promise.all([
+    const [transactions, outgoing, incoming, adjustments] = await Promise.all([
       database.transaction.count({
         where: { ledgerId, accountId: account.id },
       }),
@@ -993,18 +1034,20 @@ export class LedgerService {
       database.accountTransfer.count({
         where: { ledgerId, toAccountId: account.id },
       }),
-      database.liability.count({ where: { ledgerId, accountId: account.id } }),
-      database.liabilityPayment.count({
-        where: { sourceAccountId: account.id },
-      }),
       database.accountAdjustment.count({
         where: { ledgerId, accountId: account.id },
       }),
     ])
-    const references =
-      transactions + outgoing + incoming + liabilities + payments + adjustments
-    if (references)
-      throw new BadRequestException("该账户已有账单或资金记录，只能停用")
+    const transferCount = outgoing + incoming
+    const leftover = [
+      transactions ? `${transactions} 笔账单` : "",
+      transferCount ? `${transferCount} 笔转账` : "",
+      adjustments ? `${adjustments} 条额度调整` : "",
+    ].filter(Boolean)
+    if (leftover.length)
+      throw new BadRequestException(
+        `该账户还有${leftover.join("、")}，请先在资金移动里撤销后再删除`,
+      )
     const balance = await this.accountBalanceWithDatabase(
       database,
       ledgerId,
@@ -1035,7 +1078,6 @@ export class LedgerService {
     database: LedgerDatabase,
     ledgerId: string,
     input: any,
-    internal = false,
   ) {
     if (!validDate(input?.date)) throw new BadRequestException("转账日期无效")
     const amount = positiveMoney(input?.amount, "转账金额")
@@ -1049,24 +1091,7 @@ export class LedgerService {
       throw new BadRequestException("转出和转入账户不能相同")
     if (!from.enabled || !to.enabled)
       throw new BadRequestException("停用账户不能继续转账")
-    const kind = internal
-      ? ["debt_drawdown", "debt_payment"].includes(String(input?.kind))
-        ? String(input.kind)
-        : "transfer"
-      : "transfer"
-    if (!internal) {
-      const linkedLiability = await database.liability.findFirst({
-        where: {
-          ledgerId,
-          accountId: { in: [from.id, to.id] },
-        },
-        select: { id: true },
-      })
-      if (linkedLiability)
-        throw new BadRequestException(
-          "分期负债不能用普通转账修改，请使用还一期或提前结清",
-        )
-    }
+    const kind = inferTransferKind(from.type, to.type)
     const transfer = await database.accountTransfer.create({
       data: {
         ledgerId,
@@ -1121,11 +1146,8 @@ export class LedgerService {
   ) {
     const transfer = await database.accountTransfer.findFirst({
       where: { id: clean(id, 100), ledgerId },
-      include: { _count: { select: { liabilityPayments: true } } },
     })
     if (!transfer) throw new NotFoundException("资金移动不存在")
-    if (transfer.kind !== "transfer" || transfer._count.liabilityPayments)
-      throw new BadRequestException("还款和放款不能按普通转账撤销")
     await database.accountTransfer.delete({ where: { id: transfer.id } })
     await database.auditLog.create({
       data: {
@@ -1150,113 +1172,112 @@ export class LedgerService {
     )
   }
 
-  private async createLiabilityWithDatabase(
+  private async deleteAdjustmentWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: unknown,
+  ) {
+    const adjustment = await database.accountAdjustment.findFirst({
+      where: { id: clean(id, 100), ledgerId },
+    })
+    if (!adjustment) throw new NotFoundException("额度调整不存在")
+    await database.accountAdjustment.delete({ where: { id: adjustment.id } })
+    await database.auditLog.create({
+      data: {
+        action: "reverse",
+        entityType: "account-adjustment",
+        entityId: adjustment.id,
+        payload: {
+          date: dateText(adjustment.date),
+          amount: Number(adjustment.amount),
+          accountId: adjustment.accountId,
+        },
+      },
+    })
+    return { id: adjustment.id, reversed: true }
+  }
+
+  async deleteAdjustment(id: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.deleteAdjustmentWithDatabase(database, ledgerId, id),
+    )
+  }
+
+  private async createRepaymentWithDatabase(
     database: LedgerDatabase,
     ledgerId: string,
     input: any,
   ) {
-    const name = clean(input?.name, 80)
-    if (!name) throw new BadRequestException("请填写负债名称")
-    const principal = positiveMoney(input?.principal, "负债本金")
-    const totalInterest = moneyValue(input?.totalInterest)
-    const totalInstallments = Math.round(Number(input?.totalInstallments))
-    if (
-      !Number.isInteger(totalInstallments) ||
-      totalInstallments < 1 ||
-      totalInstallments > 600
+    if (!validDate(input?.date)) throw new BadRequestException("还款日期无效")
+    const principal = positiveMoney(input?.principal, "偿还本金")
+    const interest = moneyValue(input?.interest)
+    const fee = moneyValue(input?.fee)
+    const from = await this.financeAccount(
+      database,
+      ledgerId,
+      input?.fromAccountId,
     )
-      throw new BadRequestException("分期期数应为 1 至 600 期")
-    if (!validDate(input?.startDate) || !validDate(input?.firstDueDate))
-      throw new BadRequestException("负债日期无效")
-    const startDate = asDate(String(input.startDate))
-    const firstDueDate = asDate(String(input.firstDueDate))
-    if (firstDueDate < startDate)
-      throw new BadRequestException("首次还款日不能早于负债开始日")
-    const kind = ["loan", "credit", "installment"].includes(String(input?.kind))
-      ? String(input.kind)
-      : "loan"
-    const fundingMode = input?.fundingMode === "deposit" ? "deposit" : "opening"
-    const account = await this.createAccountWithDatabase(database, ledgerId, {
-      name,
-      type: kind === "credit" ? "credit" : "loan",
-      openingBalance: fundingMode === "opening" ? principal : 0,
-      balanceDate: input.startDate,
+    const to = await this.financeAccount(database, ledgerId, input?.toAccountId)
+    if (from.id === to.id)
+      throw new BadRequestException("付款账户和收款账户不能相同")
+    if (!from.enabled || !to.enabled)
+      throw new BadRequestException("停用账户不能继续还款")
+    if (from.type === "loan")
+      throw new BadRequestException("请选择资产或信用账户支付本金")
+    if (!liabilityAccountTypes.has(to.type))
+      throw new BadRequestException("收款账户必须是信用账户或贷款账户")
+    const transfer = await this.createTransferWithDatabase(database, ledgerId, {
+      date: input.date,
+      amount: principal,
+      fromAccountId: from.id,
+      toAccountId: to.id,
+      note: clean(input?.note, 500) || `${from.name}偿还${to.name}`,
     })
-    const liability = await database.liability.create({
-      data: {
-        ledgerId,
-        accountId: account.id,
-        name,
-        kind,
-        originalPrincipal: new Prisma.Decimal(principal),
-        totalInterest: new Prisma.Decimal(totalInterest),
-        startDate,
-        firstDueDate,
-        totalInstallments,
-      },
-    })
-    const principalParts = splitMoney(principal, totalInstallments)
-    const interestParts = splitMoney(totalInterest, totalInstallments)
-    await database.liabilityInstallment.createMany({
-      data: principalParts.map((part, index) => ({
-        liabilityId: liability.id,
-        number: index + 1,
-        dueDate: addMonthsClamped(firstDueDate, index),
-        principal: new Prisma.Decimal(part),
-        interest: new Prisma.Decimal(interestParts[index]),
-      })),
-    })
-    let fundingTransfer: any = null
-    if (fundingMode === "deposit") {
-      if (!input?.targetAccountId)
-        throw new BadRequestException("请选择贷款到账账户")
-      fundingTransfer = await this.createTransferWithDatabase(
-        database,
-        ledgerId,
-        {
-          date: input.startDate,
-          amount: principal,
-          fromAccountId: account.id,
-          toAccountId: input.targetAccountId,
-          kind: "debt_drawdown",
-          note: `${name}放款`,
-        },
-        true,
-      )
-    }
+    const expense = await this.createFinanceExpense(
+      database,
+      ledgerId,
+      from.id,
+      to.name,
+      String(input.date),
+      interest,
+      fee,
+    )
     await database.auditLog.create({
       data: {
-        action: "create",
-        entityType: "liability",
-        entityId: liability.id,
+        action: "repayment",
+        entityType: "account-repayment",
+        entityId: transfer.id,
         payload: {
-          name,
-          kind,
+          date: input.date,
           principal,
-          totalInterest,
-          totalInstallments,
-          fundingMode,
+          interest,
+          fee,
+          fromAccountId: from.id,
+          toAccountId: to.id,
+          expenseTransactionId: expense?.id || null,
         },
       },
     })
     return {
-      id: liability.id,
-      name,
-      kind,
-      accountId: account.id,
+      transfer,
+      expense: expense
+        ? {
+            id: expense.id,
+            amount: Number(expense.amount),
+            item: expense.item,
+          }
+        : null,
       principal,
-      totalInterest,
-      totalInstallments,
-      startDate: dateText(startDate),
-      firstDueDate: dateText(firstDueDate),
-      fundingTransfer,
+      interest,
+      fee,
     }
   }
 
-  async createLiability(input: unknown) {
+  async createRepayment(input: unknown) {
     const { ledgerId } = await this.context()
     return this.prisma.$transaction((database) =>
-      this.createLiabilityWithDatabase(database, ledgerId, input),
+      this.createRepaymentWithDatabase(database, ledgerId, input),
     )
   }
 
@@ -1264,14 +1285,14 @@ export class LedgerService {
     database: LedgerDatabase,
     ledgerId: string,
     accountId: string,
-    liabilityName: string,
+    accountName: string,
     date: string,
     interest: number,
     fee: number,
   ) {
     const amount = Number((interest + fee).toFixed(2))
     if (!amount) return null
-    const item = `${liabilityName}${interest && fee ? "利息与手续费" : interest ? "利息" : "手续费"}`
+    const item = `${accountName}${interest && fee ? "利息与手续费" : interest ? "利息" : "手续费"}`
     await database.project.upsert({
       where: { ledgerId_name: { ledgerId, name: item } },
       update: { enabled: true },
@@ -1314,417 +1335,39 @@ export class LedgerService {
     })
   }
 
-  private async recordLiabilityPaymentWithDatabase(
-    database: LedgerDatabase,
-    ledgerId: string,
-    liabilityId: unknown,
-    input: any,
-    kind: "scheduled" | "early_settlement",
-  ) {
-    const liability = await database.liability.findFirst({
-      where: { id: clean(liabilityId, 100), ledgerId },
-      include: {
-        account: true,
-        installments: {
-          where: { status: "planned" },
-          orderBy: { number: "asc" },
-        },
-      },
-    })
-    if (!liability) throw new NotFoundException("负债计划不存在")
-    if (liability.status !== "active")
-      throw new BadRequestException("该负债已经结清")
-    if (!validDate(input?.date)) throw new BadRequestException("还款日期无效")
-    const source = await this.financeAccount(
-      database,
-      ledgerId,
-      input?.sourceAccountId,
-    )
-    if (source.id === liability.accountId)
-      throw new BadRequestException("还款账户不能与负债账户相同")
-    if (!source.enabled || liabilityAccountTypes.has(source.type))
-      throw new BadRequestException("请选择启用中的资产账户还款")
-    if (!liability.account.enabled)
-      throw new BadRequestException("负债账户已停用，不能继续还款")
-    const paymentDate = asDate(String(input.date))
-    if (paymentDate < liability.startDate)
-      throw new BadRequestException("还款日期不能早于负债开始日期")
-    const latestPayment = await database.liabilityPayment.findFirst({
-      where: { liabilityId: liability.id },
-      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-      select: { date: true },
-    })
-    if (latestPayment && paymentDate < latestPayment.date)
-      throw new BadRequestException("还款日期不能早于上一笔还款")
-    const outstanding = Math.max(
-      0,
-      -(await this.accountBalanceWithDatabase(
-        database,
-        ledgerId,
-        liability.accountId,
-        paymentDate,
-      )),
-    )
-    if (outstanding <= 0)
-      throw new BadRequestException("该负债账户当前没有待还本金")
-    const nextInstallment = liability.installments[0]
-    if (kind === "scheduled" && !nextInstallment)
-      throw new BadRequestException("没有待还分期")
-    const requestedPrincipal =
-      kind === "early_settlement"
-        ? outstanding
-        : positiveMoney(
-            input?.principal ?? nextInstallment?.principal,
-            "偿还本金",
-          )
-    if (
-      kind === "scheduled" &&
-      Number(requestedPrincipal.toFixed(2)) !==
-        Number(Number(nextInstallment!.principal).toFixed(2))
-    )
-      throw new BadRequestException(
-        "还一期必须按计划本金偿还；全部还清请使用提前结清",
-      )
-    const principal = Number(
-      Math.min(requestedPrincipal, outstanding).toFixed(2),
-    )
-    const interest = moneyValue(
-      input?.interest ?? (kind === "scheduled" ? nextInstallment?.interest : 0),
-    )
-    const fee = moneyValue(input?.fee)
-    const transfer = await this.createTransferWithDatabase(
-      database,
-      ledgerId,
-      {
-        date: input.date,
-        amount: principal,
-        fromAccountId: source.id,
-        toAccountId: liability.accountId,
-        kind: "debt_payment",
-        note:
-          clean(input?.note, 500) ||
-          `${liability.name}${kind === "early_settlement" ? "提前结清" : "还款"}`,
-      },
-      true,
-    )
-    const expense = await this.createFinanceExpense(
-      database,
-      ledgerId,
-      source.id,
-      liability.name,
-      String(input.date),
-      interest,
-      fee,
-    )
-    const payment = await database.liabilityPayment.create({
-      data: {
-        liabilityId: liability.id,
-        date: asDate(String(input.date)),
-        sourceAccountId: source.id,
-        principal: new Prisma.Decimal(principal),
-        interest: new Prisma.Decimal(interest),
-        fee: new Prisma.Decimal(fee),
-        kind,
-        note: clean(input?.note, 500),
-        transferId: transfer.id,
-        expenseTransactionId: expense?.id,
-      },
-    })
-    if (kind === "scheduled" && nextInstallment)
-      await database.liabilityInstallment.update({
-        where: { id: nextInstallment.id },
-        data: { status: "paid", paymentId: payment.id },
-      })
-    const remaining = Number((outstanding - principal).toFixed(2))
-    if (kind === "early_settlement" || remaining <= 0) {
-      await database.liabilityInstallment.updateMany({
-        where: { liabilityId: liability.id, status: "planned" },
-        data: { status: "cancelled" },
-      })
-      await database.liability.update({
-        where: { id: liability.id },
-        data: { status: "settled", settledAt: asDate(String(input.date)) },
-      })
-    }
-    await database.auditLog.create({
-      data: {
-        action: kind,
-        entityType: "liability-payment",
-        entityId: payment.id,
-        payload: { liabilityId: liability.id, principal, interest, fee },
-      },
-    })
-    return {
-      id: payment.id,
-      liabilityId: liability.id,
-      liabilityName: liability.name,
-      date: String(input.date),
-      principal,
-      interest,
-      fee,
-      total: Number((principal + interest + fee).toFixed(2)),
-      remainingPrincipal: Math.max(0, remaining),
-      settled: kind === "early_settlement" || remaining <= 0,
-    }
-  }
-
-  async payLiability(id: unknown, input: unknown) {
-    const { ledgerId } = await this.context()
-    return this.prisma.$transaction((database) =>
-      this.recordLiabilityPaymentWithDatabase(
-        database,
-        ledgerId,
-        id,
-        input,
-        "scheduled",
-      ),
-    )
-  }
-
-  async settleLiability(id: unknown, input: unknown) {
-    const { ledgerId } = await this.context()
-    return this.prisma.$transaction((database) =>
-      this.recordLiabilityPaymentWithDatabase(
-        database,
-        ledgerId,
-        id,
-        input,
-        "early_settlement",
-      ),
-    )
-  }
-
-  private async deleteLiabilityPaymentWithDatabase(
-    database: LedgerDatabase,
-    ledgerId: string,
-    liabilityId: unknown,
-    paymentId: unknown,
-  ) {
-    const liability = await database.liability.findFirst({
-      where: { id: clean(liabilityId, 100), ledgerId },
-    })
-    if (!liability) throw new NotFoundException("负债计划不存在")
-    const payment = await database.liabilityPayment.findFirst({
-      where: {
-        id: clean(paymentId, 100),
-        liabilityId: liability.id,
-      },
-    })
-    if (!payment) throw new NotFoundException("还款记录不存在")
-    const latest = await database.liabilityPayment.findFirst({
-      where: { liabilityId: liability.id },
-      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-      select: { id: true },
-    })
-    if (latest?.id !== payment.id)
-      throw new BadRequestException("只能从最后一笔还款开始撤销")
-
-    await database.liabilityInstallment.updateMany({
-      where: { liabilityId: liability.id, paymentId: payment.id },
-      data: { status: "planned", paymentId: null },
-    })
-    if (liability.status === "settled")
-      await database.liabilityInstallment.updateMany({
-        where: { liabilityId: liability.id, status: "cancelled" },
-        data: { status: "planned" },
-      })
-    await database.liabilityPayment.delete({ where: { id: payment.id } })
-    if (payment.expenseTransactionId)
-      await database.transaction.deleteMany({
-        where: { id: payment.expenseTransactionId, ledgerId },
-      })
-    await database.accountTransfer.delete({ where: { id: payment.transferId } })
-    await database.liability.update({
-      where: { id: liability.id },
-      data: { status: "active", settledAt: null },
-    })
-    await database.auditLog.create({
-      data: {
-        action: "reverse",
-        entityType: "liability-payment",
-        entityId: payment.id,
-        payload: {
-          liabilityId: liability.id,
-          principal: Number(payment.principal),
-          interest: Number(payment.interest),
-          fee: Number(payment.fee),
-        },
-      },
-    })
-    return { id: payment.id, reversed: true }
-  }
-
-  async deleteLiabilityPayment(liabilityId: unknown, paymentId: unknown) {
-    const { ledgerId } = await this.context()
-    return this.prisma.$transaction((database) =>
-      this.deleteLiabilityPaymentWithDatabase(
-        database,
-        ledgerId,
-        liabilityId,
-        paymentId,
-      ),
-    )
-  }
-
   async financeOverview() {
     const { ledgerId } = await this.context()
     const cutoff = today()
-    const [accounts, accountBalances, liabilities, transfers] =
-      await Promise.all([
-        this.prisma.account.findMany({
-          where: { ledgerId },
-          orderBy: [
-            { isDefault: "desc" },
-            { enabled: "desc" },
-            { sortOrder: "asc" },
-            { createdAt: "asc" },
-          ],
-        }),
-        this.prisma.$queryRaw<Array<{ id: string; balance: Prisma.Decimal }>>(
-          Prisma.sql`
-          SELECT a."id",
-            CASE
-              WHEN a."balance_date" IS NOT NULL AND a."balance_date" > ${cutoff}
-                THEN 0::decimal
-              ELSE a."opening_balance"
-                + COALESCE((
-                    SELECT SUM(t."amount") FROM "transactions" t
-                    WHERE t."ledger_id" = a."ledger_id"
-                      AND t."account_id" = a."id"
-                      AND t."date" <= ${cutoff}
-                      AND (a."balance_date" IS NULL OR t."date" >= a."balance_date")
-                  ), 0)
-                - COALESCE((
-                    SELECT SUM(x."amount") FROM "account_transfers" x
-                    WHERE x."ledger_id" = a."ledger_id"
-                      AND x."from_account_id" = a."id"
-                      AND x."date" <= ${cutoff}
-                      AND (a."balance_date" IS NULL OR x."date" >= a."balance_date")
-                  ), 0)
-                + COALESCE((
-                    SELECT SUM(x."amount") FROM "account_transfers" x
-                    WHERE x."ledger_id" = a."ledger_id"
-                      AND x."to_account_id" = a."id"
-                      AND x."date" <= ${cutoff}
-                      AND (a."balance_date" IS NULL OR x."date" >= a."balance_date")
-                  ), 0)
-                + COALESCE((
-                    SELECT SUM(j."amount") FROM "account_adjustments" j
-                    WHERE j."ledger_id" = a."ledger_id"
-                      AND j."account_id" = a."id"
-                      AND j."date" <= ${cutoff}
-                      AND (a."balance_date" IS NULL OR j."date" >= a."balance_date")
-                  ), 0)
-            END AS "balance"
-          FROM "accounts" a
-          WHERE a."ledger_id" = ${ledgerId}
-        `,
-        ),
-        this.prisma.liability.findMany({
-          where: { ledgerId },
-          include: {
-            account: { select: { name: true, type: true } },
-            installments: { orderBy: { number: "asc" } },
-            payments: {
-              orderBy: { date: "desc" },
-              take: 12,
-              include: { sourceAccount: { select: { name: true } } },
-            },
-          },
-          orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-        }),
-        this.prisma.accountTransfer.findMany({
-          where: { ledgerId, date: { lte: cutoff } },
-          include: {
-            fromAccount: { select: { name: true } },
-            toAccount: { select: { name: true } },
-            liabilityPayments: { select: { id: true, liabilityId: true } },
-          },
-          orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-          take: 12,
-        }),
-      ])
-    const computedBalances = new Map(
-      accountBalances.map((row) => [row.id, Number(row.balance)]),
+    const [accounts, balances, transfers, adjustments] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { ledgerId },
+        orderBy: [
+          { isDefault: "desc" },
+          { enabled: "desc" },
+          { sortOrder: "asc" },
+          { createdAt: "asc" },
+        ],
+      }),
+      this.accountBalancesWithDatabase(this.prisma, ledgerId, cutoff),
+      this.prisma.accountTransfer.findMany({
+        where: { ledgerId, date: { lte: cutoff } },
+        include: {
+          fromAccount: { select: { name: true } },
+          toAccount: { select: { name: true } },
+        },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 12,
+      }),
+      this.prisma.accountAdjustment.findMany({
+        where: { ledgerId, date: { lte: cutoff } },
+        include: { account: { select: { name: true } } },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 12,
+      }),
+    ])
+    const accountRows = accounts.map((account) =>
+      this.presentAccount(account, balances.get(account.id) || 0),
     )
-    const accountRows = accounts.map((account) => {
-      const balance = Number((computedBalances.get(account.id) || 0).toFixed(2))
-      return {
-        id: account.id,
-        name: account.name,
-        type: account.type,
-        typeText: accountTypeText[account.type] || account.type,
-        openingBalance: Number(account.openingBalance),
-        balanceDate: account.balanceDate ? dateText(account.balanceDate) : null,
-        balance,
-        isLiability: liabilityAccountTypes.has(account.type),
-        isDefault: account.isDefault,
-        enabled: account.enabled,
-      }
-    })
-    const balanceByAccount = new Map(
-      accountRows.map((account) => [account.id, account.balance]),
-    )
-    const liabilityRows = liabilities.map((liability) => {
-      const outstandingPrincipal = Math.max(
-        0,
-        -(balanceByAccount.get(liability.accountId) || 0),
-      )
-      const installments = liability.installments.map((row) => ({
-        id: row.id,
-        number: row.number,
-        dueDate: dateText(row.dueDate),
-        principal: Number(row.principal),
-        interest: Number(row.interest),
-        fee: Number(row.fee),
-        total: Number(
-          (
-            Number(row.principal) +
-            Number(row.interest) +
-            Number(row.fee)
-          ).toFixed(2),
-        ),
-        status: row.status,
-      }))
-      const nextInstallment =
-        installments.find((row) => row.status === "planned") || null
-      return {
-        id: liability.id,
-        accountId: liability.accountId,
-        name: liability.name,
-        kind: liability.kind,
-        status: liability.status,
-        originalPrincipal: Number(liability.originalPrincipal),
-        totalInterest: Number(liability.totalInterest),
-        outstandingPrincipal,
-        repaidPrincipal: Math.max(
-          0,
-          Number(liability.originalPrincipal) - outstandingPrincipal,
-        ),
-        startDate: dateText(liability.startDate),
-        firstDueDate: dateText(liability.firstDueDate),
-        totalInstallments: liability.totalInstallments,
-        settledAt: liability.settledAt ? dateText(liability.settledAt) : null,
-        nextInstallment,
-        installments,
-        payments: liability.payments.map((row) => ({
-          id: row.id,
-          date: dateText(row.date),
-          principal: Number(row.principal),
-          interest: Number(row.interest),
-          fee: Number(row.fee),
-          total: Number(
-            (
-              Number(row.principal) +
-              Number(row.interest) +
-              Number(row.fee)
-            ).toFixed(2),
-          ),
-          kind: row.kind,
-          sourceAccountName: row.sourceAccount.name,
-        })),
-      }
-    })
     const assetTotal = Number(
       accountRows
         .filter((row) => !row.isLiability)
@@ -1734,49 +1377,50 @@ export class LedgerService {
     const liabilityTotal = Number(
       accountRows
         .filter((row) => row.isLiability)
-        .reduce((sum, row) => sum + Math.max(0, -row.balance), 0)
+        .reduce((sum, row) => sum + row.outstanding, 0)
         .toFixed(2),
-    )
-    const upcoming = liabilityRows
-      .filter((row) => row.status === "active" && row.nextInstallment)
-      .map((row) => ({
-        liabilityId: row.id,
-        liabilityName: row.name,
-        ...row.nextInstallment!,
-      }))
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    const upcomingCutoff = new Date(cutoff)
-    upcomingCutoff.setUTCDate(upcomingCutoff.getUTCDate() + 30)
-    const upcomingSoon = upcoming.filter(
-      (row) => row.dueDate <= dateText(upcomingCutoff),
     )
     return {
       summary: {
         assets: assetTotal,
         liabilities: liabilityTotal,
         netWorth: Number((assetTotal - liabilityTotal).toFixed(2)),
-        upcomingAmount: Number(
-          upcomingSoon.reduce((sum, row) => sum + row.total, 0).toFixed(2),
-        ),
       },
       accounts: accountRows,
-      liabilities: liabilityRows,
-      upcoming: upcomingSoon,
-      recentTransfers: transfers.map((row) => ({
-        id: row.id,
-        date: dateText(row.date),
-        amount: Number(row.amount),
-        kind: row.kind,
-        note: row.note,
-        fromAccountId: row.fromAccountId,
-        toAccountId: row.toAccountId,
-        fromAccountName: row.fromAccount.name,
-        toAccountName: row.toAccount.name,
-        paymentId: row.liabilityPayments[0]?.id || null,
-        liabilityId: row.liabilityPayments[0]?.liabilityId || null,
-        reversible:
-          row.kind === "transfer" || Boolean(row.liabilityPayments[0]),
-      })),
+      recentTransfers: [
+        ...transfers.map((row) => ({
+          id: row.id,
+          date: dateText(row.date),
+          amount: Number(row.amount),
+          kind: row.kind,
+          note: row.note,
+          fromAccountId: row.fromAccountId,
+          toAccountId: row.toAccountId,
+          fromAccountName: row.fromAccount.name,
+          toAccountName: row.toAccount.name,
+          createdAt: row.createdAt,
+          reversible: true,
+        })),
+        ...adjustments.map((row) => ({
+          id: row.id,
+          date: dateText(row.date),
+          amount: Number(row.amount),
+          kind: "adjustment",
+          note: row.note,
+          fromAccountId: row.accountId,
+          toAccountId: row.accountId,
+          fromAccountName: row.account.name,
+          toAccountName: row.account.name,
+          createdAt: row.createdAt,
+          reversible: true,
+        })),
+      ]
+        .sort((left, right) => {
+          const byDate = right.date.localeCompare(left.date)
+          if (byDate) return byDate
+          return right.createdAt.getTime() - left.createdAt.getTime()
+        })
+        .slice(0, 12),
     }
   }
 
@@ -1893,15 +1537,10 @@ export class LedgerService {
       include: {
         account: { select: { name: true } },
         tags: { include: { tag: true } },
-        liabilityPayments: { select: { id: true } },
       },
     })
     const existing = existingRow ? this.serialize(existingRow) : null
     if (!existing) throw new Error(`未找到编号为 ${id} 的账目`)
-    if (existingRow!.liabilityPayments.length)
-      throw new BadRequestException(
-        "还款产生的费用账单不能单独修改，请撤销还款后重新记录",
-      )
     const merged = normalizeRecord({
       ...existing,
       ...changes,
@@ -2037,14 +1676,6 @@ export class LedgerService {
     ledgerId: string,
     id: string | number,
   ) {
-    const linkedPayment = await database.liabilityPayment.findFirst({
-      where: { expenseTransactionId: Number(id), liability: { ledgerId } },
-      select: { id: true },
-    })
-    if (linkedPayment)
-      throw new BadRequestException(
-        "还款产生的费用账单不能单独删除，请撤销还款",
-      )
     const result = await database.transaction.deleteMany({
       where: { id: Number(id), ledgerId },
     })
@@ -2226,45 +1857,22 @@ export class LedgerService {
             proposal.transferId,
           ),
         })
-      else if (proposal?.type === "liability-create")
+      else if (proposal?.type === "adjustment-reverse")
         results.push({
-          type: "liability-create",
-          liability: await this.createLiabilityWithDatabase(
+          type: "adjustment-reverse",
+          result: await this.deleteAdjustmentWithDatabase(
             database,
             ledgerId,
-            proposal.liability || {},
+            proposal.adjustmentId,
           ),
         })
-      else if (proposal?.type === "liability-payment")
+      else if (proposal?.type === "repayment")
         results.push({
-          type: "liability-payment",
-          payment: await this.recordLiabilityPaymentWithDatabase(
+          type: "repayment",
+          repayment: await this.createRepaymentWithDatabase(
             database,
             ledgerId,
-            proposal.liabilityId,
-            proposal.payment || {},
-            "scheduled",
-          ),
-        })
-      else if (proposal?.type === "liability-settlement")
-        results.push({
-          type: "liability-settlement",
-          payment: await this.recordLiabilityPaymentWithDatabase(
-            database,
-            ledgerId,
-            proposal.liabilityId,
-            proposal.settlement || {},
-            "early_settlement",
-          ),
-        })
-      else if (proposal?.type === "liability-payment-reverse")
-        results.push({
-          type: "liability-payment-reverse",
-          result: await this.deleteLiabilityPaymentWithDatabase(
-            database,
-            ledgerId,
-            proposal.liabilityId,
-            proposal.paymentId,
+            proposal.repayment || {},
           ),
         })
       else throw new Error("包含未知操作")

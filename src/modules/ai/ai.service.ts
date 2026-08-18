@@ -210,10 +210,8 @@ export class AiService {
           "tag-delete",
           "transfer",
           "transfer-reverse",
-          "liability-create",
-          "liability-payment",
-          "liability-settlement",
-          "liability-payment-reverse",
+          "adjustment-reverse",
+          "repayment",
         ].includes(stored.type)
       ) {
         if (JSON.stringify(edited) !== JSON.stringify(stored))
@@ -306,6 +304,7 @@ export class AiService {
             操作: "修改账户",
             账户: proposal.display?.accountName || proposal.accountId,
             新名称: proposal.changes?.name,
+            期初可用额度: proposal.changes?.openingBalance,
             设为默认: proposal.changes?.isDefault,
             启用: proposal.changes?.enabled,
           },
@@ -314,10 +313,10 @@ export class AiService {
         return [
           {
             序号: ++displayIndex,
-            操作: "校准账户余额",
+            操作: "调整账户额度",
             账户: proposal.display?.accountName || proposal.accountId,
-            当前余额: proposal.display?.currentBalance,
-            校准为: proposal.reconcile?.balance,
+            当前额度: proposal.display?.currentBalance,
+            调整为: proposal.reconcile?.balance,
             备注: proposal.reconcile?.note || "",
           },
         ]
@@ -378,44 +377,27 @@ export class AiService {
             金额: proposal.display?.amount,
           },
         ]
-      if (proposal?.type === "liability-create")
+      if (proposal?.type === "adjustment-reverse")
         return [
           {
             序号: ++displayIndex,
-            操作: "新增负债计划",
-            名称: proposal.liability?.name,
-            本金: proposal.liability?.principal,
-            总期数: proposal.liability?.totalInstallments,
-            首次还款日: proposal.liability?.firstDueDate,
-          },
-        ]
-      if (
-        proposal?.type === "liability-payment" ||
-        proposal?.type === "liability-settlement"
-      ) {
-        const value = proposal.payment || proposal.settlement || {}
-        return [
-          {
-            序号: ++displayIndex,
-            操作:
-              proposal.type === "liability-payment" ? "偿还一期" : "提前结清",
-            负债编号: proposal.liabilityId,
-            日期: value.date,
-            本金: value.principal || "按系统余额",
-            利息: value.interest || 0,
-            手续费: value.fee || 0,
-            付款账户编号: value.sourceAccountId,
-          },
-        ]
-      }
-      if (proposal?.type === "liability-payment-reverse")
-        return [
-          {
-            序号: ++displayIndex,
-            操作: "撤销最近还款",
-            负债: proposal.display?.liabilityName || proposal.liabilityId,
-            日期: proposal.display?.date,
+            操作: "撤销额度调整",
+            账户: proposal.display?.accountName,
             金额: proposal.display?.amount,
+            备注: proposal.display?.note || "",
+          },
+        ]
+      if (proposal?.type === "repayment")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "记录还款",
+            日期: proposal.repayment?.date,
+            本金: proposal.repayment?.principal,
+            利息: proposal.repayment?.interest || 0,
+            手续费: proposal.repayment?.fee || 0,
+            付款账户: proposal.display?.fromAccountName,
+            还款账户: proposal.display?.toAccountName,
           },
         ]
       const current = proposal?.current || {}
@@ -727,7 +709,7 @@ export class AiService {
     if (proposal?.type === "account-update")
       return `修改账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”`
     if (proposal?.type === "account-reconcile")
-      return `校准账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”余额`
+      return `调整账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”额度`
     if (proposal?.type === "account-delete")
       return `删除账户“${proposal.display?.accountName || proposal.accountId || "未命名"}”`
     if (proposal?.type === "tag-create")
@@ -739,11 +721,10 @@ export class AiService {
     if (proposal?.type === "transfer")
       return `转账 ¥${Number(proposal.transfer?.amount || 0).toFixed(2)}`
     if (proposal?.type === "transfer-reverse") return "撤销账户转账"
-    if (proposal?.type === "liability-create")
-      return `新增负债“${proposal.liability?.name || "未命名"}”`
-    if (proposal?.type === "liability-payment") return "偿还一期负债"
-    if (proposal?.type === "liability-settlement") return "提前结清负债"
-    if (proposal?.type === "liability-payment-reverse") return "撤销最近还款"
+    if (proposal?.type === "adjustment-reverse")
+      return `撤销“${proposal.display?.accountName || "账户"}”额度调整`
+    if (proposal?.type === "repayment")
+      return `还款 ¥${Number(proposal.repayment?.principal || 0).toFixed(2)}`
     const item = proposal?.current?.item || ""
     const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
     return proposal?.type === "update"

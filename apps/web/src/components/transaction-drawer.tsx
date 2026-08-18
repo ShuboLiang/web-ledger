@@ -16,6 +16,7 @@ import dayjs from "dayjs"
 import { useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { api, type Dictionaries, type Transaction } from "@/lib/api"
+import { money } from "@/lib/utils"
 import { CategoryIcon } from "@/components/category-icon"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
@@ -71,7 +72,11 @@ export function TransactionDrawer({
   const accountOptions = useMemo(() => {
     const options = (data?.accounts || []).map((account) => ({
       value: account.id,
-      label: `${account.name}${account.isDefault ? "（默认）" : ""}`,
+      label: `${account.name}${account.isDefault ? "（默认）" : ""}${
+        account.availableQuota === undefined
+          ? ""
+          : ` · 可用 ${money(account.availableQuota)}`
+      }`,
     }))
     if (
       record?.accountId &&

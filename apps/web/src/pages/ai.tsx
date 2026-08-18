@@ -68,10 +68,8 @@ type Proposal = {
     | "tag-delete"
     | "transfer"
     | "transfer-reverse"
-    | "liability-create"
-    | "liability-payment"
-    | "liability-settlement"
-    | "liability-payment-reverse"
+    | "adjustment-reverse"
+    | "repayment"
   id?: number
   records?: any[]
   current?: any
@@ -85,13 +83,10 @@ type Proposal = {
   tag?: any
   tagId?: string
   transfer?: any
-  liability?: any
-  liabilityId?: string
-  payment?: any
-  settlement?: any
+  repayment?: any
   reconcile?: any
   transferId?: string
-  paymentId?: string
+  adjustmentId?: string
   display?: any
   _humanEdited?: boolean
 }
@@ -512,6 +507,9 @@ export function AiPage() {
         if (proposal.type === "account-update") {
           const changes = [
             proposal.changes?.name ? `名称改为“${proposal.changes.name}”` : "",
+            proposal.changes?.openingBalance !== undefined
+              ? `期初可用额度改为 ${money(proposal.changes.openingBalance)}`
+              : "",
             proposal.changes?.isDefault === true ? "设为默认账户" : "",
             proposal.changes?.enabled === true ? "启用账户" : "",
             proposal.changes?.enabled === false ? "停用账户" : "",
@@ -537,7 +535,7 @@ export function AiPage() {
             {
               label:
                 proposal.type === "account-reconcile"
-                  ? "校准账户余额"
+                  ? "调整账户额度"
                   : "删除账户",
               item:
                 proposal.display?.accountName ||
@@ -603,57 +601,35 @@ export function AiPage() {
               label: "撤销账户转账",
               item: proposal.display?.route || "账户转账",
               amount: proposal.display?.amount,
-              detail: "恢复双方账户余额，不影响收支",
+              detail: "恢复双方账户额度，不影响收支",
               proposalIndex,
               isFinanceOperation: true,
             },
           ]
-        if (proposal.type === "liability-create")
+        if (proposal.type === "adjustment-reverse")
           return [
             {
-              label: "新增负债",
-              item: proposal.liability?.name,
-              amount: proposal.liability?.principal,
-              date: proposal.liability?.startDate,
-              detail: `${proposal.liability?.totalInstallments || 0} 期 · 首次还款 ${proposal.liability?.firstDueDate || ""}`,
-              proposalIndex,
-              isFinanceOperation: true,
-            },
-          ]
-        if (
-          proposal.type === "liability-payment" ||
-          proposal.type === "liability-settlement"
-        ) {
-          const value = proposal.payment || proposal.settlement || {}
-          const amount =
-            proposal.type === "liability-settlement"
-              ? Number(proposal.display?.outstandingPrincipal || 0) +
-                Number(value.interest || 0) +
-                Number(value.fee || 0)
-              : Number(value.principal || 0) +
-                Number(value.interest || 0) +
-                Number(value.fee || 0)
-          return [
-            {
-              label:
-                proposal.type === "liability-payment" ? "偿还一期" : "提前结清",
-              item: proposal.display?.liabilityName || "负债计划",
-              amount,
-              date: value.date,
-              detail: `付款账户：${proposal.display?.sourceAccountName || value.sourceAccountId}`,
-              proposalIndex,
-              isFinanceOperation: true,
-            },
-          ]
-        }
-        if (proposal.type === "liability-payment-reverse")
-          return [
-            {
-              label: "撤销最近还款",
-              item: proposal.display?.liabilityName || "负债计划",
+              label: "撤销额度调整",
+              item: proposal.display?.accountName || "账户",
               amount: proposal.display?.amount,
-              date: proposal.display?.date,
-              detail: "本金、费用与分期状态会一起恢复",
+              detail: proposal.display?.note
+                ? `撤销后可用额度恢复；${proposal.display.note}`
+                : "撤销后可用额度恢复，不影响收支",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "repayment")
+          return [
+            {
+              label: "记录还款",
+              item: `${proposal.display?.fromAccountName || "付款账户"} → ${proposal.display?.toAccountName || "信用/贷款账户"}`,
+              amount:
+                Number(proposal.repayment?.principal || 0) +
+                Number(proposal.repayment?.interest || 0) +
+                Number(proposal.repayment?.fee || 0),
+              date: proposal.repayment?.date,
+              detail: `本金 ${money(proposal.repayment?.principal || 0)} 走转账；利息与手续费计入支出`,
               proposalIndex,
               isFinanceOperation: true,
             },

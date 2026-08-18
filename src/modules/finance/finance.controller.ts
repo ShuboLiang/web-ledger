@@ -54,29 +54,13 @@ export class FinanceController {
     return this.ledger.deleteTransfer(id)
   }
 
-  @Post("liabilities")
-  createLiability(@Body() body: Record<string, unknown>) {
-    return this.ledger.createLiability(body)
+  @Delete("adjustments/:id")
+  deleteAdjustment(@Param("id") id: string) {
+    return this.ledger.deleteAdjustment(id)
   }
 
-  @Post("liabilities/:id/payments")
-  payLiability(@Param("id") id: string, @Body() body: Record<string, unknown>) {
-    return this.ledger.payLiability(id, body)
-  }
-
-  @Post("liabilities/:id/settlement")
-  settleLiability(
-    @Param("id") id: string,
-    @Body() body: Record<string, unknown>,
-  ) {
-    return this.ledger.settleLiability(id, body)
-  }
-
-  @Delete("liabilities/:liabilityId/payments/:paymentId")
-  deleteLiabilityPayment(
-    @Param("liabilityId") liabilityId: string,
-    @Param("paymentId") paymentId: string,
-  ) {
-    return this.ledger.deleteLiabilityPayment(liabilityId, paymentId)
+  @Post("repayments")
+  createRepayment(@Body() body: Record<string, unknown>) {
+    return this.ledger.createRepayment(body)
   }
 }

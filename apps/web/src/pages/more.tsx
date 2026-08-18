@@ -13,7 +13,7 @@ const entries = [
     path: "/finance",
     icon: <BankOutlined />,
     title: "资产与负债",
-    description: "查看账户余额，管理转账、贷款、分期和提前结清",
+    description: "查看账户额度，管理转账、贷款放款和还款",
     tone: "mint",
   },
   {

@@ -21,7 +21,6 @@ import {
   Input,
   InputNumber,
   List,
-  Progress,
   Radio,
   Row,
   Select,
@@ -33,33 +32,26 @@ import {
 } from "antd"
 import dayjs from "dayjs"
 import { useMemo, useState } from "react"
-import {
-  api,
-  type FinanceAccount,
-  type FinanceLiability,
-  type FinanceOverview,
-} from "@/lib/api"
+import { api, type FinanceAccount, type FinanceOverview } from "@/lib/api"
 import { money } from "@/lib/utils"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
-type Panel = "account" | "transfer" | "liability" | "reconcile" | null
+type Panel = "account" | "transfer" | "repayment" | "reconcile" | null
 const accountTypeOptions = [
   { value: "cash", label: "现金" },
   { value: "bank", label: "银行卡" },
   { value: "ewallet", label: "电子钱包" },
   { value: "credit", label: "信用账户" },
+  { value: "loan", label: "贷款账户" },
 ]
-const liabilityKindText: Record<string, string> = {
-  loan: "贷款",
-  credit: "信用账户",
-  installment: "分期",
-}
 const transferKindText: Record<string, string> = {
   transfer: "账户转账",
   debt_drawdown: "贷款到账",
   debt_payment: "偿还本金",
+  adjustment: "额度调整",
 }
+const quotaAccountTypes = new Set(["credit", "loan"])
 
 export function FinancePage() {
   const screens = Grid.useBreakpoint()
@@ -70,19 +62,12 @@ export function FinancePage() {
   const [editingAccount, setEditingAccount] = useState<FinanceAccount | null>(
     null,
   )
-  const [paymentTarget, setPaymentTarget] = useState<FinanceLiability | null>(
-    null,
-  )
-  const [settlementTarget, setSettlementTarget] =
-    useState<FinanceLiability | null>(null)
   const [reconcileTarget, setReconcileTarget] = useState<FinanceAccount | null>(
     null,
   )
   const [accountForm] = Form.useForm()
   const [transferForm] = Form.useForm()
-  const [liabilityForm] = Form.useForm()
-  const [paymentForm] = Form.useForm()
-  const [settlementForm] = Form.useForm()
+  const [repaymentForm] = Form.useForm()
   const [reconcileForm] = Form.useForm()
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["finance"],
@@ -97,14 +82,10 @@ export function FinancePage() {
     onSuccess: async () => {
       setPanel(null)
       setEditingAccount(null)
-      setPaymentTarget(null)
-      setSettlementTarget(null)
       setReconcileTarget(null)
       accountForm.resetFields()
       transferForm.resetFields()
-      liabilityForm.resetFields()
-      paymentForm.resetFields()
-      settlementForm.resetFields()
+      repaymentForm.resetFields()
       reconcileForm.resetFields()
       await refresh()
       message.success("财务状态已更新")
@@ -112,9 +93,14 @@ export function FinancePage() {
     onError: (error: Error) => message.error(error.message),
   })
   const assets = data?.accounts.filter((row) => !row.isLiability) || []
-  const liabilityAccounts =
-    data?.accounts.filter((row) => row.isLiability) || []
-  const enabledAssets = assets.filter((row) => row.enabled)
+  const enabledAccounts = (data?.accounts || []).filter((row) => row.enabled)
+  const payerAccounts = enabledAccounts.filter((row) => row.type !== "loan")
+  const debtAccounts = enabledAccounts.filter((row) =>
+    quotaAccountTypes.has(row.type),
+  )
+  const accountType = Form.useWatch("type", accountForm)
+  const reconcileMode = Form.useWatch("mode", reconcileForm)
+  const editingIsDefault = Form.useWatch("isDefault", accountForm)
   const openPanel = (next: Panel) => {
     setPanel(next)
     if (next === "account") {
@@ -131,17 +117,20 @@ export function FinancePage() {
     if (next === "transfer")
       transferForm.setFieldsValue({
         date: dayjs(),
-        fromAccountId: assets.find((row) => row.isDefault)?.id || assets[0]?.id,
+        fromAccountId:
+          enabledAccounts.find((row) => row.isDefault)?.id ||
+          enabledAccounts[0]?.id,
       })
-    if (next === "liability")
-      liabilityForm.setFieldsValue({
-        kind: "loan",
+    if (next === "repayment")
+      repaymentForm.setFieldsValue({
+        date: dayjs(),
+        fromAccountId:
+          payerAccounts.find((row) => row.isDefault)?.id ||
+          payerAccounts[0]?.id,
+        toAccountId: debtAccounts[0]?.id,
         principal: undefined,
-        totalInterest: 0,
-        totalInstallments: 12,
-        startDate: dayjs(),
-        firstDueDate: dayjs().add(1, "month"),
-        fundingMode: "opening",
+        interest: 0,
+        fee: 0,
       })
   }
   const openAccountEdit = (account: FinanceAccount) => {
@@ -150,36 +139,19 @@ export function FinancePage() {
     accountForm.setFieldsValue({
       name: account.name,
       type: account.type,
-      openingBalance: account.openingBalance,
+      openingBalance: Math.max(0, account.openingBalance),
       isDefault: account.isDefault,
       enabled: account.enabled,
-    })
-  }
-  const openPayment = (liability: FinanceLiability) => {
-    if (!liability.nextInstallment) return
-    setPaymentTarget(liability)
-    paymentForm.setFieldsValue({
-      date: dayjs(),
-      sourceAccountId:
-        enabledAssets.find((row) => row.isDefault)?.id || enabledAssets[0]?.id,
-      principal: liability.nextInstallment.principal,
-      interest: liability.nextInstallment.interest,
-      fee: liability.nextInstallment.fee,
     })
   }
   const openReconcile = (account: FinanceAccount) => {
     setReconcileTarget(account)
     setPanel("reconcile")
-    reconcileForm.setFieldsValue({ balance: account.balance, note: "余额校准" })
-  }
-  const openSettlement = (liability: FinanceLiability) => {
-    setSettlementTarget(liability)
-    settlementForm.setFieldsValue({
-      date: dayjs(),
-      sourceAccountId:
-        enabledAssets.find((row) => row.isDefault)?.id || enabledAssets[0]?.id,
-      interest: 0,
-      fee: 0,
+    reconcileForm.setFieldsValue({
+      mode: "set",
+      balance: account.balance,
+      delta: undefined,
+      note: quotaAccountTypes.has(account.type) ? "调整额度" : "余额校准",
     })
   }
   const makeDefault = (account: FinanceAccount) =>
@@ -188,21 +160,13 @@ export function FinancePage() {
       method: "PATCH",
       body: { isDefault: true },
     })
-  const assetOptions = enabledAssets.map((row) => ({
+  const accountOption = (row: FinanceAccount) => ({
     value: row.id,
-    label: `${row.name} · ${money(row.balance)}`,
-  }))
-  const plannedLiabilityAccountIds = new Set(
-    (data?.liabilities || []).map((row) => row.accountId),
-  )
-  const allAccountOptions = (data?.accounts || [])
-    .filter((row) => row.enabled && !plannedLiabilityAccountIds.has(row.id))
-    .map((row) => ({
-      value: row.id,
-      label: `${row.name} · ${money(row.balance)}`,
-    }))
-  const fundingMode = Form.useWatch("fundingMode", liabilityForm)
-  const editingIsDefault = Form.useWatch("isDefault", accountForm)
+    label: `${row.name} · 可用 ${money(row.availableQuota)}`,
+  })
+  const allAccountOptions = enabledAccounts.map(accountOption)
+  const payerOptions = payerAccounts.map(accountOption)
+  const debtOptions = debtAccounts.map(accountOption)
   const summaryCards = useMemo(
     () => [
       {
@@ -223,14 +187,11 @@ export function FinancePage() {
         value: data?.summary.netWorth || 0,
         tone: "net",
       },
-      {
-        key: "upcoming",
-        label: "30天应还",
-        value: data?.summary.upcomingAmount || 0,
-        tone: "due",
-      },
     ],
     [data?.summary],
+  )
+  const isQuotaAccount = Boolean(
+    reconcileTarget && quotaAccountTypes.has(reconcileTarget.type),
   )
   if (isLoading) return <Skeleton active paragraph={{ rows: 14 }} />
   if (isError || !data)
@@ -258,7 +219,7 @@ export function FinancePage() {
               把消费、账户和欠款放在一张图里
             </Typography.Title>
             <Typography.Paragraph type="secondary">
-              日常记账照旧；转账和还本金不会重复计入支出，只有利息与手续费属于消费。
+              所有账户按可用额度记账。转账和还本金不计入收支，利息与手续费才算支出。
             </Typography.Paragraph>
           </div>
           <Space wrap className="finance-actions">
@@ -277,9 +238,9 @@ export function FinancePage() {
             <Button
               type="primary"
               icon={<CreditCardOutlined />}
-              onClick={() => openPanel("liability")}
+              onClick={() => openPanel("repayment")}
             >
-              新增负债
+              记还款
             </Button>
           </Space>
         </Flex>
@@ -301,7 +262,7 @@ export function FinancePage() {
       <Row gutter={[18, 18]}>
         <Col xs={24} xl={10}>
           <Card
-            title="账户余额"
+            title="账户额度"
             extra={
               <Typography.Text type="secondary">
                 {data.accounts.length} 个账户
@@ -311,7 +272,7 @@ export function FinancePage() {
           >
             {data.accounts.length ? (
               <List
-                dataSource={[...assets, ...liabilityAccounts]}
+                dataSource={data.accounts}
                 renderItem={(account) => (
                   <List.Item className="finance-account-item">
                     <Flex
@@ -329,20 +290,17 @@ export function FinancePage() {
                         )}
                       </span>
                       <div className="finance-account-copy">
-                        <Flex align="center" gap={6} wrap>
-                          <Typography.Text strong>
-                            {account.name}
-                          </Typography.Text>
-                          {account.isDefault && (
-                            <Tag color="green">日常默认</Tag>
-                          )}
-                          {!account.enabled && <Tag>已停用</Tag>}
+                        <Flex align="center" gap={8} wrap>
+                          <Typography.Text strong>{account.name}</Typography.Text>
+                          <Tag>{account.typeText}</Tag>
+                          {account.isDefault ? <Tag color="cyan">默认</Tag> : null}
+                          {!account.enabled ? <Tag>已停用</Tag> : null}
                         </Flex>
                         <Typography.Text type="secondary">
-                          {account.typeText}
-                          {account.balanceDate
-                            ? ` · ${account.balanceDate} 起算`
-                            : " · 全部历史"}
+                          期初 {money(account.openingBalance)}
+                          {account.outstanding > 0
+                            ? ` · 欠款 ${money(account.outstanding)}`
+                            : ""}
                         </Typography.Text>
                       </div>
                     </Flex>
@@ -355,15 +313,22 @@ export function FinancePage() {
                       <Typography.Text
                         strong
                         className={
-                          account.balance < 0
+                          account.outstanding > 0
                             ? "money-negative"
                             : "money-positive"
                         }
                       >
-                        {money(account.balance)}
+                        {money(
+                          account.outstanding > 0
+                            ? -account.outstanding
+                            : account.availableQuota,
+                        )}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {account.outstanding > 0 ? "当前欠款" : "可用额度"}
                       </Typography.Text>
                       <Space size={2} className="finance-account-controls">
-                        {!account.isLiability &&
+                        {account.type !== "loan" &&
                           !account.isDefault &&
                           account.enabled && (
                             <Button
@@ -378,8 +343,11 @@ export function FinancePage() {
                           type="text"
                           size="small"
                           onClick={() => openReconcile(account)}
+                          disabled={!account.enabled}
                         >
-                          校准
+                          {quotaAccountTypes.has(account.type)
+                            ? "调整额度"
+                            : "校准"}
                         </Button>
                         <Button
                           type="text"
@@ -402,191 +370,89 @@ export function FinancePage() {
         </Col>
         <Col xs={24} xl={14}>
           <Card
-            title="负债与分期"
+            title="最近资金移动"
             extra={
               <Typography.Text type="secondary">
-                本金与费用分开统计
+                转账、放款、还款与额度调整
               </Typography.Text>
             }
             className="finance-section-card"
           >
-            {data.liabilities.length ? (
-              <div className="liability-card-grid">
-                {data.liabilities.map((liability) => {
-                  const progress = liability.originalPrincipal
-                    ? Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          (liability.repaidPrincipal /
-                            liability.originalPrincipal) *
-                            100,
-                        ),
-                      )
-                    : 0
-                  return (
-                    <Card
-                      key={liability.id}
-                      size="small"
-                      className={`liability-card ${liability.status}`}
+            {data.recentTransfers.length ? (
+              <List
+                dataSource={data.recentTransfers}
+                renderItem={(transfer) => (
+                  <List.Item className="finance-transfer-item">
+                    <Flex
+                      align="center"
+                      gap={12}
+                      className="finance-transfer-route"
                     >
-                      <Flex justify="space-between" align="flex-start" gap={10}>
+                      <span className="finance-transfer-icon">
+                        <SwapOutlined />
+                      </span>
+                      <div>
+                        <Typography.Text strong>
+                          {transfer.kind === "adjustment"
+                            ? `${transfer.fromAccountName} · 额度调整`
+                            : `${transfer.fromAccountName} → ${transfer.toAccountName}`}
+                        </Typography.Text>
                         <div>
-                          <Flex align="center" gap={7} wrap>
-                            <Typography.Text strong>
-                              {liability.name}
-                            </Typography.Text>
-                            <Tag
-                              color={
-                                liability.status === "settled"
-                                  ? "green"
-                                  : "gold"
-                              }
-                            >
-                              {liability.status === "settled"
-                                ? "已结清"
-                                : liabilityKindText[liability.kind]}
-                            </Tag>
-                          </Flex>
                           <Typography.Text type="secondary">
-                            原始本金 {money(liability.originalPrincipal)}
+                            {transfer.date} ·{" "}
+                            {transferKindText[transfer.kind] || "账户转账"}
+                            {transfer.note ? ` · ${transfer.note}` : ""}
                           </Typography.Text>
                         </div>
-                        <Typography.Text
-                          strong
-                          className="liability-outstanding"
+                      </div>
+                    </Flex>
+                    <Flex
+                      vertical
+                      align="flex-end"
+                      gap={4}
+                      className="finance-transfer-side"
+                    >
+                      <Typography.Text strong>
+                        {money(transfer.amount)}
+                      </Typography.Text>
+                      {transfer.reversible ? (
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() =>
+                            modal.confirm({
+                              title: "撤销这笔资金移动？",
+                              content:
+                                transfer.kind === "adjustment"
+                                  ? "账户可用额度会恢复到调整前，不会影响收支统计。"
+                                  : "双方账户额度会恢复，不会影响收支统计。",
+                              onOk: () =>
+                                action.mutateAsync({
+                                  url:
+                                    transfer.kind === "adjustment"
+                                      ? `/api/finance/adjustments/${transfer.id}`
+                                      : `/api/finance/transfers/${transfer.id}`,
+                                  method: "DELETE",
+                                }),
+                            })
+                          }
                         >
-                          {money(liability.outstandingPrincipal)}
-                        </Typography.Text>
-                      </Flex>
-                      <Progress
-                        percent={Number(progress.toFixed(1))}
-                        showInfo={false}
-                      />
-                      <Flex
-                        justify="space-between"
-                        gap={10}
-                        className="liability-meta"
-                      >
-                        <Typography.Text type="secondary">
-                          已还本金 {money(liability.repaidPrincipal)}
-                        </Typography.Text>
-                        <Typography.Text type="secondary">
-                          {liability.nextInstallment
-                            ? `下期 ${liability.nextInstallment.dueDate} · ${money(liability.nextInstallment.total)}`
-                            : liability.settledAt
-                              ? `${liability.settledAt} 结清`
-                              : "无待还计划"}
-                        </Typography.Text>
-                      </Flex>
-                      {liability.status === "active" && (
-                        <Flex gap={8} className="liability-actions">
-                          <Button
-                            block
-                            disabled={
-                              !liability.nextInstallment ||
-                              !enabledAssets.length
-                            }
-                            onClick={() => openPayment(liability)}
-                          >
-                            还一期
-                          </Button>
-                          <Button
-                            block
-                            type="primary"
-                            ghost
-                            disabled={!enabledAssets.length}
-                            onClick={() => openSettlement(liability)}
-                          >
-                            提前结清
-                          </Button>
-                        </Flex>
-                      )}
-                    </Card>
-                  )
-                })}
-              </div>
+                          撤销
+                        </Button>
+                      ) : null}
+                    </Flex>
+                  </List.Item>
+                )}
+              />
             ) : (
-              <Empty description="没有贷款或分期；需要时只设置一次，之后按计划管理。" />
+              <Empty description="还没有转账、还款或额度调整记录" />
             )}
           </Card>
         </Col>
       </Row>
 
-      <Card title="最近资金移动" className="finance-section-card">
-        {data.recentTransfers.length ? (
-          <List
-            dataSource={data.recentTransfers}
-            renderItem={(transfer) => (
-              <List.Item className="finance-transfer-item">
-                <Flex
-                  align="center"
-                  gap={12}
-                  className="finance-transfer-route"
-                >
-                  <span className="finance-transfer-icon">
-                    <SwapOutlined />
-                  </span>
-                  <div>
-                    <Typography.Text strong>
-                      {transfer.fromAccountName} → {transfer.toAccountName}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" className="block-text">
-                      {transfer.date} ·{" "}
-                      {transferKindText[transfer.kind] || "资金移动"}
-                      {transfer.note ? ` · ${transfer.note}` : ""}
-                    </Typography.Text>
-                  </div>
-                </Flex>
-                <Space size={6} className="finance-transfer-side">
-                  <Typography.Text strong>
-                    {money(transfer.amount)}
-                  </Typography.Text>
-                  {transfer.reversible && (
-                    <Button
-                      type="link"
-                      danger
-                      size="small"
-                      onClick={() =>
-                        modal.confirm({
-                          title:
-                            transfer.kind === "transfer"
-                              ? "撤销这笔转账"
-                              : "撤销这笔还款",
-                          content:
-                            transfer.kind === "transfer"
-                              ? "账户余额会恢复，收支统计不会变化。"
-                              : "本金转账、利息费用和分期状态会一起恢复。",
-                          okText: "确认撤销",
-                          okButtonProps: { danger: true },
-                          onOk: () =>
-                            action.mutateAsync({
-                              url:
-                                transfer.kind === "transfer"
-                                  ? `/api/finance/transfers/${transfer.id}`
-                                  : `/api/finance/liabilities/${transfer.liabilityId}/payments/${transfer.paymentId}`,
-                              method: "DELETE",
-                            }),
-                        })
-                      }
-                    >
-                      撤销
-                    </Button>
-                  )}
-                </Space>
-              </List.Item>
-            )}
-          />
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无账户间转账"
-          />
-        )}
-      </Card>
-
       <FinanceDrawer
-        title={editingAccount ? `编辑 ${editingAccount.name}` : "新增账户"}
+        title={editingAccount ? "编辑账户" : "新增账户"}
         open={panel === "account"}
         loading={action.isPending}
         onClose={() => {
@@ -607,6 +473,7 @@ export function FinancePage() {
               body: editingAccount
                 ? {
                     name: values.name,
+                    openingBalance: values.openingBalance,
                     isDefault: values.isDefault,
                     enabled: values.enabled,
                   }
@@ -622,7 +489,7 @@ export function FinancePage() {
             name="name"
             rules={[{ required: true, whitespace: true, max: 80 }]}
           >
-            <Input placeholder="例如：工商银行卡、微信钱包" />
+            <Input placeholder="例如：工商银行卡、花呗、房贷" />
           </Form.Item>
           <Form.Item
             label="账户类型"
@@ -635,46 +502,58 @@ export function FinancePage() {
               disabled={Boolean(editingAccount)}
             />
           </Form.Item>
+          <Form.Item
+            label="期初可用额度"
+            name="openingBalance"
+            extra={
+              editingAccount
+                ? "只适合建账填错。花呗提额请用「调整额度」，会留下日期记录。"
+                : accountType === "loan"
+                  ? "贷款账户期初一般为 0，放款请用「贷款账户 → 银行卡」转账。"
+                  : accountType === "credit"
+                    ? "填写当前还能花的额度，不是欠款。"
+                    : "填写开始使用轻账时账户里的钱。"
+            }
+          >
+            <InputNumber
+              min={0}
+              precision={2}
+              prefix="¥"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
           {editingAccount ? (
             <Card size="small" className="finance-account-edit-balance">
               <Statistic
-                title="当前计算余额"
-                value={editingAccount.balance}
+                title="当前可用额度"
+                value={editingAccount.availableQuota}
                 precision={2}
                 prefix="¥"
               />
-              <Typography.Text type="secondary">
-                余额由期初金额、账单和转账自动计算，不能在这里直接覆盖。
-              </Typography.Text>
+              {editingAccount.outstanding > 0 ? (
+                <Typography.Text type="secondary">
+                  当前欠款 {money(editingAccount.outstanding)}
+                </Typography.Text>
+              ) : (
+                <Typography.Text type="secondary">
+                  可用额度由期初、账单、转账和校准自动计算。
+                </Typography.Text>
+              )}
             </Card>
           ) : (
-            <>
-              <Form.Item
-                label="期初余额"
-                name="openingBalance"
-                extra="填写开始使用轻账时的余额；信用账户填写当时欠款。"
-              >
-                <InputNumber
-                  min={0}
-                  precision={2}
-                  prefix="¥"
-                  style={{ width: "100%" }}
-                />
-              </Form.Item>
-              <Form.Item
-                label="余额起算日"
-                name="balanceDate"
-                rules={[{ required: true }]}
-                extra="只计算这一天及之后的账单与资金移动。"
-              >
-                <DatePicker
-                  style={{ width: "100%" }}
-                  inputReadOnly={pickerInputReadOnly}
-                />
-              </Form.Item>
-            </>
+            <Form.Item
+              label="额度起算日"
+              name="balanceDate"
+              rules={[{ required: true }]}
+              extra="只计算这一天及之后的账单与资金移动。"
+            >
+              <DatePicker
+                style={{ width: "100%" }}
+                inputReadOnly={pickerInputReadOnly}
+              />
+            </Form.Item>
           )}
-          {!editingAccount?.isLiability && (
+          {accountType !== "loan" && editingAccount?.type !== "loan" && (
             <Form.Item name="isDefault" valuePropName="checked">
               <Checkbox
                 disabled={Boolean(editingAccount?.isDefault)}
@@ -708,7 +587,7 @@ export function FinancePage() {
                 modal.confirm({
                   title: "删除未使用账户",
                   content:
-                    "只有零余额且没有任何账单、转账、还款或校准记录的账户可以删除；其他账户请停用。",
+                    "只有零余额、且没有任何账单、转账或额度调整记录的账户可以删除。额度调整也算资金记录，需要先在右侧列表里撤销。",
                   okText: "尝试删除",
                   okButtonProps: { danger: true },
                   onOk: () =>
@@ -726,7 +605,11 @@ export function FinancePage() {
       </FinanceDrawer>
 
       <FinanceDrawer
-        title={`校准 ${reconcileTarget?.name || "账户"} 余额`}
+        title={
+          isQuotaAccount
+            ? `调整 ${reconcileTarget?.name || "账户"} 额度`
+            : `校准 ${reconcileTarget?.name || "账户"} 余额`
+        }
         open={panel === "reconcile"}
         loading={action.isPending}
         onClose={() => {
@@ -736,27 +619,64 @@ export function FinancePage() {
         onSubmit={() => reconcileForm.submit()}
       >
         <Typography.Paragraph type="secondary">
-          按银行或钱包里的实际余额校准。差额只调整账户余额，不计入收入或支出。
+          {isQuotaAccount
+            ? "提额、对账、改可用额度都走这里。差额只调整账户额度，不计入收入或支出。"
+            : "按银行或钱包里的实际余额校准。差额只调整账户余额，不计入收入或支出。"}
         </Typography.Paragraph>
         <Form
           form={reconcileForm}
           layout="vertical"
-          onFinish={(values) =>
+          onFinish={(values) => {
+            const current = reconcileTarget!.balance
+            const target =
+              values.mode === "delta"
+                ? Number((current + Number(values.delta || 0)).toFixed(2))
+                : values.balance
             action.mutate({
               url: `/api/finance/accounts/${reconcileTarget!.id}/reconcile`,
-              body: values,
+              body: {
+                balance: target,
+                note: values.note,
+              },
             })
-          }
+          }}
         >
-          <Form.Item
-            label="实际余额"
-            name="balance"
-            rules={[{ required: true, type: "number" }]}
-          >
-            <InputNumber precision={2} prefix="¥" style={{ width: "100%" }} />
-          </Form.Item>
+          {isQuotaAccount ? (
+            <Form.Item name="mode" label="调整方式">
+              <Radio.Group
+                options={[
+                  { label: "调整到实际可用", value: "set" },
+                  { label: "额度增减", value: "delta" },
+                ]}
+              />
+            </Form.Item>
+          ) : null}
+          {reconcileMode === "delta" && isQuotaAccount ? (
+            <Form.Item
+              label="额度增减"
+              name="delta"
+              rules={[{ required: true, type: "number" }]}
+              extra={`当前可用 ${money(reconcileTarget?.balance || 0)}，例如提额填 5000。`}
+            >
+              <InputNumber precision={2} prefix="¥" style={{ width: "100%" }} />
+            </Form.Item>
+          ) : (
+            <Form.Item
+              label={isQuotaAccount ? "实际可用额度" : "实际余额"}
+              name="balance"
+              rules={[{ required: true, type: "number" }]}
+            >
+              <InputNumber precision={2} prefix="¥" style={{ width: "100%" }} />
+            </Form.Item>
+          )}
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
-            <Input placeholder="例如：按 8 月银行余额校准" />
+            <Input
+              placeholder={
+                isQuotaAccount
+                  ? "例如：花呗提额 5000"
+                  : "例如：按 8 月银行余额校准"
+              }
+            />
           </Form.Item>
         </Form>
       </FinanceDrawer>
@@ -813,205 +733,73 @@ export function FinancePage() {
             />
           </Form.Item>
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
-            <Input.TextArea rows={3} placeholder="例如：银行卡转入支付宝" />
+            <Input.TextArea
+              rows={3}
+              placeholder="例如：银行卡转入支付宝，或贷款放到银行卡"
+            />
           </Form.Item>
           <Typography.Text type="secondary">
-            转账只改变账户余额，不会计入收入或支出。
+            任意启用账户都可互转。贷款放到银行卡、用银行卡还花呗都记转账，不计入收支。
           </Typography.Text>
         </Form>
       </FinanceDrawer>
 
       <FinanceDrawer
-        title="新增负债或分期"
-        open={panel === "liability"}
+        title="记还款"
+        open={panel === "repayment"}
         loading={action.isPending}
         onClose={() => setPanel(null)}
-        onSubmit={() => liabilityForm.submit()}
+        onSubmit={() => repaymentForm.submit()}
       >
+        <Typography.Paragraph type="secondary">
+          本金记为转账，利息和手续费另记一笔支出。例如用中国银行还花呗。
+        </Typography.Paragraph>
         <Form
-          form={liabilityForm}
+          form={repaymentForm}
           layout="vertical"
           onFinish={(values) =>
             action.mutate({
-              url: "/api/finance/liabilities",
-              body: {
-                ...values,
-                startDate: values.startDate.format("YYYY-MM-DD"),
-                firstDueDate: values.firstDueDate.format("YYYY-MM-DD"),
-              },
-            })
-          }
-        >
-          <div className="form-grid-2">
-            <Form.Item
-              label="名称"
-              name="name"
-              rules={[{ required: true, whitespace: true, max: 80 }]}
-            >
-              <Input placeholder="例如：车贷、电脑分期" />
-            </Form.Item>
-            <Form.Item label="类型" name="kind" rules={[{ required: true }]}>
-              <Select
-                options={[
-                  { value: "loan", label: "贷款" },
-                  { value: "credit", label: "信用账户" },
-                  { value: "installment", label: "消费分期" },
-                ]}
-              />
-            </Form.Item>
-          </div>
-          <div className="form-grid-2">
-            <Form.Item
-              label="当前待还本金"
-              name="principal"
-              rules={[{ required: true, type: "number", min: 0.01 }]}
-            >
-              <InputNumber
-                min={0.01}
-                precision={2}
-                prefix="¥"
-                style={{ width: "100%" }}
-              />
-            </Form.Item>
-            <Form.Item label="预计总利息" name="totalInterest">
-              <InputNumber
-                min={0}
-                precision={2}
-                prefix="¥"
-                style={{ width: "100%" }}
-              />
-            </Form.Item>
-          </div>
-          <Form.Item label="记录方式" name="fundingMode">
-            <Radio.Group
-              options={[
-                { label: "只记录当前欠款", value: "opening" },
-                { label: "新贷款转入账户", value: "deposit" },
-              ]}
-            />
-          </Form.Item>
-          {fundingMode === "deposit" && (
-            <Form.Item
-              label="贷款到账账户"
-              name="targetAccountId"
-              rules={[{ required: true }]}
-            >
-              <Select options={assetOptions} />
-            </Form.Item>
-          )}
-          <div className="form-grid-2">
-            <Form.Item
-              label="开始日期"
-              name="startDate"
-              rules={[{ required: true }]}
-            >
-              <DatePicker
-              style={{ width: "100%" }}
-              inputReadOnly={pickerInputReadOnly}
-            />
-            </Form.Item>
-            <Form.Item
-              label="首次还款日"
-              name="firstDueDate"
-              rules={[{ required: true }]}
-            >
-              <DatePicker
-              style={{ width: "100%" }}
-              inputReadOnly={pickerInputReadOnly}
-            />
-            </Form.Item>
-          </div>
-          <Form.Item
-            label="总期数"
-            name="totalInstallments"
-            rules={[{ required: true, type: "number", min: 1, max: 600 }]}
-          >
-            <InputNumber
-              min={1}
-              max={600}
-              precision={0}
-              addonAfter="期"
-              style={{ width: "100%" }}
-            />
-          </Form.Item>
-          <Typography.Text type="secondary">
-            计划只需设置一次。每次还款时可以按银行实际本金、利息和手续费调整。
-          </Typography.Text>
-        </Form>
-      </FinanceDrawer>
-
-      <FinanceDrawer
-        title={`偿还 ${paymentTarget?.name || "本期账单"}`}
-        open={Boolean(paymentTarget)}
-        loading={action.isPending}
-        onClose={() => setPaymentTarget(null)}
-        onSubmit={() => paymentForm.submit()}
-      >
-        <Form
-          form={paymentForm}
-          layout="vertical"
-          onFinish={(values) =>
-            action.mutate({
-              url: `/api/finance/liabilities/${paymentTarget!.id}/payments`,
+              url: "/api/finance/repayments",
               body: { ...values, date: values.date.format("YYYY-MM-DD") },
             })
           }
         >
-          <PaymentFields assetOptions={assetOptions} />
-          <Typography.Text type="secondary">
-            本金通过账户转账减少负债；利息和手续费才计入当月支出。
-          </Typography.Text>
-        </Form>
-      </FinanceDrawer>
-
-      <FinanceDrawer
-        title={`提前结清 ${settlementTarget?.name || "负债"}`}
-        open={Boolean(settlementTarget)}
-        loading={action.isPending}
-        onClose={() => setSettlementTarget(null)}
-        onSubmit={() =>
-          settlementTarget &&
-          modal.confirm({
-            title: "确认提前结清",
-            content: `将偿还剩余本金 ${money(settlementTarget.outstandingPrincipal)}，并取消所有未来分期。历史还款记录会保留。`,
-            okText: "确认结清",
-            onOk: () => settlementForm.submit(),
-          })
-        }
-      >
-        <Card size="small" className="settlement-summary">
-          <Statistic
-            title="剩余本金"
-            value={settlementTarget?.outstandingPrincipal || 0}
-            precision={2}
-            prefix="¥"
-          />
-        </Card>
-        <Form
-          form={settlementForm}
-          layout="vertical"
-          onFinish={(values) =>
-            action.mutate({
-              url: `/api/finance/liabilities/${settlementTarget!.id}/settlement`,
-              body: { ...values, date: values.date.format("YYYY-MM-DD") },
-            })
-          }
-        >
-          <Form.Item label="结清日期" name="date" rules={[{ required: true }]}>
+          <Form.Item label="日期" name="date" rules={[{ required: true }]}>
             <DatePicker
               style={{ width: "100%" }}
               inputReadOnly={pickerInputReadOnly}
             />
           </Form.Item>
+          <div className="form-grid-2">
+            <Form.Item
+              label="付款账户"
+              name="fromAccountId"
+              rules={[{ required: true }]}
+            >
+              <Select options={payerOptions} />
+            </Form.Item>
+            <Form.Item
+              label="还款账户"
+              name="toAccountId"
+              rules={[{ required: true }]}
+            >
+              <Select options={debtOptions} />
+            </Form.Item>
+          </div>
           <Form.Item
-            label="付款账户"
-            name="sourceAccountId"
-            rules={[{ required: true }]}
+            label="偿还本金"
+            name="principal"
+            rules={[{ required: true, type: "number", min: 0.01 }]}
           >
-            <Select options={assetOptions} />
+            <InputNumber
+              min={0.01}
+              precision={2}
+              prefix="¥"
+              style={{ width: "100%" }}
+            />
           </Form.Item>
           <div className="form-grid-2">
-            <Form.Item label="结清利息" name="interest">
+            <Form.Item label="利息" name="interest">
               <InputNumber
                 min={0}
                 precision={2}
@@ -1029,7 +817,7 @@ export function FinancePage() {
             </Form.Item>
           </div>
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
-            <Input.TextArea rows={3} />
+            <Input.TextArea rows={3} placeholder="例如：还花呗" />
           </Form.Item>
         </Form>
       </FinanceDrawer>
@@ -1064,64 +852,5 @@ function FinanceDrawer({
     >
       {children}
     </Drawer>
-  )
-}
-
-function PaymentFields({
-  assetOptions,
-}: {
-  assetOptions: { value: string; label: string }[]
-}) {
-  const pickerInputReadOnly = usePickerInputReadOnly()
-  return (
-    <>
-      <Form.Item label="还款日期" name="date" rules={[{ required: true }]}>
-        <DatePicker
-          style={{ width: "100%" }}
-          inputReadOnly={pickerInputReadOnly}
-        />
-      </Form.Item>
-      <Form.Item
-        label="付款账户"
-        name="sourceAccountId"
-        rules={[{ required: true }]}
-      >
-        <Select options={assetOptions} />
-      </Form.Item>
-      <div className="form-grid-2">
-        <Form.Item
-          label="本期本金"
-          name="principal"
-          rules={[{ required: true, type: "number", min: 0.01 }]}
-        >
-          <InputNumber
-            min={0.01}
-            precision={2}
-            prefix="¥"
-            style={{ width: "100%" }}
-            disabled
-          />
-        </Form.Item>
-        <Form.Item label="本期利息" name="interest">
-          <InputNumber
-            min={0}
-            precision={2}
-            prefix="¥"
-            style={{ width: "100%" }}
-          />
-        </Form.Item>
-      </div>
-      <Form.Item label="手续费" name="fee">
-        <InputNumber
-          min={0}
-          precision={2}
-          prefix="¥"
-          style={{ width: "100%" }}
-        />
-      </Form.Item>
-      <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
-        <Input.TextArea rows={3} />
-      </Form.Item>
-    </>
   )
 }
