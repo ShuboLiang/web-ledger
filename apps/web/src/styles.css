@@ -1071,6 +1071,10 @@ select {
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
+.analytics-range-ledger-link.ant-btn {
+  height: auto;
+  padding: 0;
+}
 .analytics-mobile-date-fields {
   display: grid;
   grid-template-columns: 1fr;

@@ -105,6 +105,16 @@ const dateText = (value: string) =>
   }).format(dayjs(value).toDate())
 const rangeText = (range: [string, string]) =>
   `${dateText(range[0])} — ${dateText(range[1])}`
+const rangeTransactionsQuery = (range: [string, string]) => {
+  const [start, end] = range
+  if (start === end) return `date=${start}`
+  if (
+    start.endsWith("-01") &&
+    dayjs(start).endOf("month").format("YYYY-MM-DD") === end
+  )
+    return `month=${start.slice(0, 7)}`
+  return `start=${start}&end=${end}`
+}
 
 function clipTrendToToday(rows: TrendChartRow[]) {
   const today = dayjs().format("YYYY-MM-DD")
@@ -401,6 +411,8 @@ export function AnalyticsPage() {
     interaction: { tooltip: false },
   }
   const currentRange = rangeText(activeRange)
+  const openRangeTransactions = () =>
+    navigate(`/transactions?${rangeTransactionsQuery(activeRange)}`)
   const showJumpToCurrent =
     Boolean(customRange) || !isCurrentPeriod(selected, scope)
   const jumpToCurrentLabel = currentPeriodLabel(scope)
@@ -546,9 +558,16 @@ export function AnalyticsPage() {
                 {customRange ? "退出自定义" : "自定义范围"}
               </Button>
             </Space>
-            <Flex vertical align="flex-end">
+            <Flex vertical align="flex-end" gap={2}>
               <Typography.Text type="secondary">当前统计周期</Typography.Text>
               <Typography.Text strong>{currentRange}</Typography.Text>
+              <Button
+                type="link"
+                className="analytics-range-ledger-link"
+                onClick={openRangeTransactions}
+              >
+                查看账目 <ArrowRightOutlined />
+              </Button>
             </Flex>
           </Flex>
         ) : (
@@ -581,7 +600,7 @@ export function AnalyticsPage() {
               />
             </div>
             <Flex
-              align="end"
+              align="start"
               justify="space-between"
               gap={12}
               className="analytics-mobile-range"
@@ -593,6 +612,13 @@ export function AnalyticsPage() {
                 <Typography.Text strong className="analytics-range-value">
                   {currentRange}
                 </Typography.Text>
+                <Button
+                  type="link"
+                  className="analytics-range-ledger-link"
+                  onClick={openRangeTransactions}
+                >
+                  查看账目 <ArrowRightOutlined />
+                </Button>
               </Flex>
               <Space size={4}>
                 {showJumpToCurrent && (
