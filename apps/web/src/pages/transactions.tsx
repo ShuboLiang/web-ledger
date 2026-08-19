@@ -8,6 +8,7 @@ import {
   MoreOutlined,
   SearchOutlined,
   SettingOutlined,
+  SwapOutlined,
   TagsOutlined,
   WalletOutlined,
 } from "@ant-design/icons"
@@ -70,6 +71,12 @@ const columnLabels: Record<string, string> = {
   account: "账户",
   amount: "金额",
 }
+const sortOptions = [
+  { key: "date-desc", field: "date", order: "desc", label: "日期从新到旧" },
+  { key: "date-asc", field: "date", order: "asc", label: "日期从旧到新" },
+  { key: "amount-desc", field: "amount", order: "desc", label: "金额从高到低" },
+  { key: "amount-asc", field: "amount", order: "asc", label: "金额从低到高" },
+] as const
 const transactionFilterKeys = [
   "date",
   "month",
@@ -158,6 +165,25 @@ export function TransactionsPage() {
       if (key === "category1") next.delete("category2")
       return next
     })
+  const applySort = (field: string, order: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set("sortBy", field)
+      next.set("sortOrder", order)
+      next.set("page", "1")
+      return next
+    })
+  const sortKey = `${params.get("sortBy") || "date"}-${params.get("sortOrder") || "desc"}`
+  const sortLabel =
+    sortOptions.find((item) => item.key === sortKey)?.label || "日期从新到旧"
+  const sorter = params.get("sortBy")
+    ? {
+        field: params.get("sortBy"),
+        order: (params.get("sortOrder") === "asc" ? "ascend" : "descend") as
+          | "ascend"
+          | "descend",
+      }
+    : null
   useEffect(() => {
     setSearchValue(params.get("query") || "")
     if (params.get("focus") === "search") searchRef.current?.focus()
@@ -269,6 +295,7 @@ export function TransactionsPage() {
       title: "日期",
       width: 120,
       sorter: true,
+      sortOrder: sorter?.field === "date" ? sorter.order : null,
       hidden: !visible.date,
     },
     {
@@ -331,6 +358,7 @@ export function TransactionsPage() {
       width: 130,
       align: "right",
       sorter: true,
+      sortOrder: sorter?.field === "amount" ? sorter.order : null,
       hidden: !visible.amount,
       render: (value) => (
         <Typography.Text strong type={value < 0 ? "danger" : "success"}>
@@ -428,6 +456,15 @@ export function TransactionsPage() {
           exportCsv().catch((error) => message.error(error.message)),
       },
     ],
+  }
+  const mobileSortMenu: MenuProps = {
+    selectable: true,
+    selectedKeys: [sortKey],
+    items: sortOptions.map((item) => ({
+      key: item.key,
+      label: item.label,
+      onClick: () => applySort(item.field, item.order),
+    })),
   }
   const clearFilterKeys = (keys: string[]) =>
     setParams((current) => {
@@ -1000,12 +1037,6 @@ export function TransactionsPage() {
       </Card>
     )
   }
-  const sorter = params.get("sortBy")
-    ? {
-        field: params.get("sortBy"),
-        order: params.get("sortOrder") === "asc" ? "ascend" : "descend",
-      }
-    : null
   return (
     <div className="page-stack">
       {screens.md ? (
@@ -1212,6 +1243,22 @@ export function TransactionsPage() {
         </Card>
       ) : (
         <Card styles={{ body: { padding: 0 } }}>
+          <div className="transaction-mobile-list-toolbar">
+            <Dropdown
+              menu={mobileSortMenu}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <button
+                type="button"
+                className="transaction-mobile-sort-trigger"
+                aria-label={`账目排序，当前${sortLabel}`}
+              >
+                <SwapOutlined />
+                <span>{sortLabel}</span>
+              </button>
+            </Dropdown>
+          </div>
           <List
             className="transaction-mobile-list"
             loading={isLoading}

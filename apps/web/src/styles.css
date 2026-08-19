@@ -857,6 +857,24 @@ select {
   padding: 0;
   border-color: #d7e3de;
 }
+.transaction-mobile-list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px 0;
+}
+.transaction-mobile-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #176b62;
+  font-size: 13px;
+  font-weight: 600;
+}
 .transaction-mobile-switcher {
   display: grid;
   grid-template-columns: minmax(72px, 1.15fr) repeat(3, minmax(0, 1fr));
