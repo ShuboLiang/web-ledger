@@ -1,4 +1,10 @@
-import { CalendarOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons"
+import {
+  CalendarOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
+  LeftOutlined,
+  RightOutlined,
+} from "@ant-design/icons"
 import { Button, Calendar, DatePicker as AntDatePicker, Drawer, Flex } from "antd"
 import type { DatePickerProps } from "antd"
 import type { Dayjs } from "dayjs"
@@ -141,7 +147,77 @@ function YearGrid({
   )
 }
 
-function MobileDateSheet(props: DatePickerProps) {
+function DateGrid({
+  value,
+  minDate,
+  maxDate,
+  disabledDate,
+  onSelect,
+}: {
+  value?: Dayjs | null
+  minDate?: Dayjs
+  maxDate?: Dayjs
+  disabledDate?: DatePickerProps["disabledDate"]
+  onSelect: (value: Dayjs) => void
+}) {
+  const [cursor, setCursor] = useState(value || dayjs())
+  return (
+    <div className="mobile-date-grid-wrap">
+      <Flex
+        align="center"
+        justify="space-between"
+        className="mobile-date-grid-nav"
+      >
+        <Button
+          type="text"
+          icon={<DoubleLeftOutlined />}
+          aria-label="上一年"
+          onClick={() => setCursor((current) => current.subtract(1, "year"))}
+        />
+        <Button
+          type="text"
+          icon={<LeftOutlined />}
+          aria-label="上个月"
+          onClick={() => setCursor((current) => current.subtract(1, "month"))}
+        />
+        <strong>{cursor.format("YYYY年M月")}</strong>
+        <Button
+          type="text"
+          icon={<RightOutlined />}
+          aria-label="下个月"
+          onClick={() => setCursor((current) => current.add(1, "month"))}
+        />
+        <Button
+          type="text"
+          icon={<DoubleRightOutlined />}
+          aria-label="下一年"
+          onClick={() => setCursor((current) => current.add(1, "year"))}
+        />
+      </Flex>
+      <Calendar
+        fullscreen={false}
+        value={cursor}
+        headerRender={() => null}
+        disabledDate={(date) =>
+          Boolean(disabledDate?.(date) || isDisabled(date, minDate, maxDate))
+        }
+        onSelect={(date, info) => {
+          if (info?.source && info.source !== "date") {
+            setCursor(date)
+            return
+          }
+          onSelect(date)
+        }}
+      />
+    </div>
+  )
+}
+
+type SheetPickerProps = DatePickerProps & {
+  displayLabel?: string
+}
+
+function MobileDateSheet(props: SheetPickerProps) {
   const {
     value,
     onChange,
@@ -155,6 +231,7 @@ function MobileDateSheet(props: DatePickerProps) {
     className,
     style,
     disabledDate,
+    displayLabel,
   } = props
   const [open, setOpen] = useState(false)
   const current = value || null
@@ -175,7 +252,7 @@ function MobileDateSheet(props: DatePickerProps) {
         onClick={() => setOpen(true)}
       >
         <span className={current ? undefined : "is-placeholder"}>
-          {current ? displayText(current, format) : placeholder}
+          {current ? displayLabel || displayText(current, format) : placeholder}
         </span>
         <CalendarOutlined />
       </button>
@@ -203,16 +280,12 @@ function MobileDateSheet(props: DatePickerProps) {
             onSelect={confirm}
           />
         ) : (
-          <Calendar
-            fullscreen={false}
-            value={current || undefined}
-            disabledDate={(date) =>
-              Boolean(disabledDate?.(date) || isDisabled(date, minDate, maxDate))
-            }
-            onSelect={(date, info) => {
-              if (info?.source && info.source !== "date") return
-              confirm(date)
-            }}
+          <DateGrid
+            value={current}
+            minDate={minDate}
+            maxDate={maxDate}
+            disabledDate={disabledDate}
+            onSelect={confirm}
           />
         )}
         {allowClear && current && (
@@ -225,10 +298,10 @@ function MobileDateSheet(props: DatePickerProps) {
   )
 }
 
-export function DatePicker(props: DatePickerProps) {
+export function DatePicker({ displayLabel, ...props }: SheetPickerProps) {
   const mobile = useIsMobileViewport()
   if (!mobile) return <AntDatePicker {...props} />
-  return <MobileDateSheet {...props} />
+  return <MobileDateSheet {...props} displayLabel={displayLabel} />
 }
 
 DatePicker.RangePicker = AntDatePicker.RangePicker

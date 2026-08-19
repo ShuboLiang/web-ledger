@@ -1,7 +1,6 @@
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
-  CalendarOutlined,
 } from "@ant-design/icons"
 import { Line } from "@ant-design/plots"
 import { useQuery } from "@tanstack/react-query"
@@ -105,6 +104,37 @@ const dateText = (value: string) =>
   }).format(dayjs(value).toDate())
 const rangeText = (range: [string, string]) =>
   `${dateText(range[0])} — ${dateText(range[1])}`
+const compactRangeText = (range: [string, string]) => {
+  const start = dayjs(range[0])
+  const end = dayjs(range[1])
+  if (start.isSame(end, "day")) {
+    return start.year() === dayjs().year()
+      ? start.format("M月D日")
+      : start.format("YYYY年M月D日")
+  }
+  const startLabel =
+    start.year() === end.year()
+      ? start.format("M月D日")
+      : start.format("YYYY年M月D日")
+  const endLabel =
+    start.year() === end.year() && start.month() === end.month()
+      ? end.format("D日")
+      : start.year() === end.year()
+        ? end.format("M月D日")
+        : end.format("YYYY年M月D日")
+  return `${startLabel} – ${endLabel}`
+}
+const mobilePeriodLabel = (
+  range: [string, string],
+  scope: Scope,
+  custom: boolean,
+) => {
+  if (custom) return compactRangeText(range)
+  if (scope === "day") return compactRangeText(range)
+  if (scope === "month") return dayjs(range[0]).format("YYYY年M月")
+  if (scope === "year") return dayjs(range[0]).format("YYYY年")
+  return compactRangeText(range)
+}
 const rangeTransactionsQuery = (range: [string, string]) => {
   const [start, end] = range
   if (start === end) return `date=${start}`
@@ -434,6 +464,7 @@ export function AnalyticsPage() {
       inputReadOnly={pickerInputReadOnly}
       value={dayjs(selected)}
       disabled={Boolean(customRange)}
+      displayLabel={mobilePeriodLabel(activeRange, scope, Boolean(customRange))}
       onChange={(value) => setAnchor(value?.format("YYYY-MM-DD") || "")}
     />
   )
@@ -477,7 +508,6 @@ export function AnalyticsPage() {
             allowClear={false}
             inputReadOnly={pickerInputReadOnly}
             value={dayjs(mobileRangeDraft[0])}
-            maxDate={dayjs(mobileRangeDraft[1])}
             format="YYYY年M月D日"
             onChange={(value) => {
               if (!value) return
@@ -495,7 +525,6 @@ export function AnalyticsPage() {
             allowClear={false}
             inputReadOnly={pickerInputReadOnly}
             value={dayjs(mobileRangeDraft[1])}
-            minDate={dayjs(mobileRangeDraft[0])}
             format="YYYY年M月D日"
             onChange={(value) => {
               if (!value) return
@@ -571,7 +600,7 @@ export function AnalyticsPage() {
             </Flex>
           </Flex>
         ) : (
-          <Flex vertical gap={14} className="analytics-mobile-controls">
+          <Flex vertical gap={8} className="analytics-mobile-controls">
             <Segmented<Scope>
               block
               value={scope}
@@ -599,42 +628,27 @@ export function AnalyticsPage() {
                 aria-label="下一周期"
               />
             </div>
-            <Flex
-              align="start"
-              justify="space-between"
-              gap={12}
-              className="analytics-mobile-range"
+            <div
+              className={`analytics-mobile-actions${
+                showJumpToCurrent ? " has-jump" : ""
+              }`}
             >
-              <Flex vertical gap={2} style={{ minWidth: 0 }}>
-                <Typography.Text type="secondary">
-                  {customRange ? "自定义统计范围" : "当前统计范围"}
-                </Typography.Text>
-                <Typography.Text strong className="analytics-range-value">
-                  {currentRange}
-                </Typography.Text>
-                <Button
-                  type="link"
-                  className="analytics-range-ledger-link"
-                  onClick={openRangeTransactions}
-                >
-                  查看账目 <ArrowRightOutlined />
-                </Button>
-              </Flex>
-              <Space size={4}>
-                {showJumpToCurrent && (
-                  <Button type="link" onClick={goToCurrentPeriod}>
-                    {jumpToCurrentLabel}
-                  </Button>
-                )}
-                <Button
-                  type="link"
-                  icon={<CalendarOutlined />}
-                  onClick={toggleCustom}
-                >
-                  {customRange ? "退出" : "自定义"}
-                </Button>
-              </Space>
-            </Flex>
+              {showJumpToCurrent && (
+                <button type="button" onClick={goToCurrentPeriod}>
+                  {jumpToCurrentLabel}
+                </button>
+              )}
+              <button type="button" onClick={toggleCustom}>
+                {customRange ? "退出" : "自定义"}
+              </button>
+              <button
+                type="button"
+                className="is-ledger"
+                onClick={openRangeTransactions}
+              >
+                查看账目
+              </button>
+            </div>
           </Flex>
         )}
       </Card>

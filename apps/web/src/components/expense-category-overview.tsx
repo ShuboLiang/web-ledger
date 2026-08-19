@@ -445,7 +445,10 @@ export function ExpenseCategoryOverview({
           )}
         </>
       ) : (
-        <Empty description="当前范围没有支出，记一笔后即可查看分类结构" />
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="当前范围没有支出，记一笔后即可查看分类结构"
+        />
       )}
     </Card>
   )

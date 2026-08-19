@@ -1017,11 +1017,21 @@ select {
   margin-bottom: 8px;
   background: transparent;
 }
+.mobile-date-sheet .ant-picker-calendar-header {
+  display: none;
+}
 .mobile-date-grid-nav {
   margin-bottom: 12px;
 }
 .mobile-date-grid-nav strong {
+  flex: 1;
   font-size: 16px;
+  text-align: center;
+}
+.mobile-date-grid-nav .ant-btn {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
 }
 .mobile-date-grid {
   display: grid;
@@ -1056,6 +1066,38 @@ select {
 }
 .analytics-period-nav .analytics-period-picker {
   width: 100%;
+}
+.analytics-mobile-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eef3f0;
+}
+.analytics-mobile-actions.has-jump {
+  grid-template-columns: minmax(52px, 0.85fr) minmax(64px, 0.95fr) minmax(0, 1.2fr);
+}
+.analytics-mobile-actions > button {
+  height: 32px;
+  margin: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #5d6f6a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 32px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analytics-mobile-actions > .is-ledger {
+  background: #fff;
+  color: #176b62;
+  box-shadow: 0 1px 2px rgba(23, 107, 98, 0.12);
 }
 .analytics-mobile-range {
   padding-top: 12px;
@@ -3316,7 +3358,7 @@ button.expense-category-row:focus-visible,
     box-shadow: none;
   }
   .analytics-toolbar .ant-card-body {
-    padding: 12px !important;
+    padding: 10px 12px !important;
   }
   .analytics-mobile-controls .ant-segmented {
     width: 100%;
@@ -3340,8 +3382,22 @@ button.expense-category-row:focus-visible,
     line-height: 36px;
   }
   .analytics-period-nav > .ant-btn,
-  .analytics-period-nav .ant-picker {
-    height: 42px;
+  .analytics-period-nav .ant-picker,
+  .analytics-period-nav .mobile-date-trigger {
+    height: 40px;
+  }
+  .analytics-period-nav .mobile-date-trigger {
+    justify-content: center;
+    gap: 6px;
+    padding-inline: 10px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .analytics-period-nav .mobile-date-trigger > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .analytics-range-picker {
     width: 100%;
@@ -3353,25 +3409,33 @@ button.expense-category-row:focus-visible,
     padding: 14px 16px;
   }
   .expense-structure-card .ant-card-head {
+    min-height: 48px;
     padding-inline: 16px;
   }
   .expense-structure-card .ant-card-head-title {
-    padding-block: 14px;
+    padding-block: 10px;
+  }
+  .expense-structure-card .ant-card-head-title h4 {
+    font-size: 16px;
   }
   .expense-structure-card .ant-card-extra {
     display: none;
   }
+  .expense-structure-card .ant-empty {
+    margin: 8px 0 16px;
+    padding: 0 16px 4px;
+  }
   .expense-structure-summary {
-    min-height: 78px;
+    min-height: 64px;
     margin-inline: 12px;
-    padding: 0 8px;
+    padding: 0 6px;
   }
   .expense-structure-metric {
-    padding: 15px 10px;
+    padding: 10px 8px;
   }
   .expense-structure-metric + .expense-structure-metric::before {
-    top: 17px;
-    bottom: 17px;
+    top: 12px;
+    bottom: 12px;
   }
   .expense-structure-metric span {
     font-size: 10px;

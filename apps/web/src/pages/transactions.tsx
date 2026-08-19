@@ -647,7 +647,6 @@ export function TransactionsPage() {
             <Typography.Text>开始日期</Typography.Text>
             <DatePicker
               value={selectedRange?.[0] || null}
-              maxDate={selectedRange?.[1]}
               inputReadOnly={pickerInputReadOnly}
               placeholder="选择开始日期"
               format="YYYY年M月D日"
@@ -665,7 +664,6 @@ export function TransactionsPage() {
             <Typography.Text>结束日期</Typography.Text>
             <DatePicker
               value={selectedRange?.[1] || null}
-              minDate={selectedRange?.[0]}
               inputReadOnly={pickerInputReadOnly}
               placeholder="选择结束日期"
               format="YYYY年M月D日"
