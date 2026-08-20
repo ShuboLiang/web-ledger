@@ -18,7 +18,6 @@ import {
   Empty,
   Flex,
   Form,
-  InputNumber,
   Progress,
   Row,
   Select,
@@ -30,6 +29,7 @@ import {
 import dayjs from "dayjs"
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { AmountCalculator } from "@/components/amount-calculator"
 import { CategoryIcon } from "@/components/category-icon"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { api } from "@/lib/api"
@@ -374,12 +374,7 @@ export function BudgetsPage() {
             label="预算金额"
             rules={[{ required: true }]}
           >
-            <InputNumber
-              min={0.01}
-              precision={2}
-              prefix="¥"
-              style={{ width: "100%" }}
-            />
+            <AmountCalculator min={0.01} />
           </Form.Item>
         </Form>
       </Drawer>

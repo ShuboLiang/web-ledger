@@ -6,7 +6,6 @@ import {
   Drawer,
   Form,
   Input,
-  InputNumber,
   Radio,
   Select,
   Space,
@@ -24,6 +23,7 @@ import {
 } from "@/lib/api"
 import { money } from "@/lib/utils"
 import { CategoryIcon } from "@/components/category-icon"
+import { AmountCalculator } from "@/components/amount-calculator"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 
@@ -254,18 +254,13 @@ export function TransactionDrawer({
         <Form.Item
           label="金额"
           name="amount"
+          extra="点开后可直接加减，例如 +3 或 −5。"
           rules={[
             { required: true, message: "请输入金额" },
             { type: "number", min: 0.01, message: "金额必须大于 0" },
           ]}
         >
-          <InputNumber
-            min={0.01}
-            precision={2}
-            prefix="¥"
-            placeholder="0.00"
-            style={{ width: "100%" }}
-          />
+          <AmountCalculator min={0.01} placeholder="0.00" />
         </Form.Item>
         <Form.Item
           label="项目"

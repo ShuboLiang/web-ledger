@@ -19,7 +19,6 @@ import {
   Form,
   Grid,
   Input,
-  InputNumber,
   List,
   Radio,
   Row,
@@ -33,8 +32,14 @@ import {
 import dayjs from "dayjs"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { api, type FinanceAccount, type FinanceOverview, UNACCOUNTED_ACCOUNT_ID } from "@/lib/api"
+import {
+  api,
+  type FinanceAccount,
+  type FinanceOverview,
+  UNACCOUNTED_ACCOUNT_ID,
+} from "@/lib/api"
 import { money } from "@/lib/utils"
+import { AmountCalculator } from "@/components/amount-calculator"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { usePickerInputReadOnly } from "@/lib/use-viewport"
 
@@ -319,9 +324,13 @@ export function FinancePage() {
                       </span>
                       <div className="finance-account-copy">
                         <Flex align="center" gap={8} wrap>
-                          <Typography.Text strong>{account.name}</Typography.Text>
+                          <Typography.Text strong>
+                            {account.name}
+                          </Typography.Text>
                           <Tag>{account.typeText}</Tag>
-                          {account.isDefault ? <Tag color="cyan">默认</Tag> : null}
+                          {account.isDefault ? (
+                            <Tag color="cyan">默认</Tag>
+                          ) : null}
                           {!account.enabled ? <Tag>已停用</Tag> : null}
                         </Flex>
                         <Typography.Text type="secondary">
@@ -551,12 +560,7 @@ export function FinancePage() {
                     : "填写开始使用轻账时账户里的钱。"
             }
           >
-            <InputNumber
-              min={0}
-              precision={2}
-              prefix="¥"
-              style={{ width: "100%" }}
-            />
+            <AmountCalculator min={0} />
           </Form.Item>
           {editingAccount ? (
             <Card size="small" className="finance-account-edit-balance">
@@ -692,7 +696,7 @@ export function FinancePage() {
               rules={[{ required: true, type: "number" }]}
               extra={`当前可用 ${money(reconcileTarget?.balance || 0)}，例如提额填 5000。`}
             >
-              <InputNumber precision={2} prefix="¥" style={{ width: "100%" }} />
+              <AmountCalculator allowNegative />
             </Form.Item>
           ) : (
             <Form.Item
@@ -700,7 +704,7 @@ export function FinancePage() {
               name="balance"
               rules={[{ required: true, type: "number" }]}
             >
-              <InputNumber precision={2} prefix="¥" style={{ width: "100%" }} />
+              <AmountCalculator allowNegative />
             </Form.Item>
           )}
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
@@ -759,12 +763,7 @@ export function FinancePage() {
             name="amount"
             rules={[{ required: true, type: "number", min: 0.01 }]}
           >
-            <InputNumber
-              min={0.01}
-              precision={2}
-              prefix="¥"
-              style={{ width: "100%" }}
-            />
+            <AmountCalculator min={0.01} />
           </Form.Item>
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>
             <Input.TextArea
@@ -825,29 +824,14 @@ export function FinancePage() {
             name="principal"
             rules={[{ required: true, type: "number", min: 0.01 }]}
           >
-            <InputNumber
-              min={0.01}
-              precision={2}
-              prefix="¥"
-              style={{ width: "100%" }}
-            />
+            <AmountCalculator min={0.01} />
           </Form.Item>
           <div className="form-grid-2">
             <Form.Item label="利息" name="interest">
-              <InputNumber
-                min={0}
-                precision={2}
-                prefix="¥"
-                style={{ width: "100%" }}
-              />
+              <AmountCalculator min={0} />
             </Form.Item>
             <Form.Item label="手续费" name="fee">
-              <InputNumber
-                min={0}
-                precision={2}
-                prefix="¥"
-                style={{ width: "100%" }}
-              />
+              <AmountCalculator min={0} />
             </Form.Item>
           </div>
           <Form.Item label="备注" name="note" rules={[{ max: 500 }]}>

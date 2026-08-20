@@ -29,7 +29,6 @@ import {
   Form,
   Grid,
   Input,
-  InputNumber,
   List,
   Radio,
   Select,
@@ -41,9 +40,15 @@ import dayjs from "dayjs"
 import { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { api, type Dictionaries, UNACCOUNTED_ACCOUNT_ID, UNACCOUNTED_ACCOUNT_LABEL } from "@/lib/api"
+import {
+  api,
+  type Dictionaries,
+  UNACCOUNTED_ACCOUNT_ID,
+  UNACCOUNTED_ACCOUNT_LABEL,
+} from "@/lib/api"
 import { conversationId, money } from "@/lib/utils"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
+import { AmountCalculator } from "@/components/amount-calculator"
 import { CategoryIcon } from "@/components/category-icon"
 import { DatePicker } from "@/components/sheet-date-picker"
 
@@ -656,7 +661,11 @@ export function AiPage() {
     [proposals],
   )
   useEffect(() => {
-    if (!screens.md && proposalRows.length > 0 && prevProposalCount.current === 0) {
+    if (
+      !screens.md &&
+      proposalRows.length > 0 &&
+      prevProposalCount.current === 0
+    ) {
       setPendingOpen(true)
     }
     if (!screens.md && proposalRows.length === 0) {
@@ -716,8 +725,7 @@ export function AiPage() {
           ? undefined
           : row.accountId ||
             (row.label === "新增"
-              ? dictionaries?.accounts?.find((account) => account.isDefault)
-                  ?.id
+              ? dictionaries?.accounts?.find((account) => account.isDefault)?.id
               : undefined),
       tagNames: row.tagNames || row.tags?.map((tag: any) => tag.name) || [],
       note: row.note || "",
@@ -907,7 +915,10 @@ export function AiPage() {
               <Typography.Text strong className="proposal-card-title">
                 {row.item || `账目 #${row.id}`}
               </Typography.Text>
-              <Typography.Text type="secondary" className="proposal-card-detail">
+              <Typography.Text
+                type="secondary"
+                className="proposal-card-detail"
+              >
                 {row.isIconOperation
                   ? `将图标设置为 ${row.icon}`
                   : row.isFinanceOperation
@@ -1274,12 +1285,7 @@ export function AiPage() {
               { type: "number", min: 0.01, message: "金额必须大于 0" },
             ]}
           >
-            <InputNumber
-              min={0.01}
-              precision={2}
-              prefix="¥"
-              style={{ width: "100%" }}
-            />
+            <AmountCalculator min={0.01} />
           </Form.Item>
           <Form.Item
             label="项目"
@@ -1319,9 +1325,7 @@ export function AiPage() {
           </div>
           <Form.Item
             label={
-              selectedProposalDirection === "income"
-                ? "收款账户"
-                : "付款账户"
+              selectedProposalDirection === "income" ? "收款账户" : "付款账户"
             }
             name="accountId"
             extra="可清空。不选账户时只记消费，不改变任何账户余额。"

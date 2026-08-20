@@ -1056,6 +1056,208 @@ select {
 .mobile-date-grid button:disabled {
   opacity: 0.4;
 }
+.amount-calc-trigger {
+  display: inline-flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 11px;
+  border: 1px solid #d7dfd9;
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: #102a2d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ant-form-item-has-error .amount-calc-trigger {
+  border-color: #ff4d4f;
+}
+.amount-calc-trigger:hover:not(:disabled) {
+  border-color: #176b62;
+}
+.amount-calc-trigger:disabled {
+  opacity: 0.55;
+}
+.amount-calc-trigger:focus-visible {
+  outline: 3px solid rgba(23, 107, 98, 0.24);
+  outline-offset: 2px;
+}
+.amount-calc-prefix {
+  color: #687775;
+}
+.amount-calc-value {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+.amount-calc-placeholder {
+  flex: 1;
+  color: #687775;
+}
+.amount-calc-trigger .anticon {
+  color: #687775;
+}
+.amount-calc-sheet .ant-drawer-content {
+  border-radius: 16px 16px 0 0;
+}
+.amount-calc-sheet .ant-drawer-header {
+  padding: 12px 16px 0;
+  border-bottom: none;
+}
+.amount-calc-sheet .ant-drawer-body {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 4px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.amount-calc-modal .ant-modal-content {
+  padding: 16px 20px 18px;
+  border-radius: 16px;
+}
+.amount-calc-modal .ant-modal-header {
+  margin-bottom: 0;
+}
+.amount-calc-modal .ant-modal-title {
+  font-size: 16px;
+}
+.amount-calc-modal .ant-modal-body {
+  padding-top: 8px;
+}
+.amount-calc-kbd {
+  margin: 12px 0 0;
+  color: #8a9b97;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+.amount-calc-hint {
+  margin: 0 0 10px;
+  color: #687775;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.amount-calc-display {
+  display: flex;
+  min-height: 72px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid #d7dfd9;
+  border-radius: 12px;
+  background: #f4f8f6;
+}
+.amount-calc-display strong {
+  color: #102a2d;
+  font-size: clamp(20px, 7vw, 28px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  word-break: break-all;
+}
+.amount-calc-display small {
+  min-height: 18px;
+  color: #176b62;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.amount-calc-display small.is-error {
+  color: #a61d24;
+}
+.amount-calc-keys {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.amount-calc-key {
+  height: 52px;
+  border: 1px solid #d7dfd9;
+  border-radius: 10px;
+  background: #fbfcfa;
+  color: #102a2d;
+  font: inherit;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.amount-calc-key:active {
+  background: #e7f1ed;
+}
+@media (hover: hover) {
+  .amount-calc-key:hover {
+    background: #e7f1ed;
+  }
+  .amount-calc-key.is-done:hover:not(:disabled) {
+    background: #155f57;
+    border-color: #155f57;
+  }
+}
+.amount-calc-key.is-op {
+  background: #e7f1ed;
+  color: #155f57;
+  font-size: 22px;
+}
+.amount-calc-key.is-fn {
+  background: #eef2ef;
+  color: #3e5a57;
+  font-size: 16px;
+}
+.amount-calc-key.is-done {
+  background: #176b62;
+  border-color: #176b62;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+.amount-calc-key.is-done:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (min-width: 768px) {
+  .amount-calc-hint {
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .amount-calc-display {
+    min-height: 64px;
+    margin-bottom: 12px;
+  }
+  .amount-calc-display strong {
+    font-size: 26px;
+  }
+  .amount-calc-keys {
+    gap: 8px;
+  }
+  .amount-calc-key {
+    height: 46px;
+    font-size: 18px;
+  }
+  .amount-calc-key.is-op {
+    font-size: 20px;
+  }
+  .amount-calc-key.is-done {
+    font-size: 15px;
+  }
+}
+@media (max-height: 560px) {
+  .amount-calc-hint,
+  .amount-calc-kbd {
+    display: none;
+  }
+  .amount-calc-display {
+    min-height: 56px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+  }
+  .amount-calc-key {
+    height: 44px;
+  }
+}
 .analytics-range-picker {
   width: 280px;
 }
@@ -3099,6 +3301,16 @@ button.expense-category-row:focus-visible,
   .ant-select-selection-search-input,
   .ant-select-dropdown .ant-select-selection-search-input {
     font-size: 16px !important;
+  }
+  .amount-calc-trigger {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .amount-calc-display strong {
+    font-size: 26px;
+  }
+  .amount-calc-key {
+    height: 54px;
   }
   .ant-picker-dropdown {
     position: fixed !important;
