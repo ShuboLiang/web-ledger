@@ -9,9 +9,9 @@ services:
       - "127.0.0.1:5432:5432"
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: qingzhang
-      POSTGRES_USER: qingzhang
-      POSTGRES_PASSWORD: lsb19970624
+      POSTGRES_DB: ${POSTGRES_DB:-qingzhang}
+      POSTGRES_USER: ${POSTGRES_USER:-qingzhang}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - ./pgdata:/var/lib/postgresql/data
@@ -36,7 +36,7 @@ services:
       TZ: Asia/Shanghai
       PORT: 3218
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://qingzhang:lsb19970624@postgres:5432/qingzhang
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qingzhang}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-qingzhang}
       DATA_DIR: /app/data
       INITIAL_LEDGER_PATH: /app/seed/initial-ledger.json
       # 直接使用 http://IP:3218 时保持 0；经 HTTPS 反向代理后改为 1。
@@ -60,9 +60,9 @@ services:
         condition: service_healthy
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: qingzhang
-      POSTGRES_USER: qingzhang
-      PGPASSWORD: lsb19970624
+      POSTGRES_DB: ${POSTGRES_DB:-qingzhang}
+      POSTGRES_USER: ${POSTGRES_USER:-qingzhang}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - type: bind
         source: ./backups
@@ -77,3 +77,4 @@ services:
         echo "Backup created: $$target"
 
 # PostgreSQL 数据现在直接保存在本地 ./pgdata 目录中（bind mount）。
+# 数据库账号与密码仅从项目根目录 .env 读取，不要写进本文件。

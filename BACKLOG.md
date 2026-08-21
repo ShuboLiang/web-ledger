@@ -14,13 +14,9 @@
 
 ## P0 数据安全与防灾
 
-### P0-1 移除 `compose.yaml` 中的明文数据库密码 — 0.5 人天
+### ~~P0-1 移除 `compose.yaml` 中的明文数据库密码~~ — ✅ 已完成（2026-08-21）
 
-`compose.yaml` 第 14、39、65 行硬编码了 `lsb19970624`，且该文件被 Git 跟踪（`.gitignore` 只忽略了 `.env`）。README 第 153 行声称密码存放在被忽略的 `.env`，与实现不符。
-
-改动：compose 三处改为 `${POSTGRES_PASSWORD:?}` 从 `.env` 注入；`.env.example` 补充占位；轮换一次实际密码；更新 README 表述。
-
-注意历史提交里仍留有旧密码，轮换密码是必要步骤，不能只改文件。
+`compose.yaml` 已改为从 `.env` 读取 `${POSTGRES_PASSWORD}`；新增 `.env.example`；本地 `.env` 已轮换密码并同步 `ALTER USER`。Git 历史中的旧密码仍视为泄露，勿再使用。
 
 ### P0-2 自动定时备份与保留策略 — 1.5 人天
 

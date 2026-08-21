@@ -58,15 +58,17 @@ npm start
 
 然后打开 <http://127.0.0.1:3218>。
 
-本地开发需要先启动 PostgreSQL，并执行数据库迁移：
+本地开发需要先准备环境变量、启动 PostgreSQL，并执行数据库迁移：
 
 ```powershell
+Copy-Item .env.example .env
+# 编辑 .env，将 POSTGRES_PASSWORD 与 DATABASE_URL 中的密码改为你自己的值
 docker compose up -d postgres
 npm run db:migrate
 npm run dev
 ```
 
-连接信息由项目根目录的 `.env` 提供。所有账目、账户、分类、预算、标签和 AI 模型配置都写入 PostgreSQL；`data` 目录仅保存 Pi SDK 生成的模型运行配置等文件。
+数据库账号与密码只保存在被 Git 忽略的 `.env`（可参考 `.env.example`）。`compose.yaml` 通过 `${POSTGRES_PASSWORD}` 注入，不会写入明文密码。本地 `DATABASE_URL` 指向 `localhost`；Compose 中的 `web` 服务会用同一套 `POSTGRES_*` 拼出容器内连接串。所有账目、账户、分类、预算、标签和 AI 模型配置都写入 PostgreSQL；`data` 目录仅保存 Pi SDK 生成的模型运行配置等文件。
 
 ## Pi 集成
 
@@ -150,7 +152,7 @@ docker load -i qing-zhang-stack_2.0.0_linux-amd64.tar
 docker compose up -d --no-build
 ```
 
-Web 容器会自动处理 Linux bind mount 的目录权限，随后降权为 `node` 用户，执行 `prisma migrate deploy` 并启动 NestJS。数据库密码保存在被 Git 忽略的 `.env`，不要写入镜像或提交到仓库。
+部署前请先复制 `.env.example` 为 `.env` 并设置 `POSTGRES_PASSWORD`。若数据目录已初始化，仅改 `.env` 不会自动更新数据库内已有密码，还需在 Postgres 中执行 `ALTER USER` 同步。Web 容器会自动处理 Linux bind mount 的目录权限，随后降权为 `node` 用户，执行 `prisma migrate deploy` 并启动 NestJS。数据库密码只保存在被 Git 忽略的 `.env`，不要写入 `compose.yaml`、镜像或仓库。
 
 如需单独运行 Web 镜像，必须另外提供可访问的 PostgreSQL 连接：
 
