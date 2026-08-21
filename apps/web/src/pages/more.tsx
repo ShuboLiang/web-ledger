@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  DeleteOutlined,
   RetweetOutlined,
   RightOutlined,
   RobotOutlined,
@@ -23,6 +24,13 @@ const entries = [
     title: "定期账单",
     description: "房租、会员、话费等固定收支按期自动入账",
     tone: "gold",
+  },
+  {
+    path: "/trash",
+    icon: <DeleteOutlined />,
+    title: "回收站",
+    description: "恢复误删账目，或彻底清空不再需要的记录",
+    tone: "slate",
   },
   {
     path: "/ai",

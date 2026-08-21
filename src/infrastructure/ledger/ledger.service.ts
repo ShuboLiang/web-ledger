@@ -64,6 +64,8 @@ const cleanIcon = (value: unknown, fallback: string) => {
 }
 const UNACCOUNTED_ACCOUNT_ID = "none"
 const UNACCOUNTED_ACCOUNT_LABEL = "不记账户"
+const TRASH_RETENTION_DAYS = 30
+const notDeleted = { deletedAt: null } as const
 const hasOwnAccountId = (record: unknown) =>
   Boolean(
     record &&
@@ -132,6 +134,9 @@ export class LedgerService {
       secondaryIcon: row.category?.secondaryIcon,
       tags,
       tagIds: tags.map((tag: any) => tag.id),
+      deletedAt: row.deletedAt
+        ? row.deletedAt.toISOString?.() || row.deletedAt
+        : null,
       account: undefined,
       category: undefined,
       created_at: row.createdAt?.toISOString?.() || row.createdAt,
@@ -158,7 +163,7 @@ export class LedgerService {
   async allTransactions() {
     const { ledgerId } = await this.context()
     const rows = await this.prisma.transaction.findMany({
-      where: { ledgerId },
+      where: { ledgerId, ...notDeleted },
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
@@ -173,7 +178,7 @@ export class LedgerService {
     const { ledgerId } = await this.context()
     const take = Math.min(Math.max(Number(limit) || 100, 1), 500)
     const rows = await this.prisma.transaction.findMany({
-      where: { ledgerId },
+      where: { ledgerId, ...notDeleted },
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
@@ -229,7 +234,7 @@ export class LedgerService {
     const selectedDirection = ["expense", "income"].includes(String(direction))
       ? String(direction)
       : ""
-    const where: Prisma.TransactionWhereInput = { ledgerId }
+    const where: Prisma.TransactionWhereInput = { ledgerId, ...notDeleted }
     if (selectedDate) {
       const [year, monthNumber, day] = selectedDate.split("-").map(Number)
       where.date = {
@@ -357,7 +362,7 @@ export class LedgerService {
   async get(id: string | number) {
     const { ledgerId } = await this.context()
     const row = await this.prisma.transaction.findFirst({
-      where: { id: Number(id), ledgerId },
+      where: { id: Number(id), ledgerId, ...notDeleted },
       include: {
         account: { select: { name: true } },
         category: { select: { primaryIcon: true, secondaryIcon: true } },
@@ -498,13 +503,13 @@ export class LedgerService {
     const [tags, links] = await Promise.all([
       this.prisma.tag.findMany({
         where: { ledgerId },
-        include: { _count: { select: { transactions: true } } },
+        include: { _count: { select: { transactions: { where: { transaction: notDeleted } } } } },
         orderBy: [{ enabled: "desc" }, { createdAt: "asc" }],
       }),
       this.prisma.transactionTag.findMany({
         where: {
           tag: { ledgerId },
-          transaction: { ledgerId, date: { gte: start, lt: end } },
+          transaction: { ledgerId, ...notDeleted, date: { gte: start, lt: end } },
         },
         include: { transaction: { select: { amount: true } } },
       }),
@@ -562,7 +567,7 @@ export class LedgerService {
     const links = await this.prisma.transactionTag.findMany({
       where: {
         tagId: tag.id,
-        transaction: { ledgerId, date: { gte: start, lt: end } },
+        transaction: { ledgerId, ...notDeleted, date: { gte: start, lt: end } },
       },
       include: {
         transaction: {
@@ -765,7 +770,7 @@ export class LedgerService {
       : { lte: cutoff }
     const [transactions, outgoing, incoming, adjustments] = await Promise.all([
       database.transaction.aggregate({
-        where: { ledgerId, accountId, date },
+        where: { ledgerId, accountId, ...notDeleted, date },
         _sum: { amount: true },
       }),
       database.accountTransfer.aggregate({
@@ -809,6 +814,7 @@ export class LedgerService {
                 SELECT SUM(t."amount") FROM "transactions" t
                 WHERE t."ledger_id" = a."ledger_id"
                   AND t."account_id" = a."id"
+                  AND t."deleted_at" IS NULL
                   AND t."date" <= ${cutoff}
                   AND (a."balance_date" IS NULL OR t."date" >= a."balance_date")
               ), 0)
@@ -1040,7 +1046,7 @@ export class LedgerService {
     const account = await this.financeAccount(database, ledgerId, id)
     const [transactions, outgoing, incoming, adjustments] = await Promise.all([
       database.transaction.count({
-        where: { ledgerId, accountId: account.id },
+        where: { ledgerId, accountId: account.id, ...notDeleted },
       }),
       database.accountTransfer.count({
         where: { ledgerId, fromAccountId: account.id },
@@ -1389,6 +1395,7 @@ export class LedgerService {
         where: {
           ledgerId,
           accountId: null,
+          ...notDeleted,
           date: { gte: monthStart, lt: monthEnd },
         },
       }),
@@ -1572,7 +1579,7 @@ export class LedgerService {
     changes: any,
   ) {
     const existingRow = await database.transaction.findFirst({
-      where: { id: Number(id), ledgerId },
+      where: { id: Number(id), ledgerId, ...notDeleted },
       include: {
         account: { select: { name: true } },
         tags: { include: { tag: true } },
@@ -1695,7 +1702,7 @@ export class LedgerService {
         create: { ledgerId, category1, category2, primaryIcon },
       })
       const result = await database.transaction.updateMany({
-        where: { ledgerId, id: { in: ids.map(Number) } },
+        where: { ledgerId, ...notDeleted, id: { in: ids.map(Number) } },
         data: { categoryId: category.id, category1, category2 },
       })
       await database.auditLog.create({
@@ -1721,8 +1728,9 @@ export class LedgerService {
     ledgerId: string,
     id: string | number,
   ) {
-    const result = await database.transaction.deleteMany({
-      where: { id: Number(id), ledgerId },
+    const result = await database.transaction.updateMany({
+      where: { id: Number(id), ledgerId, ...notDeleted },
+      data: { deletedAt: new Date() },
     })
     if (result.count)
       await database.auditLog.create({
@@ -1730,9 +1738,131 @@ export class LedgerService {
           action: "delete",
           entityType: "transaction",
           entityId: String(id),
+          payload: { soft: true },
         },
       })
     return result.count
+  }
+
+  async listTrash({
+    page = 1,
+    pageSize = 20,
+    query = "",
+  }: Record<string, unknown> = {}) {
+    const { ledgerId } = await this.context()
+    const take = Math.min(Math.max(Number(pageSize) || 20, 1), 100)
+    const search = clean(query, 80)
+    const where: Prisma.TransactionWhereInput = {
+      ledgerId,
+      deletedAt: { not: null },
+    }
+    if (search)
+      where.OR = [
+        ...["item", "note", "category1", "category2"].map((field) => ({
+          [field]: { contains: search, mode: "insensitive" as const },
+        })),
+      ]
+    const total = await this.prisma.transaction.count({ where })
+    const totalPages = Math.max(1, Math.ceil(total / take))
+    const current = Math.min(Math.max(Number(page) || 1, 1), totalPages)
+    const rows = await this.prisma.transaction.findMany({
+      where,
+      include: {
+        account: { select: { name: true } },
+        category: { select: { primaryIcon: true, secondaryIcon: true } },
+        tags: { include: { tag: true } },
+      },
+      take,
+      skip: (current - 1) * take,
+      orderBy: [{ deletedAt: "desc" }, { id: "desc" }],
+    })
+    const expiresAt = (deletedAt: Date | null) => {
+      if (!deletedAt) return null
+      const expires = new Date(deletedAt.getTime())
+      expires.setUTCDate(expires.getUTCDate() + TRASH_RETENTION_DAYS)
+      return expires.toISOString()
+    }
+    return {
+      records: rows.map((row) => ({
+        ...this.serialize(row),
+        expiresAt: expiresAt(row.deletedAt),
+      })),
+      total,
+      page: current,
+      pageSize: take,
+      totalPages,
+      retentionDays: TRASH_RETENTION_DAYS,
+      query: search,
+    }
+  }
+
+  async restoreTrash(ids: unknown) {
+    const { ledgerId } = await this.context()
+    const selected = [
+      ...new Set(
+        (Array.isArray(ids) ? ids : [ids])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ),
+    ]
+    if (!selected.length) throw new BadRequestException("请选择要恢复的账目")
+    const result = await this.prisma.transaction.updateMany({
+      where: {
+        ledgerId,
+        id: { in: selected },
+        deletedAt: { not: null },
+      },
+      data: { deletedAt: null },
+    })
+    if (result.count)
+      await this.prisma.auditLog.create({
+        data: {
+          action: "restore",
+          entityType: "transaction",
+          payload: { ids: selected, restored: result.count },
+        },
+      })
+    return { restored: result.count }
+  }
+
+  async purgeTrash(ids?: unknown) {
+    const { ledgerId } = await this.context()
+    const selected = Array.isArray(ids)
+      ? [
+          ...new Set(
+            ids
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value > 0),
+          ),
+        ]
+      : null
+    if (selected && !selected.length)
+      throw new BadRequestException("请选择要彻底删除的账目")
+    const where: Prisma.TransactionWhereInput = {
+      ledgerId,
+      deletedAt: { not: null },
+      ...(selected ? { id: { in: selected } } : {}),
+    }
+    const rows = await this.prisma.transaction.findMany({
+      where,
+      select: { id: true },
+    })
+    if (!rows.length) return { purged: 0 }
+    const result = await this.prisma.transaction.deleteMany({
+      where: { ledgerId, id: { in: rows.map((row) => row.id) } },
+    })
+    await this.prisma.auditLog.create({
+      data: {
+        action: "purge",
+        entityType: "transaction",
+        payload: {
+          ids: rows.map((row) => row.id),
+          purged: result.count,
+          all: !selected,
+        },
+      },
+    })
+    return { purged: result.count }
   }
 
   async executeAiOperations(

@@ -13,6 +13,7 @@ export class FrontendController {
     "heatmap",
     "budgets",
     "recurring",
+    "trash",
     "finance",
     "tags",
     "ai",

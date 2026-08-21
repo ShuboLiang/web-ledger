@@ -256,7 +256,7 @@ export function TransactionsPage() {
       api(`/api/transactions/${id}`, { method: "DELETE" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries()
-      message.success("账目已删除")
+      message.success("账目已移入回收站")
     },
     onError: (error: Error) => message.error(error.message),
   })
@@ -282,8 +282,8 @@ export function TransactionsPage() {
   const confirmDelete = (record: Transaction) =>
     modal.confirm({
       title: "删除账目",
-      content: `确定删除“${record.item}”吗？`,
-      okText: "删除",
+      content: `确定将“${record.item}”移入回收站吗？可在 30 天内恢复。`,
+      okText: "移入回收站",
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: () => remove.mutateAsync(record.id),

@@ -14,6 +14,7 @@ import { AuthModule } from "./modules/auth/auth.module.js"
 import { FinanceModule } from "./modules/finance/finance.module.js"
 import { TagsModule } from "./modules/tags/tags.module.js"
 import { RecurringModule } from "./modules/recurring/recurring.module.js"
+import { TrashModule } from "./modules/trash/trash.module.js"
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RecurringModule } from "./modules/recurring/recurring.module.js"
     FinanceModule,
     TagsModule,
     RecurringModule,
+    TrashModule,
   ],
   controllers: [FrontendController],
 })

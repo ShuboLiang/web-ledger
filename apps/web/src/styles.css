@@ -2881,6 +2881,12 @@ button.expense-category-row:focus-visible,
 .recurring-rule-item {
   align-items: flex-start !important;
 }
+.trash-intro h4 {
+  margin-bottom: 6px !important;
+}
+.trash-intro p {
+  margin-bottom: 0 !important;
+}
 .model-card {
   height: 100%;
   cursor: pointer;

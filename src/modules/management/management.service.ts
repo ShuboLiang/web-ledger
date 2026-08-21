@@ -89,7 +89,7 @@ export class ManagementService {
         }),
         this.prisma.transaction.groupBy({
           by: ["categoryId"],
-          where: { ledgerId },
+          where: { ledgerId, deletedAt: null },
           _count: { _all: true },
         }),
       ])
@@ -133,12 +133,22 @@ export class ManagementService {
         orderBy: [{ category1: "asc" }, { createdAt: "asc" }],
       }),
       this.prisma.transaction.aggregate({
-        where: { ledgerId, date: { gte: start, lt: end }, amount: { lt: 0 } },
+        where: {
+          ledgerId,
+          deletedAt: null,
+          date: { gte: start, lt: end },
+          amount: { lt: 0 },
+        },
         _sum: { amount: true },
       }),
       this.prisma.transaction.groupBy({
         by: ["category1"],
-        where: { ledgerId, date: { gte: start, lt: end }, amount: { lt: 0 } },
+        where: {
+          ledgerId,
+          deletedAt: null,
+          date: { gte: start, lt: end },
+          amount: { lt: 0 },
+        },
         _sum: { amount: true },
       }),
     ])

@@ -40,6 +40,7 @@ model Transaction {
   categoryId String  @map("category_id")
   accountId String?  @map("account_id")
   note      String   @default("") @db.VarChar(500)
+  deletedAt DateTime? @map("deleted_at")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
@@ -50,6 +51,7 @@ model Transaction {
 
   @@index([ledgerId, date(sort: Desc), id(sort: Desc)])
   @@index([ledgerId, category1, category2])
+  @@index([ledgerId, deletedAt])
   @@index([categoryId])
   @@map("transactions")
 }
