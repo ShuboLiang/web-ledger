@@ -12,6 +12,7 @@ import {
   SettingOutlined,
   TagsOutlined,
   WalletOutlined,
+  RetweetOutlined,
   LoadingOutlined,
   LogoutOutlined,
   UserOutlined,
@@ -52,6 +53,7 @@ const nav = [
   { key: "/heatmap", label: "热力图", icon: <CalendarOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
   { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
+  { key: "/recurring", label: "定期账单", icon: <RetweetOutlined /> },
   { key: "/finance", label: "资产负债", icon: <BankOutlined /> },
   { key: "/tags", label: "标签", icon: <TagsOutlined /> },
   { key: "/ai", label: "AI 助手", icon: <RobotOutlined /> },
@@ -68,6 +70,7 @@ const mobileNav = [
 ]
 const morePaths = new Set([
   "/more",
+  "/recurring",
   "/finance",
   "/tags",
   "/ai",
@@ -81,6 +84,7 @@ const titles: Record<string, [string, string]> = {
   "/analytics": ["统计分析", "比较周期、分类与长期变化"],
   "/ai": ["AI 助手", "用自然语言记账和查询"],
   "/budgets": ["预算规划", "控制本月总支出与重点分类"],
+  "/recurring": ["定期账单", "房租、会员等固定收支按期生成"],
   "/finance": ["资产与负债", "管理账户余额、资金转账和还款计划"],
   "/tags": ["消费标签", "按场景、人物和目的重新理解消费"],
   "/management": ["分类管理", "维护收支分类"],

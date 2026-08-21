@@ -13,6 +13,7 @@ import { FrontendController } from "./frontend.controller.js"
 import { AuthModule } from "./modules/auth/auth.module.js"
 import { FinanceModule } from "./modules/finance/finance.module.js"
 import { TagsModule } from "./modules/tags/tags.module.js"
+import { RecurringModule } from "./modules/recurring/recurring.module.js"
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TagsModule } from "./modules/tags/tags.module.js"
     ManagementModule,
     FinanceModule,
     TagsModule,
+    RecurringModule,
   ],
   controllers: [FrontendController],
 })

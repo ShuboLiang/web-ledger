@@ -2872,6 +2872,15 @@ button.expense-category-row:focus-visible,
   color: #586563 !important;
   background: #e8edeb !important;
 }
+.recurring-intro h4 {
+  margin-bottom: 6px !important;
+}
+.recurring-intro p {
+  margin-bottom: 0 !important;
+}
+.recurring-rule-item {
+  align-items: flex-start !important;
+}
 .model-card {
   height: 100%;
   cursor: pointer;

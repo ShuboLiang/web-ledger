@@ -10,6 +10,11 @@ const DashboardPage = lazy(() =>
     default: module.DashboardPage,
   })),
 )
+const RecurringPage = lazy(() =>
+  import("@/pages/recurring").then((module) => ({
+    default: module.RecurringPage,
+  })),
+)
 const TransactionsPage = lazy(() =>
   import("@/pages/transactions").then((module) => ({
     default: module.TransactionsPage,
@@ -80,6 +85,7 @@ export function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="heatmap" element={<HeatmapPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
+          <Route path="recurring" element={<RecurringPage />} />
           <Route path="finance" element={<FinancePage />} />
           <Route path="tags" element={<TagsPage />} />
           <Route path="ai" element={<AiPage />} />

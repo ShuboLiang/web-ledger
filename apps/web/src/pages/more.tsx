@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  RetweetOutlined,
   RightOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -15,6 +16,13 @@ const entries = [
     title: "资产与负债",
     description: "查看账户额度，管理转账、贷款放款和还款",
     tone: "mint",
+  },
+  {
+    path: "/recurring",
+    icon: <RetweetOutlined />,
+    title: "定期账单",
+    description: "房租、会员、话费等固定收支按期自动入账",
+    tone: "gold",
   },
   {
     path: "/ai",

@@ -23,6 +23,7 @@ model Ledger {
   accountAdjustments AccountAdjustment[]
   budgets      Budget[]
   tags         Tag[]
+  recurringRules RecurringRule[]
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("ledgers")
@@ -45,6 +46,7 @@ model Transaction {
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   tags      TransactionTag[]
+  recurringGenerations RecurringGeneration[]
 
   @@index([ledgerId, date(sort: Desc), id(sort: Desc)])
   @@index([ledgerId, category1, category2])
@@ -105,6 +107,7 @@ model Account {
   outgoingTransfers AccountTransfer[] @relation("TransferFrom")
   incomingTransfers AccountTransfer[] @relation("TransferTo")
   adjustments    AccountAdjustment[]
+  recurringRules RecurringRule[]
 
   @@unique([ledgerId, name])
   @@map("accounts")
@@ -160,6 +163,53 @@ model Budget {
   @@unique([ledgerId, month, category1])
   @@index([ledgerId, month])
   @@map("budgets")
+}
+
+model RecurringRule {
+  id              String   @id @default(cuid())
+  ledgerId        String   @map("ledger_id")
+  frequency       String   @db.VarChar(20)
+  interval        Int      @default(1)
+  dayOfMonth      Int?     @map("day_of_month")
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime? @map("end_date") @db.Date
+  nextRunDate     DateTime @map("next_run_date") @db.Date
+  amount          Decimal  @db.Decimal(14, 2)
+  direction       String   @default("expense") @db.VarChar(10)
+  item            String   @db.VarChar(80)
+  category1       String   @db.VarChar(40)
+  category2       String   @db.VarChar(40)
+  accountId       String?  @map("account_id")
+  note            String   @default("") @db.VarChar(500)
+  autoCreate      Boolean  @default(true) @map("auto_create")
+  enabled         Boolean  @default(true)
+  lastGeneratedAt DateTime? @map("last_generated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  ledger          Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  account         Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  generations     RecurringGeneration[]
+
+  @@index([ledgerId, enabled, nextRunDate])
+  @@index([enabled, nextRunDate])
+  @@map("recurring_rules")
+}
+
+model RecurringGeneration {
+  id            String   @id @default(cuid())
+  ruleId        String   @map("rule_id")
+  runDate       DateTime @map("run_date") @db.Date
+  status        String   @db.VarChar(20)
+  transactionId Int?     @map("transaction_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  rule          RecurringRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  transaction   Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([ruleId, runDate])
+  @@index([ruleId, status])
+  @@index([transactionId])
+  @@map("recurring_generations")
 }
 
 model Tag {
