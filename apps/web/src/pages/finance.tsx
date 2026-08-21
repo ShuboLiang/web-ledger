@@ -5,6 +5,7 @@ import {
   EditOutlined,
   PlusOutlined,
   SwapOutlined,
+  TeamOutlined,
 } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -56,6 +57,8 @@ const transferKindText: Record<string, string> = {
   debt_drawdown: "贷款到账",
   debt_payment: "偿还本金",
   adjustment: "额度调整",
+  lending_out: "人情往来支出",
+  lending_in: "人情往来收回",
 }
 const quotaAccountTypes = new Set(["credit", "loan"])
 
@@ -99,8 +102,8 @@ export function FinancePage() {
     },
     onError: (error: Error) => message.error(error.message),
   })
-  const assets = data?.accounts.filter((row) => !row.isLiability) || []
-  const enabledAccounts = (data?.accounts || []).filter((row) => row.enabled)
+  const fundAccounts = (data?.accounts || []).filter((row) => !row.isContact)
+  const enabledAccounts = fundAccounts.filter((row) => row.enabled)
   const payerAccounts = enabledAccounts.filter((row) => row.type !== "loan")
   const debtAccounts = enabledAccounts.filter((row) =>
     quotaAccountTypes.has(row.type),
@@ -195,6 +198,16 @@ export function FinancePage() {
         tone: "debt",
       },
       {
+        key: "lending",
+        label: "人情往来",
+        value: Number(
+          (
+            (data?.summary.receivable || 0) - (data?.summary.payable || 0)
+          ).toFixed(2),
+        ),
+        tone: "due",
+      },
+      {
         key: "net-worth",
         label: "净资产",
         value: data?.summary.netWorth || 0,
@@ -255,7 +268,13 @@ export function FinancePage() {
               </Button>
             )}
           </div>
-          <Space wrap className="finance-actions">
+            <Space wrap className="finance-actions">
+            <Button
+              icon={<TeamOutlined />}
+              onClick={() => navigate("/lending")}
+            >
+              人情往来
+            </Button>
             <Button
               icon={<PlusOutlined />}
               onClick={() => openPanel("account")}
@@ -298,14 +317,14 @@ export function FinancePage() {
             title="账户额度"
             extra={
               <Typography.Text type="secondary">
-                {data.accounts.length} 个账户
+                {fundAccounts.length} 个账户
               </Typography.Text>
             }
             className="finance-section-card"
           >
-            {data.accounts.length ? (
+            {fundAccounts.length ? (
               <List
-                dataSource={data.accounts}
+                dataSource={fundAccounts}
                 renderItem={(account) => (
                   <List.Item className="finance-account-item">
                     <Flex

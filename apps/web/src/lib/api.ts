@@ -79,6 +79,7 @@ export type Dictionaries = {
     type: string
     typeText?: string
     isDefault?: boolean
+    isContact?: boolean
     availableQuota?: number
   }[]
   tags?: { id: string; name: string; color: string }[]
@@ -128,6 +129,7 @@ export type FinanceAccount = {
   availableQuota: number
   outstanding: number
   isLiability: boolean
+  isContact: boolean
   isDefault: boolean
   enabled: boolean
 }
@@ -135,6 +137,8 @@ export type FinanceOverview = {
   summary: {
     assets: number
     liabilities: number
+    receivable: number
+    payable: number
     netWorth: number
     unaccountedCount?: number
     unaccountedMonth?: string
@@ -144,7 +148,13 @@ export type FinanceOverview = {
     id: string
     date: string
     amount: number
-    kind: "transfer" | "debt_drawdown" | "debt_payment" | "adjustment"
+    kind:
+      | "transfer"
+      | "debt_drawdown"
+      | "debt_payment"
+      | "adjustment"
+      | "lending_in"
+      | "lending_out"
     note: string
     fromAccountId: string
     toAccountId: string
@@ -152,6 +162,74 @@ export type FinanceOverview = {
     toAccountName: string
     reversible: boolean
   }[]
+}
+export type LendingDirection = "receivable" | "payable"
+export type LendingEntry = {
+  id: string
+  contactId: string
+  contactName: string
+  direction: LendingDirection
+  date: string
+  amount: number
+  settledAmount: number
+  outstanding: number
+  item: string
+  note: string
+  dueDate: string | null
+  status: "open" | "settled"
+  settledAt: string | null
+  overdue: boolean
+  transferId: string | null
+  transactionId: number | null
+  settlements: { id: string; date: string; amount: number; note: string }[]
+}
+export type LendingContact = {
+  id: string
+  name: string
+  enabled: boolean
+  balance: number
+  receivable: number
+  payable: number
+  openCount: number
+  openReceivable: number
+  openPayable: number
+  overdueCount: number
+  dueSoonCount: number
+  nextDueDate: string | null
+  untracked: number
+  lastDate?: string | null
+  totalCount?: number
+}
+export type LendingOverview = {
+  today: string
+  summary: {
+    receivable: number
+    payable: number
+    net: number
+    openReceivable: number
+    openPayable: number
+    untracked: number
+    contactCount: number
+    overdueCount: number
+  }
+  contacts: LendingContact[]
+  entries: LendingEntry[]
+}
+export type LendingContactDetail = {
+  today: string
+  contact: LendingContact
+  entries: LendingEntry[]
+  movements: {
+    id: string
+    kind: "transfer" | "transaction"
+    date: string
+    amount: number
+    item: string
+  }[]
+}
+export type LendingReminders = {
+  overdue: LendingEntry[]
+  dueSoon: LendingEntry[]
 }
 export type AuthUser = { id: string; username: string; displayName: string }
 

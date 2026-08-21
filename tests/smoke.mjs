@@ -1063,7 +1063,7 @@ try {
           type: "account-reconcile",
           accountId: financeAccount.id,
           reconcile: {
-            balance: financeBalanceBeforeAgent - 100,
+            balance: financeBalanceBeforeAgent - 300,
             note: "Agent 校准测试",
           },
           display: {
@@ -1135,6 +1135,227 @@ try {
     (await request("/api/dashboard?anchor=2026-08-14")).totals.day,
     25,
   )
+
+  // 人情往来：垫付（含 AA 自己那份）、代付、借入、分次结算与撤销
+  const lendingBankBefore = (await request("/api/finance")).accounts.find(
+    (row) => row.id === financeAccount.id,
+  ).balance
+  const advance = await request("/api/lending/entries", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: "advance",
+      contactName: "张三",
+      date: "2026-08-15",
+      amount: 300,
+      selfAmount: 100,
+      item: "火锅聚餐",
+      category1: "餐饮",
+      category2: "聚餐",
+      accountId: financeAccount.id,
+      dueDate: "2026-08-20",
+    }),
+  })
+  assert.equal(advance.direction, "receivable")
+  // 一共付了 300，自己那份 100，对方欠我 200
+  assert.equal(advance.amount, 200)
+  assert.equal(advance.outstanding, 200)
+  // 垫出去的 200 不算支出，只有自己那份 100 计入当天支出
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-15")).totals.day,
+    100,
+  )
+  let lending = await request("/api/lending")
+  const zhangsan = lending.contacts.find((row) => row.name === "张三")
+  assert.equal(zhangsan.receivable, 200)
+  assert.equal(zhangsan.openReceivable, 200)
+  assert.equal(zhangsan.untracked, 0)
+  // 账户少了自己那份 + 垫出去的钱
+  assert.equal(
+    (await request("/api/finance")).accounts.find(
+      (row) => row.id === financeAccount.id,
+    ).balance,
+    Number((lendingBankBefore - 300).toFixed(2)),
+  )
+  assert.equal((await request("/api/finance")).summary.receivable, 200)
+  // 自己那份不能吃掉整笔垫付
+  assert.equal(
+    (
+      await requestError("/api/lending/entries", {
+        method: "POST",
+        body: JSON.stringify({
+          kind: "advance",
+          contactId: (await request("/api/lending")).contacts[0].id,
+          date: "2026-08-15",
+          amount: 100,
+          selfAmount: 100,
+          item: "全是自己的份",
+          category1: "餐饮",
+          category2: "聚餐",
+          accountId: financeAccount.id,
+        }),
+      })
+    ).status,
+    400,
+  )
+
+  const covered = await request("/api/lending/entries", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: "covered",
+      contactId: zhangsan.id,
+      date: "2026-08-16",
+      amount: 60,
+      item: "张三帮买咖啡",
+      category1: "餐饮",
+      category2: "饮品",
+    }),
+  })
+  assert.equal(covered.direction, "payable")
+  // 别人替我付的钱仍然是我的支出
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-16")).totals.day,
+    60,
+  )
+  lending = await request("/api/lending")
+  const zhangsanMixed = lending.contacts.find((row) => row.id === zhangsan.id)
+  assert.equal(zhangsanMixed.balance, 140)
+  assert.equal(zhangsanMixed.openReceivable, 200)
+  assert.equal(zhangsanMixed.openPayable, 60)
+  // 双向未结清时必须指定结算方向
+  assert.equal(
+    (
+      await requestError("/api/lending/settlements", {
+        method: "POST",
+        body: JSON.stringify({
+          contactId: zhangsan.id,
+          date: "2026-08-17",
+          amount: 10,
+          accountId: financeAccount.id,
+        }),
+      })
+    ).status,
+    400,
+  )
+  // 结算金额不能超过待结清
+  assert.equal(
+    (
+      await requestError("/api/lending/settlements", {
+        method: "POST",
+        body: JSON.stringify({
+          contactId: zhangsan.id,
+          direction: "receivable",
+          date: "2026-08-17",
+          amount: 500,
+          accountId: financeAccount.id,
+        }),
+      })
+    ).status,
+    400,
+  )
+  const partial = await request("/api/lending/settlements", {
+    method: "POST",
+    body: JSON.stringify({
+      contactId: zhangsan.id,
+      direction: "receivable",
+      date: "2026-08-17",
+      amount: 120,
+      accountId: financeAccount.id,
+    }),
+  })
+  assert.equal(partial.settled.length, 1)
+  assert.equal(partial.settled[0].cleared, false)
+  lending = await request("/api/lending")
+  assert.equal(
+    lending.entries.find((row) => row.id === advance.id).outstanding,
+    80,
+  )
+  const settleRest = await request("/api/lending/settlements", {
+    method: "POST",
+    body: JSON.stringify({
+      entryId: advance.id,
+      date: "2026-08-18",
+      amount: 80,
+      accountId: financeAccount.id,
+    }),
+  })
+  assert.equal(settleRest.settled[0].cleared, true)
+  lending = await request("/api/lending")
+  assert.ok(!lending.entries.some((row) => row.id === advance.id))
+  assert.equal(
+    lending.contacts.find((row) => row.id === zhangsan.id).balance,
+    -60,
+  )
+  // 结算只搬钱，不产生收支
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-18")).totals.day,
+    0,
+  )
+
+  const borrowed = await request("/api/lending/entries", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: "borrow",
+      contactName: "李四",
+      date: "2026-08-19",
+      amount: 1000,
+      item: "周转",
+      accountId: financeAccount.id,
+    }),
+  })
+  assert.equal(borrowed.direction, "payable")
+  // 借入的钱进账户但不算收入
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-19")).cashflow.day.income,
+    0,
+  )
+  lending = await request("/api/lending")
+  assert.equal(lending.summary.payable, 1060)
+  const financeWithLending = await request("/api/finance")
+  assert.equal(financeWithLending.summary.payable, 1060)
+  // 往来产生的资金移动不能在资产页直接撤销
+  const lendingTransfer = financeWithLending.recentTransfers.find(
+    (row) => row.note === "周转",
+  )
+  assert.ok(lendingTransfer)
+  assert.equal(lendingTransfer.reversible, false)
+  assert.equal(
+    (
+      await requestError(`/api/finance/transfers/${lendingTransfer.id}`, {
+        method: "DELETE",
+      })
+    ).status,
+    400,
+  )
+  const lisiDetail = await request(
+    `/api/lending/contacts/${borrowed.contactId}`,
+  )
+  assert.equal(lisiDetail.contact.payable, 1000)
+  assert.equal(lisiDetail.entries.length, 1)
+  assert.equal(lisiDetail.movements.length, 1)
+  // 撤销往来会连带撤销资金移动
+  assert.equal(
+    (await request(`/api/lending/entries/${borrowed.id}`, { method: "DELETE" }))
+      .deleted,
+    true,
+  )
+  lending = await request("/api/lending")
+  assert.equal(
+    lending.contacts.find((row) => row.id === borrowed.contactId).balance,
+    0,
+  )
+  assert.equal(lending.summary.payable, 60)
+  // 撤销「别人替我付」会把关联账目送进回收站
+  await request(`/api/lending/entries/${covered.id}`, { method: "DELETE" })
+  assert.equal(
+    (await request("/api/dashboard?anchor=2026-08-16")).totals.day,
+    0,
+  )
+  assert.ok(
+    (await request("/api/trash")).records.some(
+      (row) => row.item === "张三帮买咖啡",
+    ),
+  )
+  assert.equal((await request("/api/lending")).summary.payable, 0)
 
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
@@ -1256,6 +1477,21 @@ try {
   )
   await request(`/api/transactions/${managedRecord.records[0].id}`, {
     method: "DELETE",
+  })
+  // 账目还在回收站时不能删分类，避免还原后分类丢失
+  assert.match(
+    JSON.stringify(
+      (
+        await requestError(`/api/management/categories/${targetCategory.id}`, {
+          method: "DELETE",
+        })
+      ).body,
+    ),
+    /回收站里还有 1 笔账目/,
+  )
+  await request("/api/trash/purge", {
+    method: "POST",
+    body: JSON.stringify({ ids: [managedRecord.records[0].id] }),
   })
   assert.equal(
     (
@@ -1411,7 +1647,7 @@ try {
   sessionCookie = firstUserCookie
 
   console.log(
-    "Smoke test passed: auth, isolation, CRUD, summaries, categories, accounts, finance, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
+    "Smoke test passed: auth, isolation, CRUD, summaries, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
   )
 } finally {
   await app.close()

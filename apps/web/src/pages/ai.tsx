@@ -75,6 +75,8 @@ type Proposal = {
     | "transfer-reverse"
     | "adjustment-reverse"
     | "repayment"
+    | "lending-entry"
+    | "lending-settle"
   id?: number
   records?: any[]
   current?: any
@@ -89,6 +91,8 @@ type Proposal = {
   tagId?: string
   transfer?: any
   repayment?: any
+  lending?: any
+  settlement?: any
   reconcile?: any
   transferId?: string
   adjustmentId?: string
@@ -639,6 +643,49 @@ export function AiPage() {
                 Number(proposal.repayment?.fee || 0),
               date: proposal.repayment?.date,
               detail: `本金 ${money(proposal.repayment?.principal || 0)} 走转账；利息与手续费计入支出`,
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "lending-entry") {
+          const self = Number(proposal.lending?.selfAmount || 0)
+          return [
+            {
+              label: proposal.display?.kindText || "人情往来",
+              item: `${proposal.lending?.contactName || "往来对象"} · ${proposal.lending?.item || "人情往来"}`,
+              amount: proposal.lending?.amount,
+              date: proposal.lending?.date,
+              detail: [
+                proposal.lending?.kind === "covered"
+                  ? "记一笔支出，同时挂上欠对方的钱"
+                  : proposal.lending?.kind === "borrow"
+                    ? "钱进入我的账户，不计入收入"
+                    : "垫出去的钱不计入支出",
+                self > 0 ? `我自己那份 ${money(self)} 计入支出` : "",
+                proposal.lending?.dueDate
+                  ? `约定 ${proposal.lending.dueDate} 前结清`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("；"),
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
+        if (proposal.type === "lending-settle")
+          return [
+            {
+              label:
+                proposal.settlement?.direction === "payable"
+                  ? "还钱给对方"
+                  : "收回欠款",
+              item: `${proposal.display?.contactName || "往来对象"} · ${proposal.display?.accountName || "资金账户"}`,
+              amount: proposal.settlement?.amount,
+              date: proposal.settlement?.date,
+              detail: proposal.settlement?.entryId
+                ? "只冲抵指定的那一笔往来"
+                : "从最早一笔未结清往来开始依次冲抵",
               proposalIndex,
               isFinanceOperation: true,
             },

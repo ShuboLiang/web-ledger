@@ -33,17 +33,30 @@ const moneyValue = (value: unknown) => {
     throw new BadRequestException("金额不能小于 0")
   return Number(amount.toFixed(2))
 }
+const CONTACT_ACCOUNT_TYPE = "contact"
 const liabilityAccountTypes = new Set(["credit", "loan"])
 const assetAccountTypes = new Set(["cash", "bank", "ewallet"])
-const accountTypes = new Set(["cash", "bank", "ewallet", "credit", "loan"])
+const accountTypes = new Set([
+  "cash",
+  "bank",
+  "ewallet",
+  "credit",
+  "loan",
+  CONTACT_ACCOUNT_TYPE,
+])
 const accountTypeText: Record<string, string> = {
   cash: "现金",
   bank: "银行卡",
   ewallet: "电子钱包",
   credit: "信用账户",
   loan: "贷款账户",
+  [CONTACT_ACCOUNT_TYPE]: "人情往来",
 }
 const inferTransferKind = (fromType: string, toType: string) => {
+  if (fromType === CONTACT_ACCOUNT_TYPE && toType !== CONTACT_ACCOUNT_TYPE)
+    return "lending_in"
+  if (toType === CONTACT_ACCOUNT_TYPE && fromType !== CONTACT_ACCOUNT_TYPE)
+    return "lending_out"
   if (fromType === "loan" && assetAccountTypes.has(toType))
     return "debt_drawdown"
   if (assetAccountTypes.has(fromType) && liabilityAccountTypes.has(toType))
@@ -113,7 +126,7 @@ export class LedgerService {
         ledgerId,
         enabled: true,
         isDefault: true,
-        type: { not: "loan" },
+        type: { notIn: ["loan", CONTACT_ACCOUNT_TYPE] },
       },
     })
     return account?.id || null
@@ -412,6 +425,7 @@ export class LedgerService {
         type: row.type,
         typeText: accountTypeText[row.type] || row.type,
         isDefault: row.isDefault,
+        isContact: row.type === CONTACT_ACCOUNT_TYPE,
         availableQuota: availableQuotaOf(balances.get(row.id) || 0),
       })),
       tags: tags.map((row) => ({
@@ -860,6 +874,7 @@ export class LedgerService {
       availableQuota: availableQuotaOf(balance),
       outstanding: outstandingOf(balance),
       isLiability: liabilityAccountTypes.has(account.type),
+      isContact: account.type === CONTACT_ACCOUNT_TYPE,
       isDefault: account.isDefault,
       enabled: account.enabled,
     }
@@ -879,7 +894,10 @@ export class LedgerService {
     if (!validDate(balanceDateText))
       throw new BadRequestException("余额起算日期无效")
     const balanceDate = asDate(balanceDateText)
-    const isDefault = Boolean(input?.isDefault) && type !== "loan"
+    const isDefault =
+      Boolean(input?.isDefault) &&
+      type !== "loan" &&
+      type !== CONTACT_ACCOUNT_TYPE
     if (isDefault)
       await database.account.updateMany({
         where: { ledgerId, isDefault: true },
@@ -944,6 +962,8 @@ export class LedgerService {
         : Boolean(input.isDefault)
     if (isDefault && account.type === "loan")
       throw new BadRequestException("贷款账户不能设为日常默认付款账户")
+    if (isDefault && account.type === CONTACT_ACCOUNT_TYPE)
+      throw new BadRequestException("往来账户不能设为日常默认付款账户")
     const enabled =
       input?.enabled === undefined ? account.enabled : Boolean(input.enabled)
     if (input?.isDefault === true && !enabled)
@@ -1044,25 +1064,30 @@ export class LedgerService {
     id: unknown,
   ) {
     const account = await this.financeAccount(database, ledgerId, id)
-    const [transactions, outgoing, incoming, adjustments] = await Promise.all([
-      database.transaction.count({
-        where: { ledgerId, accountId: account.id, ...notDeleted },
-      }),
-      database.accountTransfer.count({
-        where: { ledgerId, fromAccountId: account.id },
-      }),
-      database.accountTransfer.count({
-        where: { ledgerId, toAccountId: account.id },
-      }),
-      database.accountAdjustment.count({
-        where: { ledgerId, accountId: account.id },
-      }),
-    ])
+    const [transactions, outgoing, incoming, adjustments, lendingEntries] =
+      await Promise.all([
+        database.transaction.count({
+          where: { ledgerId, accountId: account.id, ...notDeleted },
+        }),
+        database.accountTransfer.count({
+          where: { ledgerId, fromAccountId: account.id },
+        }),
+        database.accountTransfer.count({
+          where: { ledgerId, toAccountId: account.id },
+        }),
+        database.accountAdjustment.count({
+          where: { ledgerId, accountId: account.id },
+        }),
+        database.lendingEntry.count({
+          where: { ledgerId, accountId: account.id },
+        }),
+      ])
     const transferCount = outgoing + incoming
     const leftover = [
       transactions ? `${transactions} 笔账单` : "",
       transferCount ? `${transferCount} 笔转账` : "",
       adjustments ? `${adjustments} 条额度调整` : "",
+      lendingEntries ? `${lendingEntries} 条往来记录` : "",
     ].filter(Boolean)
     if (leftover.length)
       throw new BadRequestException(
@@ -1168,6 +1193,13 @@ export class LedgerService {
       where: { id: clean(id, 100), ledgerId },
     })
     if (!transfer) throw new NotFoundException("资金移动不存在")
+    const lending = await this.lendingTransferIds(database, ledgerId, [
+      transfer.id,
+    ])
+    if (lending.has(transfer.id))
+      throw new BadRequestException(
+        "这笔资金移动属于人情往来，请到往来页撤销对应记录",
+      )
     await database.accountTransfer.delete({ where: { id: transfer.id } })
     await database.auditLog.create({
       data: {
@@ -1403,23 +1435,38 @@ export class LedgerService {
     const accountRows = accounts.map((account) =>
       this.presentAccount(account, balances.get(account.id) || 0),
     )
-    const assetTotal = Number(
-      accountRows
-        .filter((row) => !row.isLiability)
-        .reduce((sum, row) => sum + row.balance, 0)
-        .toFixed(2),
+    const sum = (rows: typeof accountRows, pick: (row: any) => number) =>
+      Number(rows.reduce((total, row) => total + pick(row), 0).toFixed(2))
+    const assetTotal = sum(
+      accountRows.filter((row) => !row.isLiability && !row.isContact),
+      (row) => row.balance,
     )
-    const liabilityTotal = Number(
-      accountRows
-        .filter((row) => row.isLiability)
-        .reduce((sum, row) => sum + row.outstanding, 0)
-        .toFixed(2),
+    const liabilityTotal = sum(
+      accountRows.filter((row) => row.isLiability),
+      (row) => row.outstanding,
+    )
+    const contactRows = accountRows.filter((row) => row.isContact)
+    const receivableTotal = sum(contactRows, (row) => row.availableQuota)
+    const payableTotal = sum(contactRows, (row) => row.outstanding)
+    const lendingTransferIds = await this.lendingTransferIds(
+      this.prisma,
+      ledgerId,
+      transfers.map((row) => row.id),
     )
     return {
       summary: {
         assets: assetTotal,
         liabilities: liabilityTotal,
-        netWorth: Number((assetTotal - liabilityTotal).toFixed(2)),
+        receivable: receivableTotal,
+        payable: payableTotal,
+        netWorth: Number(
+          (
+            assetTotal +
+            receivableTotal -
+            liabilityTotal -
+            payableTotal
+          ).toFixed(2),
+        ),
         unaccountedCount,
         unaccountedMonth: dateText(cutoff).slice(0, 7),
       },
@@ -1436,7 +1483,7 @@ export class LedgerService {
           fromAccountName: row.fromAccount.name,
           toAccountName: row.toAccount.name,
           createdAt: row.createdAt,
-          reversible: true,
+          reversible: !lendingTransferIds.has(row.id),
         })),
         ...adjustments.map((row) => ({
           id: row.id,
@@ -1458,6 +1505,737 @@ export class LedgerService {
           return right.createdAt.getTime() - left.createdAt.getTime()
         })
         .slice(0, 12),
+    }
+  }
+
+  private async lendingTransferIds(
+    database: PrismaService | LedgerDatabase,
+    ledgerId: string,
+    ids: string[],
+  ) {
+    const unique = [...new Set(ids.filter(Boolean))]
+    if (!unique.length) return new Set<string>()
+    const [entries, settlements] = await Promise.all([
+      database.lendingEntry.findMany({
+        where: { ledgerId, transferId: { in: unique } },
+        select: { transferId: true },
+      }),
+      database.lendingSettlement.findMany({
+        where: { ledgerId, transferId: { in: unique } },
+        select: { transferId: true },
+      }),
+    ])
+    return new Set(
+      [...entries, ...settlements]
+        .map((row) => row.transferId)
+        .filter((value): value is string => Boolean(value)),
+    )
+  }
+
+  private async contactAccount(
+    database: PrismaService | LedgerDatabase,
+    ledgerId: string,
+    id: unknown,
+  ) {
+    const account = await this.financeAccount(database, ledgerId, id)
+    if (account.type !== CONTACT_ACCOUNT_TYPE)
+      throw new BadRequestException("请选择一个往来对象")
+    return account
+  }
+
+  private async createContactWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const name = clean(input?.name, 80)
+    if (!name) throw new BadRequestException("请填写往来对象名称")
+    const existing = await database.account.findFirst({
+      where: { ledgerId, name },
+    })
+    if (existing)
+      throw new BadRequestException(`已经存在名为“${name}”的账户或往来对象`)
+    const account = await database.account.create({
+      data: {
+        ledgerId,
+        name,
+        type: CONTACT_ACCOUNT_TYPE,
+        openingBalance: new Prisma.Decimal(0),
+        balanceDate: null,
+      },
+    })
+    await database.auditLog.create({
+      data: {
+        action: "create",
+        entityType: "lending-contact",
+        entityId: account.id,
+        payload: { name },
+      },
+    })
+    return account
+  }
+
+  private async resolveContactAccount(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const id = clean(input?.contactId, 100)
+    if (id) {
+      const account = await this.contactAccount(database, ledgerId, id)
+      if (!account.enabled)
+        await database.account.update({
+          where: { id: account.id },
+          data: { enabled: true },
+        })
+      return account
+    }
+    const name = clean(input?.contactName, 80)
+    if (!name) throw new BadRequestException("请选择或填写往来对象")
+    const existing = await database.account.findFirst({
+      where: { ledgerId, name },
+    })
+    if (!existing)
+      return this.createContactWithDatabase(database, ledgerId, { name })
+    if (existing.type !== CONTACT_ACCOUNT_TYPE)
+      throw new BadRequestException(
+        `“${name}”已经是一个${accountTypeText[existing.type] || "资金"}账户，请换一个名字`,
+      )
+    if (!existing.enabled)
+      await database.account.update({
+        where: { id: existing.id },
+        data: { enabled: true },
+      })
+    return existing
+  }
+
+  private presentLendingEntry(row: any, todayText = dateText(today())) {
+    const amount = Number(row.amount)
+    const settledAmount = Number(row.settledAmount)
+    const outstanding = Number(Math.max(0, amount - settledAmount).toFixed(2))
+    const dueDate = row.dueDate ? dateText(row.dueDate) : null
+    return {
+      id: row.id,
+      contactId: row.accountId,
+      contactName: row.account?.name || "",
+      direction: row.direction as "receivable" | "payable",
+      date: dateText(row.date),
+      amount,
+      settledAmount,
+      outstanding,
+      item: row.item,
+      note: row.note,
+      dueDate,
+      status: row.status,
+      settledAt: row.settledAt?.toISOString?.() || null,
+      overdue: Boolean(
+        dueDate && row.status === "open" && dueDate < todayText,
+      ),
+      transferId: row.transferId,
+      transactionId: row.transactionId,
+      settlements: (row.settlements || []).map((settlement: any) => ({
+        id: settlement.id,
+        date: dateText(settlement.date),
+        amount: Number(settlement.amount),
+        note: settlement.note,
+      })),
+    }
+  }
+
+  private async createLendingEntryWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const kind = clean(input?.kind, 20) || "advance"
+    if (!["advance", "covered", "borrow"].includes(kind))
+      throw new BadRequestException("往来类型无效")
+    const date = clean(input?.date, 10) || dateText(today())
+    if (!validDate(date)) throw new BadRequestException("往来日期无效")
+    const amount = positiveMoney(input?.amount, "往来金额")
+    const item =
+      clean(input?.item, 80) ||
+      { advance: "垫付", covered: "代付", borrow: "借入" }[kind]!
+    const note = clean(input?.note, 500)
+    const dueDate = clean(input?.dueDate, 10)
+    if (dueDate && !validDate(dueDate))
+      throw new BadRequestException("约定日期无效")
+    const contact = await this.resolveContactAccount(database, ledgerId, input)
+    let transferId: string | null = null
+    let transactionId: number | null = null
+    let lendingAmount = amount
+    if (kind === "covered") {
+      const [record] = await this.addManyWithDatabase(database, ledgerId, null, [
+        { ...input, date, direction: "expense", amount, item, note, accountId: contact.id },
+      ])
+      transactionId = Number(record.id)
+    } else {
+      const own = await this.usableTransactionAccount(
+        database,
+        ledgerId,
+        input?.accountId,
+      )
+      if (own.type === CONTACT_ACCOUNT_TYPE)
+        throw new BadRequestException("请选择自己的资金账户")
+      const selfAmount = kind === "advance" ? moneyValue(input?.selfAmount) : 0
+      if (selfAmount >= amount)
+        throw new BadRequestException("自己那份要小于这次付出去的总金额")
+      lendingAmount = Number((amount - selfAmount).toFixed(2))
+      if (selfAmount > 0) {
+        const [record] = await this.addManyWithDatabase(
+          database,
+          ledgerId,
+          null,
+          [
+            {
+              ...input,
+              date,
+              direction: "expense",
+              amount: selfAmount,
+              item,
+              note,
+              accountId: own.id,
+            },
+          ],
+        )
+        transactionId = Number(record.id)
+      }
+      const lend = kind === "advance"
+      const transfer = await this.createTransferWithDatabase(
+        database,
+        ledgerId,
+        {
+          date,
+          amount: lendingAmount,
+          fromAccountId: lend ? own.id : contact.id,
+          toAccountId: lend ? contact.id : own.id,
+          note: item,
+        },
+      )
+      transferId = transfer.id
+    }
+    const entry = await database.lendingEntry.create({
+      data: {
+        ledgerId,
+        accountId: contact.id,
+        direction: kind === "advance" ? "receivable" : "payable",
+        date: asDate(date),
+        amount: new Prisma.Decimal(lendingAmount),
+        item,
+        note,
+        dueDate: dueDate ? asDate(dueDate) : null,
+        transferId,
+        transactionId,
+      },
+      include: {
+        account: { select: { name: true } },
+        settlements: true,
+      },
+    })
+    await database.auditLog.create({
+      data: {
+        action: "create",
+        entityType: "lending-entry",
+        entityId: entry.id,
+        payload: {
+          kind,
+          date,
+          amount: lendingAmount,
+          paid: amount,
+          item,
+          contactId: contact.id,
+        },
+      },
+    })
+    return this.presentLendingEntry(entry)
+  }
+
+  async createLendingEntry(input: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.createLendingEntryWithDatabase(database, ledgerId, input),
+    )
+  }
+
+  private async settleLendingWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    input: any,
+  ) {
+    const date = clean(input?.date, 10) || dateText(today())
+    if (!validDate(date)) throw new BadRequestException("结算日期无效")
+    const amount = positiveMoney(input?.amount, "结算金额")
+    const note = clean(input?.note, 500)
+    const entryId = clean(input?.entryId, 100)
+    let direction = clean(input?.direction, 20)
+    let contact
+    let candidates
+    if (entryId) {
+      const entry = await database.lendingEntry.findFirst({
+        where: { id: entryId, ledgerId },
+      })
+      if (!entry) throw new NotFoundException("往来记录不存在")
+      if (entry.status !== "open")
+        throw new BadRequestException("这笔往来已经结清")
+      contact = await this.contactAccount(database, ledgerId, entry.accountId)
+      direction = entry.direction
+      candidates = [entry]
+    } else {
+      contact = await this.resolveContactAccount(database, ledgerId, input)
+      const open = await database.lendingEntry.findMany({
+        where: { ledgerId, accountId: contact.id, status: "open" },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      })
+      if (!open.length)
+        throw new BadRequestException(`${contact.name}没有待结清的往来`)
+      if (direction !== "receivable" && direction !== "payable") {
+        const directions = [...new Set(open.map((row) => row.direction))]
+        if (directions.length > 1)
+          throw new BadRequestException(
+            `${contact.name}同时有应收和应付，请指定结算方向`,
+          )
+        direction = directions[0]
+      }
+      candidates = open.filter((row) => row.direction === direction)
+      if (!candidates.length)
+        throw new BadRequestException("没有该方向的待结清往来")
+    }
+    const own = await this.usableTransactionAccount(
+      database,
+      ledgerId,
+      input?.accountId,
+    )
+    if (own.type === CONTACT_ACCOUNT_TYPE)
+      throw new BadRequestException("请选择自己的资金账户")
+    const outstandingTotal = Number(
+      candidates
+        .reduce(
+          (total, row) =>
+            total + Number(row.amount) - Number(row.settledAmount),
+          0,
+        )
+        .toFixed(2),
+    )
+    if (amount > outstandingTotal + 0.001)
+      throw new BadRequestException(
+        `结算金额超过待结清的 ${outstandingTotal.toFixed(2)} 元`,
+      )
+    const collecting = direction === "receivable"
+    let remaining = amount
+    const settled: any[] = []
+    for (const entry of candidates) {
+      if (remaining <= 0.001) break
+      const outstanding = Number(
+        (Number(entry.amount) - Number(entry.settledAmount)).toFixed(2),
+      )
+      if (outstanding <= 0) continue
+      const allocated = Number(Math.min(remaining, outstanding).toFixed(2))
+      const transfer = await this.createTransferWithDatabase(
+        database,
+        ledgerId,
+        {
+          date,
+          amount: allocated,
+          fromAccountId: collecting ? contact.id : own.id,
+          toAccountId: collecting ? own.id : contact.id,
+          note: note || `${entry.item}结算`,
+        },
+      )
+      const settlement = await database.lendingSettlement.create({
+        data: {
+          ledgerId,
+          entryId: entry.id,
+          date: asDate(date),
+          amount: new Prisma.Decimal(allocated),
+          note,
+          transferId: transfer.id,
+        },
+      })
+      const settledAmount = Number(
+        (Number(entry.settledAmount) + allocated).toFixed(2),
+      )
+      const cleared = settledAmount + 0.001 >= Number(entry.amount)
+      await database.lendingEntry.update({
+        where: { id: entry.id },
+        data: {
+          settledAmount: new Prisma.Decimal(settledAmount),
+          status: cleared ? "settled" : "open",
+          settledAt: cleared ? new Date() : null,
+        },
+      })
+      settled.push({
+        id: settlement.id,
+        entryId: entry.id,
+        item: entry.item,
+        amount: allocated,
+        cleared,
+      })
+      remaining = Number((remaining - allocated).toFixed(2))
+    }
+    await database.auditLog.create({
+      data: {
+        action: collecting ? "collect" : "repay",
+        entityType: "lending-settlement",
+        entityId: contact.id,
+        payload: { date, amount, direction, accountId: own.id, settled },
+      },
+    })
+    return {
+      contactId: contact.id,
+      contactName: contact.name,
+      direction,
+      date,
+      amount,
+      settled,
+    }
+  }
+
+  async settleLending(input: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.settleLendingWithDatabase(database, ledgerId, input),
+    )
+  }
+
+  private async deleteLendingEntryWithDatabase(
+    database: LedgerDatabase,
+    ledgerId: string,
+    id: unknown,
+  ) {
+    const entry = await database.lendingEntry.findFirst({
+      where: { id: clean(id, 100), ledgerId },
+      include: { settlements: true },
+    })
+    if (!entry) throw new NotFoundException("往来记录不存在")
+    const transferIds = [
+      entry.transferId,
+      ...entry.settlements.map((row) => row.transferId),
+    ].filter((value): value is string => Boolean(value))
+    await database.lendingEntry.delete({ where: { id: entry.id } })
+    if (transferIds.length)
+      await database.accountTransfer.deleteMany({
+        where: { ledgerId, id: { in: transferIds } },
+      })
+    if (entry.transactionId)
+      await this.deleteWithDatabase(database, ledgerId, entry.transactionId)
+    await database.auditLog.create({
+      data: {
+        action: "delete",
+        entityType: "lending-entry",
+        entityId: entry.id,
+        payload: {
+          item: entry.item,
+          amount: Number(entry.amount),
+          direction: entry.direction,
+          transferIds,
+          transactionId: entry.transactionId,
+        },
+      },
+    })
+    return { id: entry.id, deleted: true }
+  }
+
+  async deleteLendingEntry(id: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction((database) =>
+      this.deleteLendingEntryWithDatabase(database, ledgerId, id),
+    )
+  }
+
+  async deleteLendingSettlement(id: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction(async (database) => {
+      const settlement = await database.lendingSettlement.findFirst({
+        where: { id: clean(id, 100), ledgerId },
+        include: { entry: true },
+      })
+      if (!settlement) throw new NotFoundException("结算记录不存在")
+      const settledAmount = Number(
+        Math.max(
+          0,
+          Number(settlement.entry.settledAmount) - Number(settlement.amount),
+        ).toFixed(2),
+      )
+      await database.lendingSettlement.delete({ where: { id: settlement.id } })
+      if (settlement.transferId)
+        await database.accountTransfer.deleteMany({
+          where: { ledgerId, id: settlement.transferId },
+        })
+      await database.lendingEntry.update({
+        where: { id: settlement.entryId },
+        data: {
+          settledAmount: new Prisma.Decimal(settledAmount),
+          status: "open",
+          settledAt: null,
+        },
+      })
+      await database.auditLog.create({
+        data: {
+          action: "reverse",
+          entityType: "lending-settlement",
+          entityId: settlement.id,
+          payload: {
+            entryId: settlement.entryId,
+            amount: Number(settlement.amount),
+          },
+        },
+      })
+      return { id: settlement.id, reversed: true }
+    })
+  }
+
+  async createLendingContact(input: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction(async (database) => {
+      const account = await this.createContactWithDatabase(
+        database,
+        ledgerId,
+        input,
+      )
+      return this.presentAccount(account, 0)
+    })
+  }
+
+  async updateLendingContact(id: unknown, input: any) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction(async (database) => {
+      const account = await this.contactAccount(database, ledgerId, id)
+      const name = clean(input?.name ?? account.name, 80)
+      if (!name) throw new BadRequestException("请填写往来对象名称")
+      const enabled =
+        input?.enabled === undefined ? account.enabled : Boolean(input.enabled)
+      const updated = await database.account.update({
+        where: { id: account.id },
+        data: { name, enabled },
+      })
+      await database.auditLog.create({
+        data: {
+          action: "update",
+          entityType: "lending-contact",
+          entityId: account.id,
+          payload: { name, enabled },
+        },
+      })
+      const balance = await this.accountBalanceWithDatabase(
+        database,
+        ledgerId,
+        updated.id,
+      )
+      return this.presentAccount(updated, balance)
+    })
+  }
+
+  async deleteLendingContact(id: unknown) {
+    const { ledgerId } = await this.context()
+    return this.prisma.$transaction(async (database) => {
+      await this.contactAccount(database, ledgerId, id)
+      return this.deleteAccountWithDatabase(database, ledgerId, id)
+    })
+  }
+
+  private lendingContactStats(entries: any[], todayText: string) {
+    const soon = new Date(asDate(todayText))
+    soon.setUTCDate(soon.getUTCDate() + 7)
+    const soonText = dateText(soon)
+    const stats = {
+      openCount: 0,
+      openReceivable: 0,
+      openPayable: 0,
+      overdueCount: 0,
+      dueSoonCount: 0,
+      nextDueDate: null as string | null,
+    }
+    for (const entry of entries) {
+      if (entry.status !== "open") continue
+      stats.openCount += 1
+      if (entry.direction === "receivable")
+        stats.openReceivable += entry.outstanding
+      else stats.openPayable += entry.outstanding
+      if (!entry.dueDate) continue
+      if (entry.dueDate < todayText) stats.overdueCount += 1
+      else if (entry.dueDate <= soonText) stats.dueSoonCount += 1
+      if (!stats.nextDueDate || entry.dueDate < stats.nextDueDate)
+        stats.nextDueDate = entry.dueDate
+    }
+    stats.openReceivable = Number(stats.openReceivable.toFixed(2))
+    stats.openPayable = Number(stats.openPayable.toFixed(2))
+    return stats
+  }
+
+  async lendingOverview() {
+    const { ledgerId } = await this.context()
+    const cutoff = today()
+    const todayText = dateText(cutoff)
+    const [accounts, balances, rows, activity] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { ledgerId, type: CONTACT_ACCOUNT_TYPE },
+        orderBy: [
+          { enabled: "desc" },
+          { sortOrder: "asc" },
+          { createdAt: "asc" },
+        ],
+      }),
+      this.accountBalancesWithDatabase(this.prisma, ledgerId, cutoff),
+      this.prisma.lendingEntry.findMany({
+        where: { ledgerId, status: "open" },
+        include: { account: { select: { name: true } }, settlements: true },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.lendingEntry.groupBy({
+        by: ["accountId"],
+        where: { ledgerId },
+        _max: { date: true },
+        _count: { _all: true },
+      }),
+    ])
+    const entries = rows.map((row) => this.presentLendingEntry(row, todayText))
+    const activityByContact = new Map(
+      activity.map((row) => [
+        row.accountId,
+        {
+          lastDate: row._max.date ? dateText(row._max.date) : null,
+          totalCount: row._count._all,
+        },
+      ]),
+    )
+    const contacts = accounts.map((account) => {
+      const balance = balances.get(account.id) || 0
+      const stats = this.lendingContactStats(
+        entries.filter((entry) => entry.contactId === account.id),
+        todayText,
+      )
+      const history = activityByContact.get(account.id)
+      return {
+        id: account.id,
+        name: account.name,
+        enabled: account.enabled,
+        balance,
+        receivable: availableQuotaOf(balance),
+        payable: outstandingOf(balance),
+        lastDate: history?.lastDate || null,
+        totalCount: history?.totalCount || 0,
+        ...stats,
+        untracked: Number(
+          (balance - (stats.openReceivable - stats.openPayable)).toFixed(2),
+        ),
+      }
+    })
+    const total = (pick: (row: (typeof contacts)[number]) => number) =>
+      Number(contacts.reduce((sum, row) => sum + pick(row), 0).toFixed(2))
+    return {
+      today: todayText,
+      summary: {
+        receivable: total((row) => row.receivable),
+        payable: total((row) => row.payable),
+        net: total((row) => row.balance),
+        openReceivable: total((row) => row.openReceivable),
+        openPayable: total((row) => row.openPayable),
+        untracked: total((row) => row.untracked),
+        contactCount: contacts.filter(
+          (row) => row.enabled || Math.abs(row.balance) >= 0.01,
+        ).length,
+        overdueCount: entries.filter((entry) => entry.overdue).length,
+      },
+      contacts,
+      entries,
+    }
+  }
+
+  async lendingContact(id: unknown) {
+    const { ledgerId } = await this.context()
+    const cutoff = today()
+    const todayText = dateText(cutoff)
+    const account = await this.contactAccount(this.prisma, ledgerId, id)
+    const [balance, rows, transfers, transactions] = await Promise.all([
+      this.accountBalanceWithDatabase(this.prisma, ledgerId, account.id, cutoff),
+      this.prisma.lendingEntry.findMany({
+        where: { ledgerId, accountId: account.id },
+        include: { account: { select: { name: true } }, settlements: true },
+        orderBy: [{ status: "asc" }, { date: "desc" }, { createdAt: "desc" }],
+        take: 200,
+      }),
+      this.prisma.accountTransfer.findMany({
+        where: {
+          ledgerId,
+          OR: [{ fromAccountId: account.id }, { toAccountId: account.id }],
+        },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 50,
+      }),
+      this.prisma.transaction.findMany({
+        where: { ledgerId, accountId: account.id, ...notDeleted },
+        orderBy: [{ date: "desc" }, { id: "desc" }],
+        take: 50,
+      }),
+    ])
+    const entries = rows.map((row) => this.presentLendingEntry(row, todayText))
+    const stats = this.lendingContactStats(entries, todayText)
+    const movements = [
+      ...transfers.map((row) => ({
+        id: row.id,
+        kind: "transfer" as const,
+        date: dateText(row.date),
+        amount:
+          row.toAccountId === account.id
+            ? Number(row.amount)
+            : -Number(row.amount),
+        item: row.note || "资金移动",
+        createdAt: row.createdAt,
+      })),
+      ...transactions.map((row) => ({
+        id: String(row.id),
+        kind: "transaction" as const,
+        date: dateText(row.date),
+        amount: Number(row.amount),
+        item: row.item,
+        createdAt: row.createdAt,
+      })),
+    ]
+      .sort((left, right) => {
+        const byDate = right.date.localeCompare(left.date)
+        if (byDate) return byDate
+        return right.createdAt.getTime() - left.createdAt.getTime()
+      })
+      .slice(0, 60)
+      .map(({ createdAt, ...row }) => row)
+    return {
+      today: todayText,
+      contact: {
+        id: account.id,
+        name: account.name,
+        enabled: account.enabled,
+        balance,
+        receivable: availableQuotaOf(balance),
+        payable: outstandingOf(balance),
+        ...stats,
+        untracked: Number(
+          (balance - (stats.openReceivable - stats.openPayable)).toFixed(2),
+        ),
+      },
+      entries,
+      movements,
+    }
+  }
+
+  async lendingReminders(days = 7) {
+    const { ledgerId } = await this.context()
+    const todayText = dateText(today())
+    const horizon = asDate(todayText)
+    horizon.setUTCDate(horizon.getUTCDate() + days)
+    const rows = await this.prisma.lendingEntry.findMany({
+      where: {
+        ledgerId,
+        status: "open",
+        dueDate: { not: null, lte: horizon },
+      },
+      include: { account: { select: { name: true } } },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      take: 20,
+    })
+    const entries = rows.map((row) => this.presentLendingEntry(row, todayText))
+    return {
+      overdue: entries.filter((entry) => entry.overdue),
+      dueSoon: entries.filter((entry) => !entry.overdue),
     }
   }
 
@@ -2052,6 +2830,24 @@ export class LedgerService {
             database,
             ledgerId,
             proposal.repayment || {},
+          ),
+        })
+      else if (proposal?.type === "lending-entry")
+        results.push({
+          type: "lending-entry",
+          entry: await this.createLendingEntryWithDatabase(
+            database,
+            ledgerId,
+            proposal.lending || {},
+          ),
+        })
+      else if (proposal?.type === "lending-settle")
+        results.push({
+          type: "lending-settle",
+          settlement: await this.settleLendingWithDatabase(
+            database,
+            ledgerId,
+            proposal.settlement || {},
           ),
         })
       else throw new Error("包含未知操作")

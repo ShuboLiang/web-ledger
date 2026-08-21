@@ -2881,6 +2881,55 @@ button.expense-category-row:focus-visible,
 .recurring-rule-item {
   align-items: flex-start !important;
 }
+.lending-contact-item {
+  cursor: pointer;
+  gap: 12px;
+}
+.lending-contact-item:hover {
+  background: #f6faf8;
+}
+.lending-contact-arrow {
+  color: #9bb0aa;
+}
+.lending-avatar {
+  color: #176b62 !important;
+  font-weight: 600;
+  background: #dff1eb !important;
+}
+.lending-avatar.debt {
+  color: #b3543a !important;
+  background: #f9e7e0 !important;
+}
+.lending-entry-item {
+  align-items: flex-start !important;
+  gap: 12px;
+}
+.lending-entry-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  place-items: center;
+}
+.lending-entry-icon.in {
+  color: #176b62;
+  background: #dff1eb;
+}
+.lending-entry-icon.out {
+  color: #b3543a;
+  background: #f9e7e0;
+}
+.lending-entry-side {
+  flex: 0 0 auto;
+}
+.lending-kind-hint {
+  margin-bottom: 18px;
+}
+.lending-detail-summary {
+  border-color: #cfe0da;
+  background:
+    linear-gradient(112deg, rgba(23, 107, 98, 0.08), transparent 52%), #fbfdfb;
+}
 .trash-intro h4 {
   margin-bottom: 6px !important;
 }
@@ -3399,6 +3448,21 @@ button.expense-category-row:focus-visible,
     width: 100%;
     padding-inline-start: 50px;
     justify-content: space-between;
+  }
+  .lending-entry-item {
+    flex-wrap: wrap;
+  }
+  .lending-entry-item .ant-list-item-meta {
+    flex: 1 1 100%;
+  }
+  .lending-entry-side {
+    padding-inline-start: 48px;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .lending-entry-item .ant-list-item-action {
+    margin-inline-start: auto !important;
   }
   .finance-account-item > .ant-flex:last-child {
     flex: 0 0 auto;

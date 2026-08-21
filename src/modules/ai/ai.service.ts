@@ -223,6 +223,8 @@ export class AiService {
           "transfer-reverse",
           "adjustment-reverse",
           "repayment",
+          "lending-entry",
+          "lending-settle",
         ].includes(stored.type)
       ) {
         if (JSON.stringify(edited) !== JSON.stringify(stored))
@@ -415,6 +417,35 @@ export class AiService {
             手续费: proposal.repayment?.fee || 0,
             付款账户: proposal.display?.fromAccountName,
             还款账户: proposal.display?.toAccountName,
+          },
+        ]
+      if (proposal?.type === "lending-entry")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "记一笔人情往来",
+            类型: proposal.display?.kindText,
+            往来对象: proposal.lending?.contactName,
+            日期: proposal.lending?.date,
+            金额: proposal.lending?.amount,
+            我自己那份: proposal.lending?.selfAmount || 0,
+            事由: proposal.lending?.item,
+            约定还款日: proposal.lending?.dueDate || "",
+          },
+        ]
+      if (proposal?.type === "lending-settle")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "人情往来结算",
+            方向:
+              proposal.settlement?.direction === "payable"
+                ? "还给别人"
+                : "收回别人欠我的",
+            往来对象: proposal.display?.contactName,
+            日期: proposal.settlement?.date,
+            金额: proposal.settlement?.amount,
+            资金账户: proposal.display?.accountName,
           },
         ]
       const current = proposal?.current || {}
@@ -742,6 +773,16 @@ export class AiService {
       return `撤销“${proposal.display?.accountName || "账户"}”额度调整`
     if (proposal?.type === "repayment")
       return `还款 ¥${Number(proposal.repayment?.principal || 0).toFixed(2)}`
+    if (proposal?.type === "lending-entry")
+      return `${proposal.display?.kindText || "人情往来"} ¥${Number(
+        proposal.lending?.amount || 0,
+      ).toFixed(2)}（${proposal.lending?.contactName || "往来对象"}）`
+    if (proposal?.type === "lending-settle")
+      return `${
+        proposal.settlement?.direction === "payable" ? "还钱" : "收款"
+      } ¥${Number(proposal.settlement?.amount || 0).toFixed(2)}（${
+        proposal.display?.contactName || "往来对象"
+      }）`
     const item = proposal?.current?.item || ""
     const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
     return proposal?.type === "update"

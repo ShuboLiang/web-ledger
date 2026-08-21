@@ -6,6 +6,7 @@ import {
   RobotOutlined,
   SettingOutlined,
   TagsOutlined,
+  TeamOutlined,
 } from "@ant-design/icons"
 import { Avatar, Card, List, Typography } from "antd"
 import { useNavigate } from "react-router-dom"
@@ -17,6 +18,13 @@ const entries = [
     title: "资产与负债",
     description: "查看账户额度，管理转账、贷款放款和还款",
     tone: "mint",
+  },
+  {
+    path: "/lending",
+    icon: <TeamOutlined />,
+    title: "人情往来",
+    description: "垫付、代付、借入与待报销，按笔跟踪谁欠谁",
+    tone: "gold",
   },
   {
     path: "/recurring",

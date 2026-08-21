@@ -6,6 +6,7 @@ import {
 import { Line } from "@ant-design/plots"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  Alert,
   App,
   Avatar,
   Button,
@@ -31,6 +32,7 @@ import {
   api,
   type Dashboard,
   type DashboardBudget,
+  type LendingReminders,
   type Transaction,
 } from "@/lib/api"
 import { useQuickStore, type QuickResult } from "@/lib/quick-store"
@@ -59,6 +61,14 @@ export function DashboardPage() {
     queryKey: ["transactions", "recent"],
     queryFn: () => api<{ records: Transaction[] }>("/api/transactions?limit=6"),
   })
+  const { data: lendingReminders } = useQuery({
+    queryKey: ["lending", "reminders"],
+    queryFn: () => api<LendingReminders>("/api/lending/reminders"),
+  })
+  const lendingDue = [
+    ...(lendingReminders?.overdue || []),
+    ...(lendingReminders?.dueSoon || []),
+  ]
   // 快捷记账完成（含切到其他页面期间完成）后弹出模型总结
   useEffect(() => {
     if (quickResult) {
@@ -130,6 +140,29 @@ export function DashboardPage() {
 
   return (
     <div className="page-stack dashboard-page">
+      {Boolean(lendingDue.length) && (
+        <Alert
+          type={lendingReminders?.overdue.length ? "warning" : "info"}
+          showIcon
+          message={
+            lendingReminders?.overdue.length
+              ? `有 ${lendingReminders.overdue.length} 笔往来已过约定日期`
+              : `有 ${lendingDue.length} 笔往来快到约定日期`
+          }
+          description={lendingDue
+            .slice(0, 3)
+            .map(
+              (entry) =>
+                `${entry.contactName}「${entry.item}」${money(entry.outstanding)}，约定 ${entry.dueDate}`,
+            )
+            .join("；")}
+          action={
+            <Button size="small" onClick={() => navigate("/lending")}>
+              去处理
+            </Button>
+          }
+        />
+      )}
       <Row gutter={[18, 18]}>
         <Col xs={24} xl={10}>
           <Card className="statement-card">

@@ -10,6 +10,7 @@ import {
   Select,
   Space,
   Typography,
+  type SelectProps,
 } from "antd"
 import dayjs from "dayjs"
 import { useEffect, useMemo } from "react"
@@ -75,25 +76,38 @@ export function TransactionDrawer({
     ],
     [categories, selectedPrimary],
   )
-  const accountOptions = useMemo(() => {
-    const options = (data?.accounts || []).map((account) => ({
+  const accountOptions = useMemo<SelectProps["options"]>(() => {
+    const accounts = data?.accounts || []
+    const option = (account: (typeof accounts)[number]) => ({
       value: account.id,
       label: `${account.name}${account.isDefault ? "（默认）" : ""}${
-        account.availableQuota === undefined
+        account.availableQuota === undefined || account.isContact
           ? ""
           : ` · 可用 ${money(account.availableQuota)}`
       }`,
-    }))
+    })
+    const own = accounts.filter((account) => !account.isContact).map(option)
+    const contacts = accounts.filter((account) => account.isContact).map(option)
     if (
       record?.accountId &&
-      !options.some((option) => option.value === record.accountId)
+      ![...own, ...contacts].some(
+        (entry) => entry.value === record.accountId,
+      )
     ) {
-      options.push({
+      own.push({
         value: record.accountId,
         label: `${record.accountName || "原账户"}（已停用）`,
       })
     }
-    return options
+    if (!contacts.length) return own
+    return [
+      { label: "我的账户", title: "我的账户", options: own },
+      {
+        label: "人情往来（对方替我付）",
+        title: "人情往来（对方替我付）",
+        options: contacts,
+      },
+    ]
   }, [data?.accounts, record?.accountId, record?.accountName])
   useEffect(() => {
     if (!open) return

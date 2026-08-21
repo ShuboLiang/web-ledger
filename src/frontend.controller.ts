@@ -15,6 +15,7 @@ export class FrontendController {
     "recurring",
     "trash",
     "finance",
+    "lending",
     "tags",
     "ai",
     "management",

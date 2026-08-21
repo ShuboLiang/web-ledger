@@ -578,12 +578,25 @@ export class ManagementService {
 
   async deleteCategory(id: string) {
     const category = await this.category(id)
-    const usageCount = await this.prisma.transaction.count({
-      where: { ledgerId: category.ledgerId, categoryId: id },
-    })
+    const [usageCount, trashedCount] = await Promise.all([
+      this.prisma.transaction.count({
+        where: { ledgerId: category.ledgerId, categoryId: id, deletedAt: null },
+      }),
+      this.prisma.transaction.count({
+        where: {
+          ledgerId: category.ledgerId,
+          categoryId: id,
+          deletedAt: { not: null },
+        },
+      }),
+    ])
     if (usageCount)
       throw new BadRequestException(
         `该分类仍被 ${usageCount} 笔账目使用，请先停用或合并`,
+      )
+    if (trashedCount)
+      throw new BadRequestException(
+        `回收站里还有 ${trashedCount} 笔账目使用该分类，请先清空回收站`,
       )
     const siblingCount = await this.prisma.category.count({
       where: {
@@ -627,15 +640,22 @@ export class ManagementService {
     })
     if (!categories.length) throw new NotFoundException("一级分类不存在")
     const ids = categories.map((row) => row.id)
-    const [usageCount, budgetCount] = await Promise.all([
+    const [usageCount, trashedCount, budgetCount] = await Promise.all([
       this.prisma.transaction.count({
-        where: { ledgerId, categoryId: { in: ids } },
+        where: { ledgerId, categoryId: { in: ids }, deletedAt: null },
+      }),
+      this.prisma.transaction.count({
+        where: { ledgerId, categoryId: { in: ids }, deletedAt: { not: null } },
       }),
       this.prisma.budget.count({ where: { ledgerId, category1 } }),
     ])
     if (usageCount || budgetCount)
       throw new BadRequestException(
         `该一级分类仍关联 ${usageCount} 笔账目、${budgetCount} 条预算，请先停用或合并`,
+      )
+    if (trashedCount)
+      throw new BadRequestException(
+        `回收站里还有 ${trashedCount} 笔账目使用该一级分类，请先清空回收站`,
       )
     await this.prisma.$transaction(async (database) => {
       await database.category.deleteMany({
