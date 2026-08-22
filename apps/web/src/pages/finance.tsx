@@ -5,7 +5,6 @@ import {
   EditOutlined,
   PlusOutlined,
   SwapOutlined,
-  TeamOutlined,
 } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -269,12 +268,6 @@ export function FinancePage() {
             )}
           </div>
             <Space wrap className="finance-actions">
-            <Button
-              icon={<TeamOutlined />}
-              onClick={() => navigate("/lending")}
-            >
-              人情往来
-            </Button>
             <Button
               icon={<PlusOutlined />}
               onClick={() => openPanel("account")}

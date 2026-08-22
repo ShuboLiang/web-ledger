@@ -157,7 +157,7 @@ export function DashboardPage() {
             )
             .join("；")}
           action={
-            <Button size="small" onClick={() => navigate("/lending")}>
+            <Button size="small" onClick={() => navigate("/finance/lending")}>
               去处理
             </Button>
           }
@@ -289,7 +289,7 @@ export function DashboardPage() {
               </div>
               <Button
                 type="link"
-                onClick={() => navigate(`/budgets?month=${data.budget!.month}`)}
+                onClick={() => navigate(`/analytics/budgets?month=${data.budget!.month}`)}
               >
                 管理预算 <ArrowRightOutlined />
               </Button>
@@ -368,7 +368,7 @@ export function DashboardPage() {
             <Button
               type="primary"
               onClick={() =>
-                navigate(`/budgets?month=${data.anchor.slice(0, 7)}`)
+                navigate(`/analytics/budgets?month=${data.anchor.slice(0, 7)}`)
               }
             >
               设置本月预算
@@ -393,7 +393,7 @@ export function DashboardPage() {
                 <Button
                   type="link"
                   onClick={() =>
-                    navigate(`/budgets?month=${data.anchor.slice(0, 7)}`)
+                    navigate(`/analytics/budgets?month=${data.anchor.slice(0, 7)}`)
                   }
                 >
                   查看全部 {data.categoryBudgets.length} 项

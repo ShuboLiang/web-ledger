@@ -1357,6 +1357,90 @@ try {
   )
   assert.equal((await request("/api/lending")).summary.payable, 0)
 
+  const shanghaiToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+  const shanghaiTomorrowDate = new Date(`${shanghaiToday}T00:00:00.000Z`)
+  shanghaiTomorrowDate.setUTCDate(shanghaiTomorrowDate.getUTCDate() + 1)
+  const shanghaiTomorrow = shanghaiTomorrowDate.toISOString().slice(0, 10)
+  const todayAdvance = await request("/api/lending/entries", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: "advance",
+      contactName: "时区校验",
+      date: shanghaiToday,
+      amount: 900,
+      item: "今天垫付不应出现未跟踪",
+      accountId: financeAccount.id,
+    }),
+  })
+  assert.equal(todayAdvance.outstanding, 900)
+  lending = await request("/api/lending")
+  assert.equal(
+    lending.contacts.find((row) => row.name === "时区校验").untracked,
+    0,
+  )
+  assert.equal(lending.summary.untracked, 0)
+  const futureAdvance = await request("/api/lending/entries", {
+    method: "POST",
+    body: JSON.stringify({
+      kind: "advance",
+      contactName: "时区校验",
+      date: shanghaiTomorrow,
+      amount: 50,
+      item: "未来日期也不应误报未跟踪",
+      accountId: financeAccount.id,
+    }),
+  })
+  lending = await request("/api/lending")
+  assert.equal(
+    lending.contacts.find((row) => row.name === "时区校验").untracked,
+    0,
+  )
+  await request(`/api/lending/entries/${todayAdvance.id}`, { method: "DELETE" })
+  await request(`/api/lending/entries/${futureAdvance.id}`, { method: "DELETE" })
+
+  const namedContact = await request("/api/lending/contacts", {
+    method: "POST",
+    body: JSON.stringify({ name: "可改名对象" }),
+  })
+  const renamedContact = await request(
+    `/api/lending/contacts/${namedContact.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name: "已改名对象" }),
+    },
+  )
+  assert.equal(renamedContact.name, "已改名对象")
+  assert.equal(
+    (
+      await request(`/api/lending/contacts/${namedContact.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: false }),
+      })
+    ).enabled,
+    false,
+  )
+  assert.equal(
+    (
+      await request(`/api/lending/contacts/${namedContact.id}`, {
+        method: "DELETE",
+      })
+    ).deleted,
+    true,
+  )
+  assert.equal(
+    (
+      await requestError(`/api/lending/contacts/${zhangsan.id}`, {
+        method: "DELETE",
+      })
+    ).status,
+    400,
+  )
+
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
     body: JSON.stringify({

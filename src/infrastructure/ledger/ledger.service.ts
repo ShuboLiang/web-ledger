@@ -20,7 +20,14 @@ const validDate = (value: unknown) => {
     return false
   }
 }
-const today = () => asDate(dateText(new Date()))
+const shanghaiTodayText = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+const today = () => asDate(shanghaiTodayText())
 const positiveMoney = (value: unknown, label = "金额") => {
   const amount = Number(value)
   if (!Number.isFinite(amount) || amount <= 0)
@@ -1091,7 +1098,9 @@ export class LedgerService {
     ].filter(Boolean)
     if (leftover.length)
       throw new BadRequestException(
-        `该账户还有${leftover.join("、")}，请先在资金移动里撤销后再删除`,
+        account.type === CONTACT_ACCOUNT_TYPE
+          ? `「${account.name}」还有${leftover.join("、")}，不能删除。可以改名或归档；有未结清的先结清或撤销往来。`
+          : `该账户还有${leftover.join("、")}，请先在资金移动里撤销后再删除`,
       )
     const balance = await this.accountBalanceWithDatabase(
       database,
@@ -2002,6 +2011,15 @@ export class LedgerService {
       const account = await this.contactAccount(database, ledgerId, id)
       const name = clean(input?.name ?? account.name, 80)
       if (!name) throw new BadRequestException("请填写往来对象名称")
+      if (name !== account.name) {
+        const clash = await database.account.findFirst({
+          where: { ledgerId, name, id: { not: account.id } },
+        })
+        if (clash)
+          throw new BadRequestException(
+            `已经存在名为“${name}”的账户或往来对象`,
+          )
+      }
       const enabled =
         input?.enabled === undefined ? account.enabled : Boolean(input.enabled)
       const updated = await database.account.update({
@@ -2099,9 +2117,11 @@ export class LedgerService {
       ]),
     )
     const contacts = accounts.map((account) => {
+      const mine = entries.filter((entry) => entry.contactId === account.id)
       const balance = balances.get(account.id) || 0
-      const stats = this.lendingContactStats(
-        entries.filter((entry) => entry.contactId === account.id),
+      const stats = this.lendingContactStats(mine, todayText)
+      const tracked = this.lendingContactStats(
+        mine.filter((entry) => entry.date <= todayText),
         todayText,
       )
       const history = activityByContact.get(account.id)
@@ -2116,7 +2136,10 @@ export class LedgerService {
         totalCount: history?.totalCount || 0,
         ...stats,
         untracked: Number(
-          (balance - (stats.openReceivable - stats.openPayable)).toFixed(2),
+          (
+            balance -
+            (tracked.openReceivable - tracked.openPayable)
+          ).toFixed(2),
         ),
       }
     })
@@ -2170,6 +2193,10 @@ export class LedgerService {
     ])
     const entries = rows.map((row) => this.presentLendingEntry(row, todayText))
     const stats = this.lendingContactStats(entries, todayText)
+    const tracked = this.lendingContactStats(
+      entries.filter((entry) => entry.date <= todayText),
+      todayText,
+    )
     const movements = [
       ...transfers.map((row) => ({
         id: row.id,
@@ -2209,7 +2236,9 @@ export class LedgerService {
         payable: outstandingOf(balance),
         ...stats,
         untracked: Number(
-          (balance - (stats.openReceivable - stats.openPayable)).toFixed(2),
+          (
+            balance - (tracked.openReceivable - tracked.openPayable)
+          ).toFixed(2),
         ),
       },
       entries,

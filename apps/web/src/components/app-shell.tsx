@@ -1,20 +1,14 @@
 import {
   AppstoreOutlined,
-  CalendarOutlined,
   BarChartOutlined,
   BankOutlined,
   BookOutlined,
   BookTwoTone,
-  DeleteOutlined,
   RobotOutlined,
   PlusOutlined,
   MoreOutlined,
   SearchOutlined,
   SettingOutlined,
-  TagsOutlined,
-  TeamOutlined,
-  WalletOutlined,
-  RetweetOutlined,
   LoadingOutlined,
   LogoutOutlined,
   UserOutlined,
@@ -52,52 +46,51 @@ const { Header, Sider, Content } = Layout
 const nav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
-  { key: "/heatmap", label: "热力图", icon: <CalendarOutlined /> },
+  { key: "/finance", label: "资金", icon: <BankOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
-  { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
-  { key: "/recurring", label: "定期账单", icon: <RetweetOutlined /> },
-  { key: "/trash", label: "回收站", icon: <DeleteOutlined /> },
-  { key: "/finance", label: "资产负债", icon: <BankOutlined /> },
-  { key: "/lending", label: "人情往来", icon: <TeamOutlined /> },
-  { key: "/tags", label: "标签", icon: <TagsOutlined /> },
   { key: "/ai", label: "AI 助手", icon: <RobotOutlined /> },
-  { key: "/management", label: "分类管理", icon: <TagsOutlined /> },
   { key: "/settings", label: "设置", icon: <SettingOutlined /> },
 ]
 const mobileNav = [
   { key: "/dashboard", label: "概览", icon: <AppstoreOutlined /> },
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
-  { key: "/heatmap", label: "热力", icon: <CalendarOutlined /> },
+  { key: "/finance", label: "资金", icon: <BankOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
-  { key: "/budgets", label: "预算", icon: <WalletOutlined /> },
   { key: "/more", label: "更多", icon: <MoreOutlined /> },
 ]
-const morePaths = new Set([
-  "/more",
-  "/recurring",
-  "/trash",
-  "/finance",
-  "/lending",
-  "/tags",
-  "/ai",
-  "/management",
-  "/settings",
-])
+const morePaths = new Set(["/more", "/ai", "/settings", "/settings/categories"])
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"],
-  "/transactions": ["账目明细", "查找、核对和整理每一笔账目"],
-  "/heatmap": ["支出热力", "按天查看支出深浅，点日期看当天账目"],
-  "/analytics": ["统计分析", "比较周期、分类与长期变化"],
+  "/transactions": ["账目", "明细、定期账单和回收站"],
+  "/transactions/recurring": ["账目", "房租、会员等固定收支按期生成"],
+  "/transactions/trash": ["账目", "恢复或彻底删除误删的账目"],
+  "/analytics": ["分析", "比较周期、分类与长期变化"],
+  "/analytics/heatmap": ["分析", "按天查看支出深浅，点日期看当天账目"],
+  "/analytics/budgets": ["分析", "控制本月总支出与重点分类"],
+  "/analytics/tags": ["分析", "按场景、人物和目的重新理解消费"],
+  "/finance": ["资金", "账户额度、转账还款和人情往来"],
+  "/finance/lending": ["资金", "垫付、代付和借入，按笔跟踪谁欠谁"],
   "/ai": ["AI 助手", "用自然语言记账和查询"],
-  "/budgets": ["预算规划", "控制本月总支出与重点分类"],
-  "/recurring": ["定期账单", "房租、会员等固定收支按期生成"],
-  "/trash": ["回收站", "恢复或彻底删除误删的账目"],
-  "/finance": ["资产与负债", "管理账户余额、资金转账和还款计划"],
-  "/lending": ["人情往来", "垫付、代付和借入，按笔跟踪谁欠谁"],
-  "/tags": ["消费标签", "按场景、人物和目的重新理解消费"],
-  "/management": ["分类管理", "维护收支分类"],
-  "/settings": ["系统设置", "管理 AI 模型和数据设置"],
-  "/more": ["更多功能", "管理资产、预算、分类与应用设置"],
+  "/settings": ["系统设置", "管理 AI 模型和收支分类"],
+  "/settings/categories": ["系统设置", "维护记账时使用的一级和二级分类"],
+  "/more": ["更多功能", "AI 助手与应用设置"],
+}
+
+const navKeyFor = (pathname: string) =>
+  nav.find(
+    (item) =>
+      pathname === item.key || pathname.startsWith(`${item.key}/`),
+  )?.key || pathname
+
+const mobileActive = (key: string, pathname: string) =>
+  key === "/more"
+    ? morePaths.has(pathname) || pathname.startsWith("/settings")
+    : pathname === key || pathname.startsWith(`${key}/`)
+
+const titleFor = (pathname: string): [string, string] => {
+  if (titles[pathname]) return titles[pathname]
+  const parent = navKeyFor(pathname)
+  return titles[parent] || titles["/dashboard"]
 }
 
 export function AppShell() {
@@ -113,11 +106,11 @@ export function AppShell() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const aiAnswering = useIsMutating({ mutationKey: ["ai-command"] }) > 0
-  const navItems = nav.map((item) =>
-    item.key === "/ai" && aiAnswering
-      ? { ...item, icon: <LoadingOutlined spin />, label: "AI 回答中" }
-      : item,
-  )
+  const navItems = nav.map((item) => {
+    if (item.key === "/ai" && aiAnswering)
+      return { ...item, icon: <LoadingOutlined spin />, label: "AI 回答中" }
+    return item
+  })
   const { data: auth } = useQuery({
     queryKey: ["auth-me"],
     queryFn: () => api<{ user: AuthUser }>("/api/auth/me"),
@@ -131,8 +124,12 @@ export function AppShell() {
       window.location.assign("/login")
     },
   })
-  const [title, subtitle] = titles[location.pathname] || titles["/dashboard"]
-  const analyticsHref = () => analyticsPath()
+  const [title, subtitle] = titleFor(location.pathname)
+  const openNav = (key: string) => {
+    if (location.pathname === key || location.pathname.startsWith(`${key}/`))
+      return
+    navigate(key === "/analytics" ? analyticsPath() : key)
+  }
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -143,15 +140,6 @@ export function AppShell() {
     window.addEventListener("keydown", openSearch)
     return () => window.removeEventListener("keydown", openSearch)
   }, [])
-  useEffect(() => {
-    if (location.pathname !== "/management") return
-    const legacy = new URLSearchParams(location.search)
-    if (legacy.get("tab") === "budgets")
-      navigate(
-        `/budgets${legacy.get("month") ? `?month=${legacy.get("month")}` : ""}`,
-        { replace: true },
-      )
-  }, [location.pathname, location.search, navigate])
   const submitSearch = (value: string) => {
     const query = value.trim()
     setSearchOpen(false)
@@ -210,11 +198,9 @@ export function AppShell() {
           <Menu
             theme="dark"
             mode="inline"
-            selectedKeys={[location.pathname]}
+            selectedKeys={[navKeyFor(location.pathname)]}
             items={navItems}
-            onClick={({ key }) =>
-              navigate(key === "/analytics" ? analyticsHref() : key)
-            }
+            onClick={({ key }) => openNav(key)}
           />
         </Sider>
       )}
@@ -301,12 +287,8 @@ export function AppShell() {
               <Button
                 type="text"
                 key={item.key}
-                className={`mobile-nav-item ${location.pathname === item.key ? "active" : ""}`}
-                onClick={() =>
-                  navigate(
-                    item.key === "/analytics" ? analyticsHref() : item.key,
-                  )
-                }
+                className={`mobile-nav-item ${mobileActive(item.key, location.pathname) ? "active" : ""}`}
+                onClick={() => openNav(item.key)}
                 icon={item.icon}
               >
                 <span>{item.label}</span>
@@ -321,27 +303,17 @@ export function AppShell() {
               aria-label="记一笔"
               onClick={() => setDrawer(true)}
             />
-            {mobileNav.slice(3).map((item) => {
-              const active =
-                item.key === "/more"
-                  ? morePaths.has(location.pathname)
-                  : location.pathname === item.key
-              return (
-                <Button
-                  type="text"
-                  key={item.key}
-                  className={`mobile-nav-item ${active ? "active" : ""}`}
-                  onClick={() =>
-                    navigate(
-                      item.key === "/analytics" ? analyticsHref() : item.key,
-                    )
-                  }
-                  icon={item.icon}
-                >
-                  <span>{item.label}</span>
-                </Button>
-              )
-            })}
+            {mobileNav.slice(3).map((item) => (
+              <Button
+                type="text"
+                key={item.key}
+                className={`mobile-nav-item ${mobileActive(item.key, location.pathname) ? "active" : ""}`}
+                onClick={() => openNav(item.key)}
+                icon={item.icon}
+              >
+                <span>{item.label}</span>
+              </Button>
+            ))}
           </Flex>
         </div>
       )}

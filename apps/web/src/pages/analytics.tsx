@@ -783,7 +783,7 @@ export function AnalyticsPage() {
               <Button
                 type="primary"
                 onClick={() =>
-                  navigate(`/budgets?month=${selected.slice(0, 7)}`)
+                  navigate(`/analytics/budgets?month=${selected.slice(0, 7)}`)
                 }
               >
                 去设置预算

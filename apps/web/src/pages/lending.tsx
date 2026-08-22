@@ -18,6 +18,7 @@ import {
   Card,
   Col,
   Drawer,
+  Dropdown,
   Empty,
   Flex,
   Form,
@@ -98,6 +99,9 @@ export function LendingPage() {
   const [contactForm] = Form.useForm()
   const [panel, setPanel] = useState<"entry" | "settle" | "contact" | null>(null)
   const [settleTarget, setSettleTarget] = useState<LendingEntry | null>(null)
+  const [editingContact, setEditingContact] = useState<LendingContact | null>(
+    null,
+  )
   const [detailId, setDetailId] = useState<string | null>(null)
   const kind: EntryKind = Form.useWatch("kind", entryForm) || "advance"
   const settleDirection: LendingDirection =
@@ -174,14 +178,46 @@ export function LendingPage() {
       api(url, { method, body: body ? JSON.stringify(body) : undefined }),
     onSuccess: async (_result, variables: any) => {
       setPanel(null)
+      setEditingContact(null)
       await refresh()
       message.success(variables.success || "已记录")
     },
     onError: (error: Error) => message.error(error.message),
   })
 
+  const settleContactOptions = useMemo(() => {
+    const rows = contacts.filter(
+      (contact) =>
+        contact.openCount > 0 ||
+        contact.id === settleContactId ||
+        (contact.enabled && Math.abs(contact.balance) >= 0.01),
+    )
+    const seen = new Set(rows.map((row) => row.id))
+    if (settleContactId && !seen.has(settleContactId)) {
+      const current = contacts.find((row) => row.id === settleContactId)
+      if (current) rows.push(current)
+    }
+    return rows.map((contact) => ({
+      value: contact.id,
+      label: contact.name,
+      outstanding:
+        contact.openReceivable > 0 || contact.openPayable > 0
+          ? `${
+              contact.openReceivable > 0
+                ? `欠我 ${money(contact.openReceivable)}`
+                : ""
+            }${
+              contact.openReceivable > 0 && contact.openPayable > 0 ? " / " : ""
+            }${
+              contact.openPayable > 0 ? `我欠 ${money(contact.openPayable)}` : ""
+            }`
+          : "已结清",
+    }))
+  }, [contacts, settleContactId])
+
   const openEntry = (preset?: { contactName?: string; kind?: EntryKind }) => {
     setPanel("entry")
+    entryForm.resetFields()
     entryForm.setFieldsValue({
       kind: preset?.kind || "advance",
       contactName: preset?.contactName,
@@ -210,6 +246,7 @@ export function LendingPage() {
         : "receivable")
     setPanel("settle")
     setSettleTarget(preset?.entry || null)
+    settleForm.resetFields()
     settleForm.setFieldsValue({
       contactId: contact?.id,
       entryId: preset?.entry?.id,
@@ -219,9 +256,64 @@ export function LendingPage() {
         preset?.entry?.outstanding ??
         (direction === "receivable"
           ? contact?.openReceivable
-          : contact?.openPayable),
+          : contact?.openPayable) ??
+        undefined,
       accountId: defaultAccountId,
       note: "",
+    })
+  }
+  const openContactForm = (contact?: LendingContact) => {
+    setEditingContact(contact || null)
+    setPanel("contact")
+    contactForm.resetFields()
+    contactForm.setFieldsValue({ name: contact?.name || "" })
+  }
+  const currentDetail = detail.data?.contact
+  const renameContact = () => {
+    if (!currentDetail) return
+    openContactForm(
+      contacts.find((row) => row.id === currentDetail.id) || currentDetail,
+    )
+  }
+  const toggleContactEnabled = () => {
+    if (!currentDetail) return
+    const archiving = currentDetail.enabled
+    modal.confirm({
+      title: archiving
+        ? `归档「${currentDetail.name}」`
+        : `恢复「${currentDetail.name}」`,
+      content: archiving
+        ? "归档后不会出现在新建往来的名单里，历史记录还在，随时可以恢复。"
+        : "恢复后可以继续记往来。",
+      okText: archiving ? "归档" : "恢复",
+      cancelText: "取消",
+      onOk: async () => {
+        await api(`/api/lending/contacts/${currentDetail.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !currentDetail.enabled }),
+        })
+        await refresh()
+        message.success(archiving ? "已归档" : "已恢复")
+      },
+    })
+  }
+  const removeContact = () => {
+    if (!currentDetail) return
+    modal.confirm({
+      title: `删除「${currentDetail.name}」`,
+      content:
+        "只能删除没有往来记录、余额为零的对象。记错名字请改名；暂时不用请归档。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        await api(`/api/lending/contacts/${currentDetail.id}`, {
+          method: "DELETE",
+        })
+        setDetailId(null)
+        await refresh()
+        message.success("往来对象已删除")
+      },
     })
   }
   const removeEntry = (entry: LendingEntry) =>
@@ -297,10 +389,7 @@ export function LendingPage() {
           <Space wrap className="finance-actions">
             <Button
               icon={<TeamOutlined />}
-              onClick={() => {
-                setPanel("contact")
-                contactForm.setFieldsValue({ name: "" })
-              }}
+              onClick={() => openContactForm()}
             >
               新增往来对象
             </Button>
@@ -353,7 +442,7 @@ export function LendingPage() {
           type="info"
           showIcon
           message="有往来金额没有对应的按笔记录"
-          description={`账户口径与按笔跟踪相差 ${money(Math.abs(untracked))}，通常是直接把账目的付款账户选成了往来对象。可以在对应人的明细里核对流水。`}
+          description={`账户口径与按笔跟踪相差 ${money(Math.abs(untracked))}。常见原因是记账时把付款账户直接选成了往来对象，而不是走「记一笔往来」。可以在对应人的明细里核对流水。`}
         />
       )}
 
@@ -740,20 +829,15 @@ export function LendingPage() {
             <Select
               showSearch={searchableSelect}
               optionFilterProp="label"
-              options={contacts
-                .filter((contact) => contact.openCount > 0)
-                .map((contact) => ({
-                  value: contact.id,
-                  label: `${contact.name} · ${
-                    contact.openReceivable > 0
-                      ? `欠我 ${money(contact.openReceivable)}`
-                      : ""
-                  }${contact.openReceivable > 0 && contact.openPayable > 0 ? " / " : ""}${
-                    contact.openPayable > 0
-                      ? `我欠 ${money(contact.openPayable)}`
-                      : ""
-                  }`,
-                }))}
+              placeholder="选择往来对象"
+              options={settleContactOptions.map((option) => ({
+                value: option.value,
+                label: `${option.label} · ${option.outstanding}`,
+              }))}
+              labelRender={(option) => {
+                const contact = contacts.find((row) => row.id === option.value)
+                return contact?.name || option.label
+              }}
               onChange={() => {
                 setSettleTarget(null)
                 settleForm.setFieldValue("entryId", undefined)
@@ -821,11 +905,14 @@ export function LendingPage() {
 
       <Drawer
         className="responsive-drawer"
-        title="新增往来对象"
+        title={editingContact ? "修改往来对象" : "新增往来对象"}
         open={panel === "contact"}
         width={420}
         destroyOnHidden
-        onClose={() => setPanel(null)}
+        onClose={() => {
+          setPanel(null)
+          setEditingContact(null)
+        }}
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={() => setPanel(null)}>取消</Button>
@@ -840,15 +927,20 @@ export function LendingPage() {
         }
       >
         <Typography.Paragraph type="secondary">
-          往来对象可以是人，也可以是公司或团体。记往来时直接输入新名字也会自动创建。
+          {editingContact
+            ? "改名后历史往来会跟到新名字上。暂时不想看到这个人，可以在明细里归档。"
+            : "往来对象可以是人，也可以是公司或团体。记往来时直接输入新名字也会自动创建。"}
         </Typography.Paragraph>
         <Form
           form={contactForm}
           layout="vertical"
           onFinish={(values) =>
             action.mutate({
-              url: "/api/lending/contacts",
-              success: "往来对象已创建",
+              url: editingContact
+                ? `/api/lending/contacts/${editingContact.id}`
+                : "/api/lending/contacts",
+              method: editingContact ? "PATCH" : "POST",
+              success: editingContact ? "名称已更新" : "往来对象已创建",
               body: values,
             })
           }
@@ -894,6 +986,9 @@ export function LendingPage() {
               )
             }
             onRemove={removeEntry}
+            onRename={renameContact}
+            onToggleEnabled={toggleContactEnabled}
+            onDelete={removeContact}
           />
         )}
       </Drawer>
@@ -1004,11 +1099,17 @@ function ContactDetail({
   onEntry,
   onSettle,
   onRemove,
+  onRename,
+  onToggleEnabled,
+  onDelete,
 }: {
   detail: LendingContactDetail
   onEntry: (kind: EntryKind) => void
   onSettle: (entry?: LendingEntry) => void
   onRemove: (entry: LendingEntry) => void
+  onRename: () => void
+  onToggleEnabled: () => void
+  onDelete: () => void
 }) {
   const [tab, setTab] = useState<"entries" | "movements">("entries")
   const { contact, entries, movements } = detail
@@ -1044,6 +1145,27 @@ function ContactDetail({
           </Button>
           <Button onClick={() => onEntry("advance")}>再垫付一笔</Button>
           <Button onClick={() => onEntry("covered")}>对方替我付</Button>
+          <Dropdown
+            menu={{
+              items: [
+                { key: "rename", label: "改名", onClick: onRename },
+                {
+                  key: "archive",
+                  label: contact.enabled ? "归档" : "取消归档",
+                  onClick: onToggleEnabled,
+                },
+                { type: "divider" },
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  onClick: onDelete,
+                },
+              ],
+            }}
+          >
+            <Button>管理</Button>
+          </Dropdown>
         </Flex>
       </Card>
 

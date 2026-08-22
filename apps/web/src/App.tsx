@@ -1,7 +1,13 @@
 import { lazy, Suspense } from "react"
 import { Flex, Spin, Typography } from "antd"
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom"
 import { AppShell } from "@/components/app-shell"
+import {
+  AnalyticsWorkspace,
+  FinanceWorkspace,
+  SettingsWorkspace,
+  TransactionsWorkspace,
+} from "@/components/workspace-tabs"
 import { useQuery } from "@tanstack/react-query"
 import { api, type AuthUser } from "@/lib/api"
 import { AuthPage } from "@/pages/auth"
@@ -62,6 +68,26 @@ const MorePage = lazy(() =>
   import("@/pages/more").then((module) => ({ default: module.MorePage })),
 )
 
+function RedirectKeepQuery({ to }: { to: string }) {
+  const [params] = useSearchParams()
+  const query = params.toString()
+  return <Navigate to={query ? `${to}?${query}` : to} replace />
+}
+
+function LegacyManagementRedirect() {
+  const [params] = useSearchParams()
+  if (params.get("tab") === "budgets") {
+    const month = params.get("month")
+    return (
+      <Navigate
+        to={month ? `/analytics/budgets?month=${month}` : "/analytics/budgets"}
+        replace
+      />
+    )
+  }
+  return <Navigate to="/settings/categories" replace />
+}
+
 export function App() {
   const auth = useQuery({
     queryKey: ["auth-me"],
@@ -89,19 +115,52 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="transactions" element={<TransactionsPage />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="heatmap" element={<HeatmapPage />} />
-          <Route path="budgets" element={<BudgetsPage />} />
-          <Route path="recurring" element={<RecurringPage />} />
-          <Route path="trash" element={<TrashPage />} />
-          <Route path="finance" element={<FinancePage />} />
-          <Route path="lending" element={<LendingPage />} />
-          <Route path="tags" element={<TagsPage />} />
+          <Route path="transactions" element={<TransactionsWorkspace />}>
+            <Route index element={<TransactionsPage />} />
+            <Route path="recurring" element={<RecurringPage />} />
+            <Route path="trash" element={<TrashPage />} />
+          </Route>
+          <Route path="analytics" element={<AnalyticsWorkspace />}>
+            <Route index element={<AnalyticsPage />} />
+            <Route path="heatmap" element={<HeatmapPage />} />
+            <Route path="budgets" element={<BudgetsPage />} />
+            <Route path="tags" element={<TagsPage />} />
+          </Route>
+          <Route path="finance" element={<FinanceWorkspace />}>
+            <Route index element={<FinancePage />} />
+            <Route path="lending" element={<LendingPage />} />
+          </Route>
           <Route path="ai" element={<AiPage />} />
-          <Route path="management" element={<ManagementPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings" element={<SettingsWorkspace />}>
+            <Route index element={<SettingsPage />} />
+            <Route path="categories" element={<ManagementPage />} />
+          </Route>
           <Route path="more" element={<MorePage />} />
+          <Route
+            path="heatmap"
+            element={<RedirectKeepQuery to="/analytics/heatmap" />}
+          />
+          <Route
+            path="budgets"
+            element={<RedirectKeepQuery to="/analytics/budgets" />}
+          />
+          <Route
+            path="tags"
+            element={<RedirectKeepQuery to="/analytics/tags" />}
+          />
+          <Route
+            path="lending"
+            element={<RedirectKeepQuery to="/finance/lending" />}
+          />
+          <Route
+            path="recurring"
+            element={<RedirectKeepQuery to="/transactions/recurring" />}
+          />
+          <Route
+            path="trash"
+            element={<RedirectKeepQuery to="/transactions/trash" />}
+          />
+          <Route path="management" element={<LegacyManagementRedirect />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>
