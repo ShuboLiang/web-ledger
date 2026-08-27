@@ -92,11 +92,11 @@
 
 ## P2 体验层
 
-### P2-1 PWA 支持 — 1 人天
+### ~~P2-1 PWA 支持~~ — ✅ 已完成（2026-08-22）
 
-这是一个以手机为主要场景的 web 记账应用，但 `apps/web/index.html` 无 manifest、`vite.config.ts` 无 PWA 插件。用户无法添加到主屏、没有应用图标、离线打不开。移动端响应式（底部导航、FAB、iOS 防缩放）已经做得很细，缺这一层使得整体仍停留在「一个网页」。
+已接入 `vite-plugin-pwa`，提供可安装 Manifest、Chromium 与 iOS 兼容图标、自动更新 Service Worker、应用外壳预缓存和离线导航回退；用户 API 明确不进入缓存。
 
-改动：接入 `vite-plugin-pwa`，配置 manifest、图标集与 service worker 缓存策略。投入产出比在整个 backlog 中最高。
+~~改动：接入 `vite-plugin-pwa`，配置 manifest、图标集与 service worker 缓存策略。~~
 
 ### P2-2 暗色模式 — 3 人天
 
@@ -151,13 +151,10 @@
 来自 `TODO.md` 及本次盘点：
 
 1. 设置页菜单切换无效 —— `pages/settings.tsx` 中 `section` 状态会更新，但右侧始终渲染 `AiModelSettings`。补其他区块前必须先修。（0.2 人天）
-2. 柱状图点击柱子查看详情。（0.5 人天）
-3. 柱状图设计待定。
-4. AI 待办区信息显示不全。（0.5 人天）
-5. 手机端账目无法排序。（0.5 人天）
-6. 手机端标签需要左右滑动，操作不便。（0.5 人天）
-7. Dashboard 的 AI 快捷记账直接写入不需确认，与 `/ai` 页必须确认的行为不一致，建议统一。（0.3 人天）
-8. `frontend.controller.ts` 未列出 `heatmap` 路径，生产环境直接刷新该页可能 404。（0.1 人天）
+
+2. 手机端标签需要左右滑动，操作不便。（0.5 人天）
+3. Dashboard 的 AI 快捷记账直接写入不需确认，与 `/ai` 页必须确认的行为不一致，建议统一。（0.3 人天）
+4. `frontend.controller.ts` 未列出 `heatmap` 路径，生产环境直接刷新该页可能 404。（0.1 人天）
 
 ---
 

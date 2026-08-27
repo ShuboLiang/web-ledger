@@ -6,7 +6,6 @@ import {
   BookTwoTone,
   RobotOutlined,
   PlusOutlined,
-  MoreOutlined,
   SearchOutlined,
   SettingOutlined,
   LoadingOutlined,
@@ -40,7 +39,11 @@ import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type AuthUser } from "@/lib/api"
 import { clearPersist } from "@/lib/utils"
 import { analyticsPath } from "@/lib/analytics-scope"
-import { useSearchableSelect, useMobileSheetFocusGuard, useOverlayScrollLock } from "@/lib/use-viewport"
+import {
+  useSearchableSelect,
+  useMobileSheetFocusGuard,
+  useOverlayScrollLock,
+} from "@/lib/use-viewport"
 
 const { Header, Sider, Content } = Layout
 const nav = [
@@ -56,9 +59,9 @@ const mobileNav = [
   { key: "/transactions", label: "账目", icon: <BookOutlined /> },
   { key: "/finance", label: "资金", icon: <BankOutlined /> },
   { key: "/analytics", label: "分析", icon: <BarChartOutlined /> },
-  { key: "/more", label: "更多", icon: <MoreOutlined /> },
+  { key: "/ai", label: "AI 助手", icon: <RobotOutlined /> },
+  { key: "/settings", label: "系统设置", icon: <SettingOutlined /> },
 ]
-const morePaths = new Set(["/more", "/ai", "/settings", "/settings/categories"])
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"],
   "/transactions": ["账目", "明细、定期账单和回收站"],
@@ -78,14 +81,11 @@ const titles: Record<string, [string, string]> = {
 
 const navKeyFor = (pathname: string) =>
   nav.find(
-    (item) =>
-      pathname === item.key || pathname.startsWith(`${item.key}/`),
+    (item) => pathname === item.key || pathname.startsWith(`${item.key}/`),
   )?.key || pathname
 
 const mobileActive = (key: string, pathname: string) =>
-  key === "/more"
-    ? morePaths.has(pathname) || pathname.startsWith("/settings")
-    : pathname === key || pathname.startsWith(`${key}/`)
+  pathname === key || pathname.startsWith(`${key}/`)
 
 const titleFor = (pathname: string): [string, string] => {
   if (titles[pathname]) return titles[pathname]

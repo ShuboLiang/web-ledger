@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title id="title">轻账</title>
+  <rect width="192" height="192" rx="42" fill="#0b2527"/>
+  <rect x="38" y="37" width="116" height="118" rx="28" fill="#176b62"/>
+  <path d="M38 65c0-15.46 12.54-28 28-28h4v118h-4c-15.46 0-28-12.54-28-28V65Z" fill="#0f5752"/>
+  <rect x="59" y="52" width="77" height="90" rx="17" fill="#d5f2e8"/>
+  <path d="M116 37h22v45l-11-8.5L116 82V37Z" fill="#f0b861"/>
+  <path d="m80 74 16 19 16-19M96 92v29M81 96h30M81 107h30" fill="none" stroke="#176b62" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -74,6 +74,51 @@ try {
   const page = await (await fetch(base)).text()
   assert.match(page, /id="root"/)
   assert.match(page, /\/assets\//)
+  assert.match(page, /rel="manifest" href="\/manifest\.webmanifest"/)
+  assert.match(page, /src="\/registerSW\.js"/)
+
+  const manifestResponse = await fetch(`${base}/manifest.webmanifest`)
+  assert.match(
+    manifestResponse.headers.get("content-type") || "",
+    /^application\/manifest\+json/,
+  )
+  const manifest = await manifestResponse.json()
+  assert.equal(manifest.name, "轻账 · 专业记账工作台")
+  assert.equal(manifest.short_name, "轻账")
+  assert.equal(manifest.display, "standalone")
+  assert.equal(manifest.start_url, "/")
+  assert.equal(manifest.scope, "/")
+  const pngIcons = manifest.icons.filter((icon) => icon.type === "image/png")
+  assert.ok(pngIcons.some((icon) => icon.sizes === "192x192"))
+  assert.ok(pngIcons.some((icon) => icon.sizes === "512x512"))
+  assert.ok(pngIcons.some((icon) => icon.purpose === "maskable"))
+  for (const icon of pngIcons) {
+    const iconResponse = await fetch(new URL(icon.src, base))
+    assert.match(iconResponse.headers.get("content-type") || "", /^image\/png/)
+    const signature = new Uint8Array(await iconResponse.arrayBuffer()).slice(
+      0,
+      8,
+    )
+    assert.deepEqual(Array.from(signature), [137, 80, 78, 71, 13, 10, 26, 10])
+  }
+
+  const appleIcon = page.match(
+    /rel="apple-touch-icon" href="([^"]+\.png)"/,
+  )?.[1]
+  assert.ok(appleIcon)
+  assert.equal(
+    (await fetch(new URL(appleIcon, base))).headers.get("content-type"),
+    "image/png",
+  )
+
+  const serviceWorkerResponse = await fetch(`${base}/sw.js`)
+  assert.match(
+    serviceWorkerResponse.headers.get("content-type") || "",
+    /javascript/,
+  )
+  const serviceWorker = await serviceWorkerResponse.text()
+  assert.match(serviceWorker, /precacheAndRoute/)
+  assert.ok(serviceWorker.includes("denylist:[/^\\/api\\//]"))
   const dashboardPage = await (await fetch(`${base}/dashboard`)).text()
   assert.match(dashboardPage, /id="root"/)
   assert.equal((await requestError("/api/dashboard")).status, 401)
@@ -129,7 +174,10 @@ try {
     body: JSON.stringify({ customPrompt: "餐饮优先记外卖" }),
   })
   assert.equal(savedPrompt.customPrompt, "餐饮优先记外卖")
-  assert.equal((await request("/api/ai/settings")).customPrompt, "餐饮优先记外卖")
+  assert.equal(
+    (await request("/api/ai/settings")).customPrompt,
+    "餐饮优先记外卖",
+  )
   assert.equal(
     (
       await request("/api/ai/settings/prompt", {
@@ -1401,7 +1449,9 @@ try {
     0,
   )
   await request(`/api/lending/entries/${todayAdvance.id}`, { method: "DELETE" })
-  await request(`/api/lending/entries/${futureAdvance.id}`, { method: "DELETE" })
+  await request(`/api/lending/entries/${futureAdvance.id}`, {
+    method: "DELETE",
+  })
 
   const namedContact = await request("/api/lending/contacts", {
     method: "POST",
@@ -1731,7 +1781,7 @@ try {
   sessionCookie = firstUserCookie
 
   console.log(
-    "Smoke test passed: auth, isolation, CRUD, summaries, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
+    "Smoke test passed: PWA, auth, isolation, CRUD, summaries, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
   )
 } finally {
   await app.close()

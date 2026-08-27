@@ -1,6 +1,7 @@
-import { ArrowRightOutlined } from "@ant-design/icons"
+import { ArrowRightOutlined, DownOutlined, UpOutlined } from "@ant-design/icons"
 import { Button, Card, Empty, Typography } from "antd"
 import type { KeyboardEvent } from "react"
+import { useEffect, useState } from "react"
 import type { Breakdown } from "@/lib/api"
 import { money } from "@/lib/utils"
 import { CategoryIcon } from "@/components/category-icon"
@@ -8,6 +9,7 @@ import { CategoryIcon } from "@/components/category-icon"
 type DisplayRow = Breakdown & {
   color: string
   isOther?: boolean
+  members?: Breakdown[]
 }
 
 type ChartRow = DisplayRow & {
@@ -48,7 +50,9 @@ function displayRows(rows: Breakdown[]): DisplayRow[] {
   const visible = source.slice(0, 5)
   const remainder = source.slice(5)
   const total = source.reduce((sum, row) => sum + row.amount, 0)
-  const result: Array<Breakdown & { isOther?: boolean }> = [...visible]
+  const result: Array<
+    Breakdown & { isOther?: boolean; members?: Breakdown[] }
+  > = [...visible]
 
   if (remainder.length) {
     const amount = remainder.reduce((sum, row) => sum + row.amount, 0)
@@ -57,6 +61,7 @@ function displayRows(rows: Breakdown[]): DisplayRow[] {
       amount,
       share: total ? amount / total : 0,
       isOther: true,
+      members: remainder,
     })
   }
 
@@ -133,9 +138,38 @@ export function ExpenseCategoryOverview({
   onOpenPrimary,
   onOpenSecondary,
 }: ExpenseCategoryOverviewProps) {
+  const [otherExpanded, setOtherExpanded] = useState(false)
+  const [focusOverride, setFocusOverride] = useState<string | undefined>()
   const categories = displayRows(rows)
+  const otherCategory = categories.find((row) => row.isOther)
+  const otherRows = otherCategory?.members || []
+  const effectiveSelectedCategory = focusOverride ?? selectedCategory
   const selected =
-    categories.find((row) => row.category === selectedCategory) || null
+    categories.find((row) => row.category === effectiveSelectedCategory) || null
+  const highlightedCategory = otherExpanded ? otherCategory : selected
+  const toggleOther = () => {
+    const nextExpanded = !otherExpanded
+    if (nextExpanded) {
+      setFocusOverride("")
+      onSelectedCategoryChange("")
+    }
+    setOtherExpanded(nextExpanded)
+  }
+  const selectCategory = (category: string, active: boolean) => {
+    const nextCategory = active ? "" : category
+    setFocusOverride(nextCategory)
+    setOtherExpanded(false)
+    onSelectedCategoryChange(nextCategory)
+  }
+
+  useEffect(() => {
+    if (focusOverride !== undefined) {
+      if (selectedCategory === focusOverride) setFocusOverride(undefined)
+      return
+    }
+    if (selectedCategory) setOtherExpanded(false)
+  }, [focusOverride, selectedCategory])
+
   const focusedSecondary = selected
     ? secondaryRows
         .filter((row) => row.parent === selected.category)
@@ -194,11 +228,16 @@ export function ExpenseCategoryOverview({
                   />
                   {chartCategories.map((row) => {
                     const segment = Math.max(row.share * 100 - 0.7, 0.35)
-                    const active = selected?.category === row.category
-                    const muted = Boolean(selected && !active)
+                    const active = row.isOther
+                      ? otherExpanded
+                      : selected?.category === row.category
+                    const muted = Boolean(
+                      (selected || otherExpanded) && !active,
+                    )
                     const selectRow = () =>
-                      !row.isOther &&
-                      onSelectedCategoryChange(active ? "" : row.category)
+                      row.isOther
+                        ? toggleOther()
+                        : selectCategory(row.category, active)
                     return (
                       <circle
                         key={row.category}
@@ -210,13 +249,14 @@ export function ExpenseCategoryOverview({
                         stroke={row.color}
                         strokeDasharray={`${segment} ${100 - segment}`}
                         strokeDashoffset={-row.start}
-                        role={row.isOther ? undefined : "button"}
-                        tabIndex={row.isOther ? undefined : 0}
+                        role="button"
+                        tabIndex={0}
                         aria-label={
                           row.isOther
-                            ? `其他分类，占 ${(row.share * 100).toFixed(1)}%`
+                            ? `展开其他分类明细，占 ${(row.share * 100).toFixed(1)}%`
                             : `${row.category}，${money(row.amount)}，占 ${(row.share * 100).toFixed(1)}%`
                         }
+                        aria-expanded={row.isOther ? otherExpanded : undefined}
                         onClick={selectRow}
                         onKeyDown={(event) =>
                           activateWithKeyboard(event, selectRow)
@@ -245,8 +285,12 @@ export function ExpenseCategoryOverview({
                   )}
                   <g className="expense-donut-labels" aria-hidden="true">
                     {chartCategories.map((row) => {
-                      const active = selected?.category === row.category
-                      const muted = Boolean(selected && !active)
+                      const active = row.isOther
+                        ? otherExpanded
+                        : selected?.category === row.category
+                      const muted = Boolean(
+                        (selected || otherExpanded) && !active,
+                      )
                       const startX = 110 + Math.cos(row.angle) * 94
                       const startY = 110 + Math.sin(row.angle) * 94
                       const bendX = 110 + Math.cos(row.angle) * 108
@@ -256,8 +300,9 @@ export function ExpenseCategoryOverview({
                           key={`label-${row.category}`}
                           className={`expense-donut-label${active ? " active" : ""}${muted ? " muted" : ""}${row.isOther ? " is-other" : ""}`}
                           onClick={() =>
-                            !row.isOther &&
-                            onSelectedCategoryChange(active ? "" : row.category)
+                            row.isOther
+                              ? toggleOther()
+                              : selectCategory(row.category, active)
                           }
                         >
                           <path
@@ -292,11 +337,17 @@ export function ExpenseCategoryOverview({
                   </g>
                 </svg>
                 <div className="expense-donut-center" aria-live="polite">
-                  <span>{selected ? selected.category : "周期支出"}</span>
-                  <strong>{money(selected ? selected.amount : expense)}</strong>
+                  <span>
+                    {highlightedCategory
+                      ? highlightedCategory.category
+                      : "周期支出"}
+                  </span>
+                  <strong>
+                    {money(highlightedCategory?.amount ?? expense)}
+                  </strong>
                   <small>
-                    {selected
-                      ? `占 ${(selected.share * 100).toFixed(1)}%`
+                    {highlightedCategory
+                      ? `占 ${(highlightedCategory.share * 100).toFixed(1)}%`
                       : `${categories.length} 个分类`}
                   </small>
                 </div>
@@ -328,7 +379,9 @@ export function ExpenseCategoryOverview({
               </div>
               <ul>
                 {categories.map((row) => {
-                  const active = selected?.category === row.category
+                  const active = row.isOther
+                    ? otherExpanded
+                    : selected?.category === row.category
                   const content = (
                     <>
                       <span
@@ -368,17 +421,26 @@ export function ExpenseCategoryOverview({
                   return (
                     <li key={row.category}>
                       {row.isOther ? (
-                        <div className="expense-category-row is-other">
+                        <button
+                          type="button"
+                          className={`expense-category-row is-other${otherExpanded ? " active" : ""}`}
+                          aria-expanded={otherExpanded}
+                          aria-label={`${otherExpanded ? "收起" : "展开"}其他分类明细`}
+                          onClick={toggleOther}
+                        >
                           {content}
-                        </div>
+                          {otherExpanded ? (
+                            <UpOutlined aria-hidden="true" />
+                          ) : (
+                            <DownOutlined aria-hidden="true" />
+                          )}
+                        </button>
                       ) : (
                         <button
                           type="button"
                           className={`expense-category-row${active ? " active" : ""}`}
                           aria-pressed={active}
-                          onClick={() =>
-                            onSelectedCategoryChange(active ? "" : row.category)
-                          }
+                          onClick={() => selectCategory(row.category, active)}
                         >
                           {content}
                         </button>
@@ -390,7 +452,53 @@ export function ExpenseCategoryOverview({
             </div>
           </div>
 
-          {selected && !selected.isOther && (
+          {otherExpanded && otherCategory && (
+            <section
+              className="expense-other-details"
+              aria-label="其他分类明细"
+            >
+              <div className="expense-drilldown-head">
+                <div>
+                  <Typography.Text type="secondary">汇总明细</Typography.Text>
+                  <Typography.Title level={5}>
+                    其他 · {otherRows.length} 个分类
+                  </Typography.Title>
+                </div>
+                <Typography.Text type="secondary">
+                  {money(otherCategory.amount)} ·{" "}
+                  {(otherCategory.share * 100).toFixed(1)}%
+                </Typography.Text>
+              </div>
+              <div className="expense-other-list">
+                {otherRows.map((row) => {
+                  const shareOfOther = otherCategory.amount
+                    ? (row.amount / otherCategory.amount) * 100
+                    : 0
+                  return (
+                    <button
+                      key={row.category}
+                      type="button"
+                      className="expense-other-row"
+                      onClick={() => onOpenPrimary(row.category)}
+                    >
+                      <CategoryIcon name={row.icon} size="small" />
+                      <span className="expense-other-copy">
+                        <strong>{row.category}</strong>
+                        <small>
+                          占总支出 {(row.share * 100).toFixed(1)}% · 占其他{" "}
+                          {shareOfOther.toFixed(1)}%
+                        </small>
+                      </span>
+                      <b>{money(row.amount)}</b>
+                      <ArrowRightOutlined aria-hidden="true" />
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {!otherExpanded && selected && !selected.isOther && (
             <section
               className="expense-structure-drilldown"
               aria-label={`${selected.category}二级分类`}

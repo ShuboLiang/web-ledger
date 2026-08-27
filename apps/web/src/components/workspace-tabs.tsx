@@ -1,4 +1,4 @@
-import { Grid, Segmented } from "antd"
+import { Grid, Tabs } from "antd"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 
 type WorkspaceTab = { path: string; label: string }
@@ -16,17 +16,16 @@ export function WorkspaceTabs({ items }: { items: WorkspaceTab[] }) {
           location.pathname.startsWith(`${item.path}/`),
       )?.path || items[0].path
   return (
-    <Segmented
+    <Tabs
       className="workspace-tabs"
+      aria-label="工作区导航"
       size={screens.lg ? "large" : "middle"}
-      block={!screens.lg}
-      value={active}
-      options={items.map((item) => ({
-        value: item.path,
+      activeKey={active}
+      items={items.map((item) => ({
+        key: item.path,
         label: item.label,
       }))}
-      onChange={(value) => {
-        const path = String(value)
+      onChange={(path) => {
         if (location.pathname !== path) navigate(path)
       }}
     />
