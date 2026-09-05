@@ -46,6 +46,7 @@ export function TransactionsWorkspace() {
     <WorkspaceShell
       items={[
         { path: "/transactions", label: "明细" },
+        { path: "/transactions/shopping", label: "购物计划" },
         { path: "/transactions/recurring", label: "定期" },
         { path: "/transactions/trash", label: "回收站" },
       ]}

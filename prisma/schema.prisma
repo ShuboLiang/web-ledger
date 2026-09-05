@@ -26,9 +26,26 @@ model Ledger {
   recurringRules RecurringRule[]
   lendingEntries LendingEntry[]
   lendingSettlements LendingSettlement[]
+  shoppingItems ShoppingItem[]
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("ledgers")
+}
+
+model ShoppingItem {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  name      String   @db.VarChar(80)
+  unitPrice Decimal  @map("unit_price") @db.Decimal(12, 2)
+  quantity  Int      @default(1)
+  note      String   @default("") @db.VarChar(500)
+  purchased Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, purchased, createdAt(sort: Desc)])
+  @@map("shopping_items")
 }
 
 model Transaction {

@@ -1,3 +1,24 @@
+export type ShoppingItem = {
+  id: string
+  name: string
+  unitPrice: number
+  quantity: number
+  subtotal: number
+  note: string
+  purchased: boolean
+  createdAt: string
+  updatedAt: string
+}
+export type ShoppingOverview = {
+  items: ShoppingItem[]
+  summary: {
+    pendingTotal: number
+    purchasedTotal: number
+    total: number
+    pendingCount: number
+    purchasedCount: number
+  }
+}
 export type Transaction = {
   id: number
   date: string

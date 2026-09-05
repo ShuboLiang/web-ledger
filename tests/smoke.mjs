@@ -122,6 +122,7 @@ try {
   const dashboardPage = await (await fetch(`${base}/dashboard`)).text()
   assert.match(dashboardPage, /id="root"/)
   assert.equal((await requestError("/api/dashboard")).status, 401)
+  assert.equal((await requestError("/api/shopping")).status, 401)
   const registered = await request("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -1711,6 +1712,103 @@ try {
   assert.equal(iconAgentRecord.secondaryIcon, "gift")
 
   const firstUserCookie = sessionCookie
+  const beforeShopping = await request("/api/transactions?page=1&pageSize=1")
+  const shoppingOne = await request("/api/shopping", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "  耳机  ",
+      unitPrice: 199.99,
+      quantity: 2,
+      note: "黑色",
+    }),
+  })
+  const shoppingTwo = await request("/api/shopping", {
+    method: "POST",
+    body: JSON.stringify({ name: "收纳盒", unitPrice: "0.10", quantity: 3 }),
+  })
+  let shopping = await request("/api/shopping")
+  assert.equal(shopping.summary.pendingTotal, 400.28)
+  assert.equal(shopping.summary.pendingCount, 2)
+  assert.equal(
+    shopping.items.find((item) => item.id === shoppingOne.id).name,
+    "耳机",
+  )
+  assert.equal(
+    shopping.items.find((item) => item.id === shoppingOne.id).subtotal,
+    399.98,
+  )
+  await request(`/api/shopping/${shoppingOne.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      unitPrice: 150.25,
+      quantity: 3,
+      note: "等优惠",
+      purchased: true,
+    }),
+  })
+  shopping = await request("/api/shopping")
+  assert.equal(shopping.summary.pendingTotal, 0.3)
+  assert.equal(shopping.summary.purchasedTotal, 450.75)
+  assert.equal(shopping.summary.total, 451.05)
+  assert.equal(shopping.summary.purchasedCount, 1)
+  await request(`/api/shopping/${shoppingOne.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ purchased: false }),
+  })
+  assert.equal((await request("/api/shopping")).summary.pendingTotal, 451.05)
+  for (const invalid of [
+    { name: " " },
+    { unitPrice: -1 },
+    { unitPrice: "" },
+    { unitPrice: null },
+    { unitPrice: true },
+    { unitPrice: "1.001" },
+    { unitPrice: 100000000 },
+    { quantity: 0 },
+    { quantity: 1.5 },
+    { quantity: 10000 },
+    { note: "x".repeat(501) },
+    { purchased: "false" },
+  ]) {
+    assert.equal(
+      (
+        await requestError("/api/shopping", {
+          method: "POST",
+          body: JSON.stringify({
+            name: "无效计划",
+            unitPrice: 1,
+            quantity: 1,
+            ...invalid,
+          }),
+        })
+      ).status,
+      400,
+    )
+  }
+  assert.equal(
+    (
+      await requestError(`/api/shopping/${shoppingOne.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ unitPrice: -1 }),
+      })
+    ).status,
+    400,
+  )
+  await request(`/api/shopping/${shoppingTwo.id}`, { method: "DELETE" })
+  assert.equal((await request("/api/shopping")).summary.total, 450.75)
+  assert.equal(
+    (
+      await requestError(`/api/shopping/${shoppingTwo.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ purchased: true }),
+      })
+    ).status,
+    404,
+  )
+  assert.equal(
+    (await request("/api/transactions?page=1&pageSize=1")).total,
+    beforeShopping.total,
+  )
   const firstUserTotal = (await request("/api/transactions?page=1&pageSize=1"))
     .total
   const secondUser = await request("/api/auth/register", {
@@ -1722,6 +1820,24 @@ try {
     }),
   })
   assert.equal(secondUser.user.username, "smoke_second")
+  assert.equal((await request("/api/shopping")).items.length, 0)
+  assert.equal(
+    (
+      await requestError(`/api/shopping/${shoppingOne.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ purchased: true }),
+      })
+    ).status,
+    404,
+  )
+  assert.equal(
+    (
+      await requestError(`/api/shopping/${shoppingOne.id}`, {
+        method: "DELETE",
+      })
+    ).status,
+    404,
+  )
   assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 0)
   assert.equal((await request("/api/ai/settings")).profiles.length, 0)
   assert.equal(
@@ -1766,6 +1882,7 @@ try {
   })
   assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 1)
   sessionCookie = firstUserCookie
+  assert.equal((await request("/api/shopping")).summary.pendingTotal, 450.75)
   assert.equal(
     (await request("/api/transactions?page=1&pageSize=1")).total,
     firstUserTotal,
@@ -1781,7 +1898,7 @@ try {
   sessionCookie = firstUserCookie
 
   console.log(
-    "Smoke test passed: PWA, auth, isolation, CRUD, summaries, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
+    "Smoke test passed: PWA, auth, isolation, CRUD, summaries, shopping plans, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
   )
 } finally {
   await app.close()

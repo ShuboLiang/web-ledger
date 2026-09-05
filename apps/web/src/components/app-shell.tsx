@@ -64,7 +64,8 @@ const mobileNav = [
 ]
 const titles: Record<string, [string, string]> = {
   "/dashboard": ["财务概览", "本月结单与消费轨迹"],
-  "/transactions": ["账目", "明细、定期账单和回收站"],
+  "/transactions": ["账目", "明细、购物计划、定期账单和回收站"],
+  "/transactions/shopping": ["账目", "记录想买的东西，算好预计花费"],
   "/transactions/recurring": ["账目", "房租、会员等固定收支按期生成"],
   "/transactions/trash": ["账目", "恢复或彻底删除误删的账目"],
   "/analytics": ["分析", "比较周期、分类与长期变化"],

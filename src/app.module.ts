@@ -16,6 +16,7 @@ import { TagsModule } from "./modules/tags/tags.module.js"
 import { RecurringModule } from "./modules/recurring/recurring.module.js"
 import { TrashModule } from "./modules/trash/trash.module.js"
 import { LendingModule } from "./modules/lending/lending.module.js"
+import { ShoppingModule } from "./modules/shopping/shopping.module.js"
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { LendingModule } from "./modules/lending/lending.module.js"
     RecurringModule,
     TrashModule,
     LendingModule,
+    ShoppingModule,
   ],
   controllers: [FrontendController],
 })
