@@ -70,6 +70,7 @@ const titles: Record<string, [string, string]> = {
   "/analytics": ["分析", "比较周期、分类与长期变化"],
   "/analytics/heatmap": ["分析", "按天查看支出深浅，点日期看当天账目"],
   "/analytics/budgets": ["分析", "控制本月总支出与重点分类"],
+  "/analytics/shopping": ["分析", "用月工资减去计划购买，看每月还剩多少"],
   "/analytics/tags": ["分析", "按场景、人物和目的重新理解消费"],
   "/finance": ["资金", "账户额度、转账还款和人情往来"],
   "/finance/lending": ["资金", "垫付、代付和借入，按笔跟踪谁欠谁"],

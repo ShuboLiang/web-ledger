@@ -71,6 +71,7 @@ export function AnalyticsWorkspace() {
         { path: "/analytics", label: "统计" },
         { path: "/analytics/heatmap", label: "热力" },
         { path: "/analytics/budgets", label: "预算" },
+        { path: "/analytics/shopping", label: "购物" },
         { path: "/analytics/tags", label: "标签" },
       ]}
     />

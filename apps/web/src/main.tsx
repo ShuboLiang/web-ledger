@@ -18,6 +18,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConfigProvider
       locale={zhCN}
+      wave={{ disabled: true }}
       theme={{
         cssVar: { key: "qing-zhang" },
         algorithm: theme.defaultAlgorithm,

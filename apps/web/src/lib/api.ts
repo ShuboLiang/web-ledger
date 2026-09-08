@@ -231,6 +231,38 @@ export type LendingReminders = {
   overdue: LendingEntry[]
   dueSoon: LendingEntry[]
 }
+export type ShoppingStatus = "normal" | "warning" | "over"
+export type ShoppingIncome = {
+  id: string
+  month: string
+  name: string
+  amount: number
+  note: string
+}
+export type ShoppingItem = {
+  id: string
+  month: string
+  name: string
+  amount: number
+  note: string
+  purchased: boolean
+}
+export type ShoppingMonth = {
+  month: string
+  incomeCount: number
+  itemCount: number
+  purchasedCount: number
+  income: number
+  planned: number
+  remaining: number
+  usageRate: number
+  status: ShoppingStatus
+  incomes: ShoppingIncome[]
+  items: ShoppingItem[]
+}
+export type ShoppingOverview = ShoppingMonth & {
+  months: ShoppingMonth[]
+}
 export type AuthUser = { id: string; username: string; displayName: string }
 
 export const UNACCOUNTED_ACCOUNT_ID = "none"

@@ -26,6 +26,8 @@ model Ledger {
   recurringRules RecurringRule[]
   lendingEntries LendingEntry[]
   lendingSettlements LendingSettlement[]
+  shoppingIncomes ShoppingIncome[]
+  shoppingItems ShoppingItem[]
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("ledgers")
@@ -376,6 +378,37 @@ model AiMessage {
 
   @@index([conversationId, createdAt])
   @@map("ai_messages")
+}
+
+model ShoppingIncome {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  month     DateTime @db.Date
+  name      String   @db.VarChar(80)
+  amount    Decimal  @db.Decimal(14, 2)
+  note      String   @default("") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, month])
+  @@map("shopping_incomes")
+}
+
+model ShoppingItem {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  month     DateTime @db.Date
+  name      String   @db.VarChar(80)
+  amount    Decimal  @db.Decimal(14, 2)
+  note      String   @default("") @db.VarChar(500)
+  purchased Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, month])
+  @@map("shopping_items")
 }
 
 model AuditLog {

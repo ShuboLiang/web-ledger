@@ -28,6 +28,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+COPY scripts/migrate-deploy.mjs ./scripts/migrate-deploy.mjs
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gosu openssl \
     && rm -rf /var/lib/apt/lists/* \
@@ -45,4 +46,4 @@ EXPOSE 3218
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:3218/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
-CMD ["sh", "-c", "chown -R node:node /app/data /home/node/.pi/agent && exec gosu node sh -c 'node node_modules/prisma/build/index.js migrate deploy && exec node dist/src/main.js'"]
+CMD ["sh", "-c", "chown -R node:node /app/data /home/node/.pi/agent && exec gosu node sh -c 'node scripts/migrate-deploy.mjs && exec node dist/src/main.js'"]
