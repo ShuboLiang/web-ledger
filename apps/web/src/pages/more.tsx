@@ -12,7 +12,7 @@ const entries = [
     path: "/ai",
     icon: <RobotOutlined />,
     title: "AI 助手",
-    description: "自然语言记账、查账和消费分析",
+    description: "自然语言记账、查账、消费分析和购物计划",
     tone: "gold",
   },
   {

@@ -35,7 +35,7 @@
 - 分析页同时展示一级与二级分类饼图、环比、每日支出日历和大额支出；日历按月切换，点击日期可查看当天账目，跨年范围由趋势图统一汇总。
 - AI 独立多轮对话工作区、Markdown 渲染和待确认操作栏。
 - 自然语言记账和账本问答。
-- AI 可查询资产负债与标签消费，并提出标签、账户、额度校准、转账及撤销、还款操作；写入前仍需确认。
+- AI 可查询资产负债、人情往来、标签消费和每月购物计划，并提出账户、往来、标签与购物清单操作；写入前仍需确认。
 - 首次启动自动导入当前 `记账.xlsx` 对应的 10 笔初始数据。
 - 新项目和“一级分类 + 二级分类”组合自动去重加入字典。
 - 注册、登录和退出；登录会话在服务端不设过期时间，浏览器 Cookie 采用十年期限并可由退出操作立即吊销。
@@ -95,6 +95,9 @@ Pi 在应用里只能使用以下账本工具，不具备文件或命令工具�
 - `ledger_propose_transfer_reverse`：提出撤销账户转账建议。
 - `ledger_propose_adjustment_reverse`：提出撤销额度调整建议。
 - `ledger_propose_repayment`：提出还款建议，本金走转账，利息和手续费记支出。
+- `ledger_get_shopping_overview`：查询购物计划收入、清单和剩余可买额度。
+- `ledger_propose_shopping_income_create` / `update` / `delete` / `copy`：提出购物计划收入变更建议。
+- `ledger_propose_shopping_item_create` / `update` / `delete`：提出购物清单变更或勾选已买建议。
 - `ledger_propose_discard`：从待确认区移除尚未写入的建议。
 
 所有 `ledger_propose_*` 变更工具都只生成待确认操作；只有用户在网页点击“确认执行”后，后端才会写入数据库。

@@ -1674,6 +1674,140 @@ try {
     404,
   )
 
+  const shoppingAgentConversationId = "smoke-agent-shopping"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: shoppingAgentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-income-create",
+          shoppingIncome: {
+            month: "2026-12",
+            name: "工资",
+            amount: 9000,
+            note: "Agent",
+          },
+          item: "工资",
+          amount: 9000,
+          display: { month: "2026-12", name: "工资" },
+        },
+        {
+          type: "shopping-item-create",
+          shoppingItem: {
+            month: "2026-12",
+            name: "键盘",
+            amount: 400,
+            note: "",
+          },
+          item: "键盘",
+          amount: 400,
+          display: { month: "2026-12", name: "键盘" },
+        },
+      ],
+    },
+  })
+  const rejectedShoppingEdit = await requestError(
+    `/api/ai/conversations/${shoppingAgentConversationId}/proposals`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        proposals: [
+          {
+            type: "shopping-income-create",
+            shoppingIncome: {
+              month: "2026-12",
+              name: "工资",
+              amount: 8000,
+              note: "Agent",
+            },
+          },
+          {
+            type: "shopping-item-create",
+            shoppingItem: {
+              month: "2026-12",
+              name: "键盘",
+              amount: 400,
+              note: "",
+            },
+          },
+        ],
+      }),
+    },
+  )
+  assert.equal(rejectedShoppingEdit.status, 400)
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  let planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.income, 9000)
+  assert.equal(planned.planned, 400)
+  assert.equal(planned.remaining, 8600)
+  assert.equal(planned.items[0].purchased, false)
+  const agentKeyboard = planned.items[0]
+  const agentWage = planned.incomes[0]
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-item-update",
+          itemId: agentKeyboard.id,
+          changes: { amount: 450, purchased: true },
+          item: "键盘",
+          display: { month: "2026-12", name: "键盘" },
+        },
+        {
+          type: "shopping-income-copy",
+          month: "2027-01",
+          display: { month: "2027-01", from: "2026-12" },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.planned, 450)
+  assert.equal(planned.purchasedCount, 1)
+  assert.equal(planned.items[0].purchased, true)
+  const copiedPlan = await request("/api/shopping?month=2027-01")
+  assert.equal(copiedPlan.income, 9000)
+  assert.equal(copiedPlan.incomes[0].name, "工资")
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-item-delete",
+          itemId: agentKeyboard.id,
+          item: "键盘",
+          display: { month: "2026-12", name: "键盘", amount: 450 },
+        },
+        {
+          type: "shopping-income-delete",
+          incomeId: agentWage.id,
+          item: "工资",
+          display: { month: "2026-12", name: "工资", amount: 9000 },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.income, 0)
+  assert.equal(planned.items.length, 0)
+  assert.equal((await request("/api/shopping?month=2027-01")).income, 9000)
+
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
     body: JSON.stringify({
@@ -1967,7 +2101,7 @@ try {
   sessionCookie = firstUserCookie
 
   console.log(
-    "Smoke test passed: PWA, auth, isolation, CRUD, summaries, categories, accounts, finance, lending, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
+    "Smoke test passed: PWA, auth, isolation, CRUD, summaries, categories, accounts, finance, lending, shopping plans, transaction tags, tag analytics, Agent proposals, filtering, pagination, parser",
   )
 } finally {
   await app.close()

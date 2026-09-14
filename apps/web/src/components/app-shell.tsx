@@ -74,7 +74,7 @@ const titles: Record<string, [string, string]> = {
   "/analytics/tags": ["分析", "按场景、人物和目的重新理解消费"],
   "/finance": ["资金", "账户额度、转账还款和人情往来"],
   "/finance/lending": ["资金", "垫付、代付和借入，按笔跟踪谁欠谁"],
-  "/ai": ["AI 助手", "用自然语言记账和查询"],
+  "/ai": ["AI 助手", "用自然语言记账、查账和规划购物"],
   "/settings": ["系统设置", "管理 AI 模型和收支分类"],
   "/settings/categories": ["系统设置", "维护记账时使用的一级和二级分类"],
   "/more": ["更多功能", "AI 助手与应用设置"],

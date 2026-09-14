@@ -77,6 +77,13 @@ type Proposal = {
     | "repayment"
     | "lending-entry"
     | "lending-settle"
+    | "shopping-income-create"
+    | "shopping-income-update"
+    | "shopping-income-delete"
+    | "shopping-income-copy"
+    | "shopping-item-create"
+    | "shopping-item-update"
+    | "shopping-item-delete"
   id?: number
   records?: any[]
   current?: any
@@ -93,6 +100,12 @@ type Proposal = {
   repayment?: any
   lending?: any
   settlement?: any
+  shoppingIncome?: any
+  shoppingItem?: any
+  incomeId?: string
+  itemId?: string
+  month?: string
+  amount?: number
   reconcile?: any
   transferId?: string
   adjustmentId?: string
@@ -122,7 +135,7 @@ const welcome: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "你好，我可以帮你**记账、查账、改账和分析消费**。\n\n例如：`今天午饭 18 元`，或者问我“这个月餐饮花了多少？”",
+    "你好，我可以帮你**记账、查账、改账、分析消费，也可以管每月购物计划**。\n\n例如：`今天午饭 18 元`，`这个月想买显示器 3000`，或者问我“这个月还能买多少？”",
 }
 type SendCommand = { text: string; conversationId: string }
 type ProposalFormValues = {
@@ -686,6 +699,109 @@ export function AiPage() {
               detail: proposal.settlement?.entryId
                 ? "只冲抵指定的那一笔往来"
                 : "从最早一笔未结清往来开始依次冲抵",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "shopping-income-create")
+          return [
+            {
+              label: "购物计划收入",
+              item: `${proposal.shoppingIncome?.month || proposal.display?.month || ""} · ${proposal.shoppingIncome?.name || proposal.display?.name || "收入"}`,
+              amount: proposal.shoppingIncome?.amount,
+              detail: proposal.shoppingIncome?.note
+                ? `记入购物计划，不计入账本收入；${proposal.shoppingIncome.note}`
+                : "记入购物计划，不计入账本收入",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "shopping-income-update") {
+          const changes = [
+            proposal.changes?.name ? `来源改为“${proposal.changes.name}”` : "",
+            proposal.changes?.amount !== undefined
+              ? `金额改为 ${money(proposal.changes.amount)}`
+              : "",
+            proposal.changes?.month ? `改到 ${proposal.changes.month}` : "",
+            proposal.changes?.note ? `备注：${proposal.changes.note}` : "",
+          ].filter(Boolean)
+          return [
+            {
+              label: "修改购物收入",
+              item: `${proposal.display?.month || ""} · ${proposal.display?.name || "收入"}`,
+              amount: proposal.changes?.amount,
+              detail: changes.join(" · ") || "更新购物计划收入",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
+        if (proposal.type === "shopping-income-delete")
+          return [
+            {
+              label: "删除购物收入",
+              item: `${proposal.display?.month || ""} · ${proposal.display?.name || "收入"}`,
+              amount: proposal.display?.amount ?? proposal.amount,
+              detail: "从购物计划移除，不影响已经记下的账目",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "shopping-income-copy")
+          return [
+            {
+              label: "复制上月购物收入",
+              item: `${proposal.display?.from || "上月"} → ${proposal.month || proposal.display?.month || "本月"}`,
+              detail: "只复制购物计划收入，不会记入账本",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "shopping-item-create")
+          return [
+            {
+              label: "加入购物清单",
+              item: `${proposal.shoppingItem?.month || proposal.display?.month || ""} · ${proposal.shoppingItem?.name || proposal.display?.name || "物品"}`,
+              amount: proposal.shoppingItem?.amount,
+              detail: proposal.shoppingItem?.note
+                ? `只是计划购买，不记支出；${proposal.shoppingItem.note}`
+                : "只是计划购买，不记支出、不扣账户",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        if (proposal.type === "shopping-item-update") {
+          const changes = [
+            proposal.changes?.name ? `名称改为“${proposal.changes.name}”` : "",
+            proposal.changes?.amount !== undefined
+              ? `价格改为 ${money(proposal.changes.amount)}`
+              : "",
+            proposal.changes?.month ? `改到 ${proposal.changes.month}` : "",
+            proposal.changes?.purchased === true
+              ? "标记为已买"
+              : proposal.changes?.purchased === false
+                ? "改回待买"
+                : "",
+            proposal.changes?.note ? `备注：${proposal.changes.note}` : "",
+          ].filter(Boolean)
+          return [
+            {
+              label: "修改购物清单",
+              item: `${proposal.display?.month || ""} · ${proposal.display?.name || "物品"}`,
+              amount: proposal.changes?.amount,
+              detail: changes.join(" · ") || "更新购物清单",
+              proposalIndex,
+              isFinanceOperation: true,
+            },
+          ]
+        }
+        if (proposal.type === "shopping-item-delete")
+          return [
+            {
+              label: "移出购物清单",
+              item: `${proposal.display?.month || ""} · ${proposal.display?.name || "物品"}`,
+              amount: proposal.display?.amount ?? proposal.amount,
+              detail: "从计划中移除，不会删除已经记下的账目",
               proposalIndex,
               isFinanceOperation: true,
             },

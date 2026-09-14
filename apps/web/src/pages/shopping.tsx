@@ -45,10 +45,7 @@ import {
   type ShoppingOverview,
 } from "@/lib/api"
 import { money } from "@/lib/utils"
-import {
-  useIsMobileViewport,
-  usePickerInputReadOnly,
-} from "@/lib/use-viewport"
+import { useIsMobileViewport, usePickerInputReadOnly } from "@/lib/use-viewport"
 
 const shoppingMonthStorageKey = "qing-zhang-shopping-month"
 const incomeSuggestions = ["工资", "奖金", "兼职", "报销", "红包", "其他"]
@@ -298,7 +295,8 @@ export function ShoppingPage() {
           <Flex vertical gap={3}>
             <Typography.Text strong>规划月份</Typography.Text>
             <Typography.Text type="secondary">
-              每个月单独填收入。工资、奖金、兼职都可以分开记，剩余按当月合计计算。
+              每个月单独填收入。工资、奖金、兼职都可以分开记，剩余按当月合计计算。也可以在
+              AI 助手里用自然语言加入清单。
             </Typography.Text>
           </Flex>
           <DatePicker

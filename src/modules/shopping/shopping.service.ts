@@ -14,6 +14,8 @@ const shanghaiMonth = () =>
     month: "2-digit",
   }).format(new Date())
 
+type ShoppingDb = Prisma.TransactionClient
+type ShoppingStore = PrismaService | ShoppingDb
 type MoneyRow = {
   id: string
   month: Date
@@ -22,9 +24,31 @@ type MoneyRow = {
   note: string
 }
 
+export const SHOPPING_PROPOSAL_TYPES = [
+  "shopping-income-create",
+  "shopping-income-update",
+  "shopping-income-delete",
+  "shopping-income-copy",
+  "shopping-item-create",
+  "shopping-item-update",
+  "shopping-item-delete",
+] as const
+
 @Injectable()
 export class ShoppingService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private store(database?: ShoppingDb): ShoppingStore {
+    return database || this.prisma
+  }
+
+  private async write<T>(
+    database: ShoppingDb | undefined,
+    fn: (db: ShoppingStore) => Promise<T>,
+  ) {
+    if (database) return fn(database)
+    return this.prisma.$transaction((transaction) => fn(transaction))
+  }
 
   private monthText(value: unknown, fallback = false) {
     const month = String(value || "").trim()
@@ -168,6 +192,37 @@ export class ShoppingService {
     }
   }
 
+  async agentOverview(
+    ledgerId: string,
+    monthValue: unknown,
+    horizonValue: unknown,
+  ) {
+    const data = await this.overview(ledgerId, monthValue, horizonValue)
+    return {
+      month: data.month,
+      income: data.income,
+      planned: data.planned,
+      remaining: data.remaining,
+      status: data.status,
+      usageRate: data.usageRate,
+      incomeCount: data.incomeCount,
+      itemCount: data.itemCount,
+      purchasedCount: data.purchasedCount,
+      incomes: data.incomes,
+      items: data.items,
+      months: data.months.map((row) => ({
+        month: row.month,
+        income: row.income,
+        planned: row.planned,
+        remaining: row.remaining,
+        status: row.status,
+        incomeCount: row.incomeCount,
+        itemCount: row.itemCount,
+        purchasedCount: row.purchasedCount,
+      })),
+    }
+  }
+
   private lineInput(body: Record<string, unknown>, amountLabel: string) {
     return {
       month: this.monthText(body.month, true),
@@ -177,10 +232,14 @@ export class ShoppingService {
     }
   }
 
-  async createIncome(ledgerId: string, body: Record<string, unknown>) {
+  async createIncome(
+    ledgerId: string,
+    body: Record<string, unknown>,
+    database?: ShoppingDb,
+  ) {
     const value = this.lineInput(body, "收入金额")
-    const row = await this.prisma.$transaction(async (database) => {
-      const created = await database.shoppingIncome.create({
+    const row = await this.write(database, async (db) => {
+      const created = await db.shoppingIncome.create({
         data: {
           ledgerId,
           month: this.monthDate(value.month),
@@ -189,7 +248,7 @@ export class ShoppingService {
           note: value.note,
         },
       })
-      await database.auditLog.create({
+      await db.auditLog.create({
         data: {
           action: "shopping-income-create",
           entityType: "shopping-income",
@@ -202,15 +261,20 @@ export class ShoppingService {
     return this.serializeMoney(row)
   }
 
-  async copyPreviousIncomes(ledgerId: string, body: Record<string, unknown>) {
+  async copyPreviousIncomes(
+    ledgerId: string,
+    body: Record<string, unknown>,
+    database?: ShoppingDb,
+  ) {
     const month = this.monthText(body.month, true)
     const previous = this.addMonths(month, -1)
+    const db = this.store(database)
     const [source, existing] = await Promise.all([
-      this.prisma.shoppingIncome.findMany({
+      db.shoppingIncome.findMany({
         where: { ledgerId, month: this.monthDate(previous) },
         orderBy: { createdAt: "asc" },
       }),
-      this.prisma.shoppingIncome.count({
+      db.shoppingIncome.count({
         where: { ledgerId, month: this.monthDate(month) },
       }),
     ])
@@ -218,10 +282,10 @@ export class ShoppingService {
       throw new BadRequestException(`${previous} 没有收入可复制`)
     if (existing)
       throw new BadRequestException("本月已有收入，请直接改金额或添加其他收入")
-    const copied = await this.prisma.$transaction(async (database) => {
+    const copied = await this.write(database, async (tx) => {
       const rows = await Promise.all(
         source.map((item) =>
-          database.shoppingIncome.create({
+          tx.shoppingIncome.create({
             data: {
               ledgerId,
               month: this.monthDate(month),
@@ -232,7 +296,7 @@ export class ShoppingService {
           }),
         ),
       )
-      await database.auditLog.create({
+      await tx.auditLog.create({
         data: {
           action: "shopping-income-copy",
           entityType: "shopping-income",
@@ -250,20 +314,29 @@ export class ShoppingService {
     }
   }
 
-  private async income(ledgerId: string, id: string) {
-    const row = await this.prisma.shoppingIncome.findFirst({
+  private async income(
+    ledgerId: string,
+    id: string,
+    db: ShoppingStore = this.prisma,
+  ) {
+    const row = await db.shoppingIncome.findFirst({
       where: { id, ledgerId },
     })
     if (!row) throw new NotFoundException("收入记录不存在")
     return row
   }
 
+  async getIncome(ledgerId: string, id: string) {
+    return this.serializeMoney(await this.income(ledgerId, id))
+  }
+
   async updateIncome(
     ledgerId: string,
     id: string,
     body: Record<string, unknown>,
+    database?: ShoppingDb,
   ) {
-    const current = await this.income(ledgerId, id)
+    const current = await this.income(ledgerId, id, this.store(database))
     const month =
       body.month === undefined
         ? this.monthKey(current.month)
@@ -275,8 +348,8 @@ export class ShoppingService {
         ? Number(current.amount)
         : this.money(body.amount, "收入金额", 0.01)
     const note = body.note === undefined ? current.note : this.note(body.note)
-    const row = await this.prisma.$transaction(async (database) => {
-      const updated = await database.shoppingIncome.update({
+    const row = await this.write(database, async (db) => {
+      const updated = await db.shoppingIncome.update({
         where: { id },
         data: {
           month: this.monthDate(month),
@@ -285,7 +358,7 @@ export class ShoppingService {
           note,
         },
       })
-      await database.auditLog.create({
+      await db.auditLog.create({
         data: {
           action: "shopping-income-update",
           entityType: "shopping-income",
@@ -298,11 +371,11 @@ export class ShoppingService {
     return this.serializeMoney(row)
   }
 
-  async removeIncome(ledgerId: string, id: string) {
-    const current = await this.income(ledgerId, id)
-    await this.prisma.$transaction(async (database) => {
-      await database.shoppingIncome.delete({ where: { id } })
-      await database.auditLog.create({
+  async removeIncome(ledgerId: string, id: string, database?: ShoppingDb) {
+    const current = await this.income(ledgerId, id, this.store(database))
+    await this.write(database, async (db) => {
+      await db.shoppingIncome.delete({ where: { id } })
+      await db.auditLog.create({
         data: {
           action: "shopping-income-delete",
           entityType: "shopping-income",
@@ -318,10 +391,14 @@ export class ShoppingService {
     return { id, deleted: true }
   }
 
-  async createItem(ledgerId: string, body: Record<string, unknown>) {
+  async createItem(
+    ledgerId: string,
+    body: Record<string, unknown>,
+    database?: ShoppingDb,
+  ) {
     const value = this.lineInput(body, "物品价格")
-    const item = await this.prisma.$transaction(async (database) => {
-      const row = await database.shoppingItem.create({
+    const item = await this.write(database, async (db) => {
+      const row = await db.shoppingItem.create({
         data: {
           ledgerId,
           month: this.monthDate(value.month),
@@ -330,7 +407,7 @@ export class ShoppingService {
           note: value.note,
         },
       })
-      await database.auditLog.create({
+      await db.auditLog.create({
         data: {
           action: "shopping-item-create",
           entityType: "shopping-item",
@@ -343,20 +420,29 @@ export class ShoppingService {
     return this.serializeItem(item)
   }
 
-  private async item(ledgerId: string, id: string) {
-    const row = await this.prisma.shoppingItem.findFirst({
+  private async item(
+    ledgerId: string,
+    id: string,
+    db: ShoppingStore = this.prisma,
+  ) {
+    const row = await db.shoppingItem.findFirst({
       where: { id, ledgerId },
     })
     if (!row) throw new NotFoundException("购物清单项目不存在")
     return row
   }
 
+  async getItem(ledgerId: string, id: string) {
+    return this.serializeItem(await this.item(ledgerId, id))
+  }
+
   async updateItem(
     ledgerId: string,
     id: string,
     body: Record<string, unknown>,
+    database?: ShoppingDb,
   ) {
-    const current = await this.item(ledgerId, id)
+    const current = await this.item(ledgerId, id, this.store(database))
     const month =
       body.month === undefined
         ? this.monthKey(current.month)
@@ -372,8 +458,8 @@ export class ShoppingService {
     const note = body.note === undefined ? current.note : this.note(body.note)
     const purchased =
       body.purchased === undefined ? current.purchased : body.purchased === true
-    const item = await this.prisma.$transaction(async (database) => {
-      const row = await database.shoppingItem.update({
+    const item = await this.write(database, async (db) => {
+      const row = await db.shoppingItem.update({
         where: { id },
         data: {
           month: this.monthDate(month),
@@ -383,7 +469,7 @@ export class ShoppingService {
           purchased,
         },
       })
-      await database.auditLog.create({
+      await db.auditLog.create({
         data: {
           action: "shopping-item-update",
           entityType: "shopping-item",
@@ -396,11 +482,11 @@ export class ShoppingService {
     return this.serializeItem(item)
   }
 
-  async removeItem(ledgerId: string, id: string) {
-    const current = await this.item(ledgerId, id)
-    await this.prisma.$transaction(async (database) => {
-      await database.shoppingItem.delete({ where: { id } })
-      await database.auditLog.create({
+  async removeItem(ledgerId: string, id: string, database?: ShoppingDb) {
+    const current = await this.item(ledgerId, id, this.store(database))
+    await this.write(database, async (db) => {
+      await db.shoppingItem.delete({ where: { id } })
+      await db.auditLog.create({
         data: {
           action: "shopping-item-delete",
           entityType: "shopping-item",
@@ -414,5 +500,78 @@ export class ShoppingService {
       })
     })
     return { id, deleted: true }
+  }
+
+  async executeAiProposal(
+    ledgerId: string,
+    proposal: any,
+    database: ShoppingDb,
+  ) {
+    if (proposal?.type === "shopping-income-create")
+      return {
+        type: proposal.type,
+        income: await this.createIncome(
+          ledgerId,
+          proposal.shoppingIncome || {},
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-income-update")
+      return {
+        type: proposal.type,
+        income: await this.updateIncome(
+          ledgerId,
+          String(proposal.incomeId || ""),
+          proposal.changes || {},
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-income-delete")
+      return {
+        type: proposal.type,
+        result: await this.removeIncome(
+          ledgerId,
+          String(proposal.incomeId || ""),
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-income-copy")
+      return {
+        type: proposal.type,
+        result: await this.copyPreviousIncomes(
+          ledgerId,
+          { month: proposal.month },
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-item-create")
+      return {
+        type: proposal.type,
+        item: await this.createItem(
+          ledgerId,
+          proposal.shoppingItem || {},
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-item-update")
+      return {
+        type: proposal.type,
+        item: await this.updateItem(
+          ledgerId,
+          String(proposal.itemId || ""),
+          proposal.changes || {},
+          database,
+        ),
+      }
+    if (proposal?.type === "shopping-item-delete")
+      return {
+        type: proposal.type,
+        result: await this.removeItem(
+          ledgerId,
+          String(proposal.itemId || ""),
+          database,
+        ),
+      }
+    throw new Error("包含未知操作")
   }
 }
