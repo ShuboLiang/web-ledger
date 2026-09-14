@@ -109,7 +109,7 @@ async function alignShoppingTable(prisma, table, { purchased = false } = {}) {
     defaultSql: `''`,
   })
   await renameOrAdd(prisma, table, "amount", {
-    aliases: ["price", "cost", "value", "money"],
+    aliases: ["price", "cost", "value", "money", "unit_price"],
     sqlType: "DECIMAL(14,2)",
     defaultSql: "0.01",
   })
@@ -142,6 +142,113 @@ async function alignShoppingTable(prisma, table, { purchased = false } = {}) {
       prisma,
       `CREATE INDEX IF NOT EXISTS "${table}_ledger_id_month_idx"
        ON "${table}"("ledger_id", "month")`,
+    )
+  }
+
+  await syncLegacyPrice(prisma, table)
+  await relaxLegacyNotNull(prisma, table, purchased)
+}
+
+const prismaShoppingColumns = (purchased) =>
+  new Set([
+    "id",
+    "ledger_id",
+    "month",
+    "name",
+    "amount",
+    "note",
+    ...(purchased ? ["purchased"] : []),
+    "created_at",
+    "updated_at",
+  ])
+
+async function syncLegacyPrice(prisma, table) {
+  if (
+    !(await columnExists(prisma, table, "amount")) ||
+    !(await columnExists(prisma, table, "unit_price"))
+  ) {
+    return
+  }
+
+  console.log(`同步 ${table} 的遗留 unit_price 列`)
+  await exec(
+    prisma,
+    `UPDATE "${table}"
+     SET "amount" = "unit_price"
+     WHERE "unit_price" IS NOT NULL
+       AND "unit_price" <> 0.01
+       AND ("amount" IS NULL OR "amount" = 0.01)`,
+  )
+  await exec(
+    prisma,
+    `UPDATE "${table}"
+     SET "unit_price" = COALESCE("unit_price", "amount", 0.01)`,
+  )
+  await exec(
+    prisma,
+    `ALTER TABLE "${table}" ALTER COLUMN "unit_price" SET DEFAULT 0.01`,
+  )
+
+  if (table !== "shopping_items") return
+
+  await exec(
+    prisma,
+    `CREATE OR REPLACE FUNCTION shopping_items_sync_unit_price()
+     RETURNS trigger
+     LANGUAGE plpgsql
+     AS $fn$
+     BEGIN
+       IF NEW.unit_price IS NULL THEN
+         NEW.unit_price := COALESCE(NEW.amount, 0.01);
+       END IF;
+       IF NEW.amount IS NULL THEN
+         NEW.amount := COALESCE(NEW.unit_price, 0.01);
+       END IF;
+       RETURN NEW;
+     END;
+     $fn$`,
+  )
+  await exec(
+    prisma,
+    `DROP TRIGGER IF EXISTS shopping_items_sync_unit_price ON "shopping_items"`,
+  )
+  await exec(
+    prisma,
+    `CREATE TRIGGER shopping_items_sync_unit_price
+     BEFORE INSERT OR UPDATE ON "shopping_items"
+     FOR EACH ROW
+     EXECUTE PROCEDURE shopping_items_sync_unit_price()`,
+  )
+}
+
+async function relaxLegacyNotNull(prisma, table, purchased) {
+  const known = prismaShoppingColumns(purchased)
+  const columns = await prisma.$queryRaw`
+    SELECT column_name, is_nullable, column_default, udt_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = ${table}
+  `
+  for (const column of columns) {
+    const name = column.column_name
+    if (known.has(name)) continue
+    if (column.is_nullable === "YES" || column.column_default != null) continue
+
+    console.log(`为遗留列 ${table}.${name} 放开非空约束，避免 Prisma 写入失败`)
+    if (name === "quantity" || name === "qty" || name === "count") {
+      await exec(
+        prisma,
+        `ALTER TABLE "${table}" ALTER COLUMN "${name}" SET DEFAULT 1`,
+      )
+      await exec(
+        prisma,
+        `UPDATE "${table}" SET "${name}" = 1 WHERE "${name}" IS NULL`,
+      )
+      continue
+    }
+    await exec(
+      prisma,
+      `ALTER TABLE "${table}" ALTER COLUMN "${name}" DROP NOT NULL`,
     )
   }
 }

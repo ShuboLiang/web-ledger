@@ -26,6 +26,7 @@ import {
   Input,
   List,
   Progress,
+  Select,
   Space,
   Statistic,
   Tag,
@@ -44,7 +45,10 @@ import {
   type ShoppingOverview,
 } from "@/lib/api"
 import { money } from "@/lib/utils"
-import { usePickerInputReadOnly } from "@/lib/use-viewport"
+import {
+  useIsMobileViewport,
+  usePickerInputReadOnly,
+} from "@/lib/use-viewport"
 
 const shoppingMonthStorageKey = "qing-zhang-shopping-month"
 const incomeSuggestions = ["工资", "奖金", "兼职", "报销", "红包", "其他"]
@@ -63,6 +67,50 @@ const pickerMonth = (value: dayjs.Dayjs | dayjs.Dayjs[] | null) => {
 
 type Draft =
   { kind: "income"; row: ShoppingIncome } | { kind: "item"; row: ShoppingItem }
+
+function incomeSourceOptions(current?: string) {
+  const names = incomeSuggestions.includes(current || "")
+    ? incomeSuggestions
+    : [...incomeSuggestions, ...(current ? [current] : [])]
+  return names.map((name) => ({ value: name, label: name }))
+}
+
+function IncomeSourceField({
+  id,
+  value,
+  onChange,
+}: {
+  id?: string
+  value?: string
+  onChange?: (value: string) => void
+}) {
+  const mobile = useIsMobileViewport()
+  const options = incomeSourceOptions(value)
+  if (mobile) {
+    return (
+      <Select
+        id={id}
+        allowClear
+        showSearch={false}
+        placeholder="工资、奖金、兼职…"
+        options={options}
+        value={value || undefined}
+        onChange={(next) => onChange?.(next || "")}
+        style={{ width: "100%" }}
+      />
+    )
+  }
+  return (
+    <AutoComplete
+      id={id}
+      allowClear
+      options={options}
+      placeholder="工资、奖金、兼职…"
+      value={value}
+      onChange={onChange}
+    />
+  )
+}
 
 export function ShoppingPage() {
   const pickerInputReadOnly = usePickerInputReadOnly()
@@ -339,11 +387,7 @@ export function ShoppingPage() {
             label="来源"
             rules={[{ required: true, message: "请填写收入来源" }]}
           >
-            <AutoComplete
-              allowClear
-              options={incomeSuggestions.map((name) => ({ value: name }))}
-              placeholder="工资、奖金、兼职…"
-            />
+            <IncomeSourceField />
           </Form.Item>
           <Form.Item
             name="amount"
@@ -566,9 +610,7 @@ export function ShoppingPage() {
             rules={[{ required: true, message: "请填写名称" }]}
           >
             {draft?.kind === "income" ? (
-              <AutoComplete
-                options={incomeSuggestions.map((name) => ({ value: name }))}
-              />
+              <IncomeSourceField />
             ) : (
               <Input maxLength={80} />
             )}
