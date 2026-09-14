@@ -1,24 +1,3 @@
-export type ShoppingItem = {
-  id: string
-  name: string
-  unitPrice: number
-  quantity: number
-  subtotal: number
-  note: string
-  purchased: boolean
-  createdAt: string
-  updatedAt: string
-}
-export type ShoppingOverview = {
-  items: ShoppingItem[]
-  summary: {
-    pendingTotal: number
-    purchasedTotal: number
-    total: number
-    pendingCount: number
-    purchasedCount: number
-  }
-}
 export type Transaction = {
   id: number
   date: string
@@ -251,6 +230,46 @@ export type LendingContactDetail = {
 export type LendingReminders = {
   overdue: LendingEntry[]
   dueSoon: LendingEntry[]
+}
+export type ShoppingStatus = "normal" | "warning" | "over"
+export type ShoppingIncome = {
+  id: string
+  month: string
+  name: string
+  amount: number
+  note: string
+}
+export type ShoppingItem = {
+  id: string
+  month: string
+  name: string
+  amount: number
+  note: string
+  purchased: boolean
+  subtotal: number
+}
+export type ShoppingMonth = {
+  month: string
+  incomeCount: number
+  itemCount: number
+  purchasedCount: number
+  income: number
+  planned: number
+  remaining: number
+  usageRate: number
+  status: ShoppingStatus
+  incomes: ShoppingIncome[]
+  items: ShoppingItem[]
+}
+export type ShoppingOverview = ShoppingMonth & {
+  months: ShoppingMonth[]
+  summary: {
+    pendingTotal: number
+    purchasedTotal: number
+    total: number
+    pendingCount: number
+    purchasedCount: number
+  }
 }
 export type AuthUser = { id: string; username: string; displayName: string }
 

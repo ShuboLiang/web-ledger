@@ -11,6 +11,9 @@
 * {
   box-sizing: border-box;
 }
+.ant-wave {
+  display: none !important;
+}
 html,
 body,
 #root {
@@ -3338,6 +3341,141 @@ button.expense-category-row:focus-visible,
   font-weight: 700;
   letter-spacing: 0.14em;
 }
+.shopping-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.shopping-toolbar .ant-card-body {
+  padding-block: 16px;
+}
+.shopping-month-picker {
+  width: 150px;
+}
+.shopping-remain {
+  padding: 4px 2px 0;
+}
+.shopping-remain.warning {
+  border-color: #ead7ac;
+  background: #fffaf0;
+}
+.shopping-remain.over {
+  border-color: #edc5b9;
+  background: #fff6f2;
+}
+.shopping-remain-label {
+  margin: 0 0 8px !important;
+}
+.shopping-remain-value .ant-statistic-content {
+  font-family: Bahnschrift, "Microsoft YaHei", sans-serif;
+  font-size: clamp(28px, 4vw, 40px);
+}
+.shopping-remain .ant-progress {
+  margin: 16px 0 10px;
+}
+.shopping-remain .ant-progress-bg {
+  animation: none !important;
+}
+.shopping-month-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.shopping-month-chip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid #dce6e0;
+  border-radius: 12px;
+  background: #f5f8f6;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.shopping-month-chip:hover,
+.shopping-month-chip:focus-visible {
+  border-color: #176b62;
+  outline: none;
+}
+.shopping-month-chip:active {
+  background: #f5f8f6;
+}
+.shopping-month-chip.active,
+.shopping-month-chip.active:active {
+  border-color: #176b62;
+  background: #e8f3ef;
+}
+.shopping-month-chip.over {
+  border-color: #edc5b9;
+  background: #fff6f2;
+}
+.shopping-month-chip.warning {
+  border-color: #ead7ac;
+  background: #fffaf0;
+}
+.shopping-month-chip b {
+  color: #687775;
+  font-size: 12px;
+  font-weight: 600;
+}
+.shopping-month-chip strong {
+  overflow: hidden;
+  color: #102a2d;
+  font-family: Bahnschrift, "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shopping-month-chip span {
+  color: #8a9692;
+  font-size: 12px;
+}
+.shopping-add-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(160px, 0.8fr) 140px;
+  gap: 12px;
+  align-items: end;
+}
+.shopping-add-form .ant-form-item {
+  margin-bottom: 0;
+}
+.shopping-income-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.shopping-income-hint {
+  cursor: pointer;
+}
+.shopping-line-list {
+  margin-top: 16px;
+}
+.shopping-item {
+  align-items: center;
+  gap: 12px;
+}
+.shopping-item .ant-list-item-meta {
+  margin-block: 0;
+}
+.shopping-item .ant-list-item-meta-avatar {
+  margin-inline-end: 10px;
+}
+.shopping-item-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.shopping-item.purchased .shopping-item-name,
+.shopping-item.purchased .ant-list-item-meta-description {
+  color: #8a9692;
+}
+.shopping-item.purchased .shopping-item-name {
+  text-decoration: line-through;
+}
 .ai-pending .section-label {
   margin: 0;
 }
@@ -4364,6 +4502,20 @@ button.expense-category-row:focus-visible,
   .budget-summary-head .ant-space {
     align-self: flex-end;
     margin-top: -46px;
+  }
+  .shopping-month-strip {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .shopping-month-chip {
+    flex: 0 0 124px;
+  }
+  .shopping-add-form {
+    grid-template-columns: 1fr;
+  }
+  .shopping-remain-head {
+    flex-direction: column;
   }
   .more-page .ant-card {
     border-radius: 12px;

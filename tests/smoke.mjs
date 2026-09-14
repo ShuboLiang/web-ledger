@@ -587,7 +587,7 @@ try {
   const unaccountedRecord = await request("/api/transactions", {
     method: "POST",
     body: JSON.stringify({
-      date: "2026-08-11",
+      date: `${new Date().toISOString().slice(0, 7)}-15`,
       amount: 7,
       direction: "expense",
       item: "不记账户测试",
@@ -1492,6 +1492,324 @@ try {
     400,
   )
 
+  const emptyShopping = await request("/api/shopping?month=2026-10")
+  assert.equal(emptyShopping.month, "2026-10")
+  assert.equal(emptyShopping.income, 0)
+  assert.equal(emptyShopping.planned, 0)
+  assert.equal(emptyShopping.remaining, 0)
+  assert.equal(emptyShopping.incomes.length, 0)
+  assert.equal(emptyShopping.items.length, 0)
+  assert.equal(emptyShopping.months.length, 6)
+  assert.equal(emptyShopping.months[0].month, "2026-10")
+  assert.equal(emptyShopping.months[1].month, "2026-11")
+  assert.equal(
+    (
+      await requestError("/api/shopping/incomes", {
+        method: "POST",
+        body: JSON.stringify({
+          month: "2026-10",
+          name: "工资",
+          amount: -1,
+        }),
+      })
+    ).status,
+    400,
+  )
+  const wage = await request("/api/shopping/incomes", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-10",
+      name: "工资",
+      amount: 8000,
+    }),
+  })
+  assert.equal(wage.name, "工资")
+  assert.equal(wage.amount, 8000)
+  const bonus = await request("/api/shopping/incomes", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-10",
+      name: "奖金",
+      amount: 500,
+    }),
+  })
+  let shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.income, 8500)
+  assert.equal(shopping.remaining, 8500)
+  const monitor = await request("/api/shopping/items", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-10",
+      name: "显示器",
+      amount: 3000,
+    }),
+  })
+  assert.equal(monitor.name, "显示器")
+  assert.equal(monitor.amount, 3000)
+  assert.equal(monitor.purchased, false)
+  const clothes = await request("/api/shopping/items", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-10",
+      name: "衣服",
+      amount: 500,
+      note: "换季",
+    }),
+  })
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.planned, 3500)
+  assert.equal(shopping.remaining, 5000)
+  assert.equal(shopping.itemCount, 2)
+  assert.equal(shopping.status, "normal")
+  const nextMonth = await request("/api/shopping?month=2026-11")
+  assert.equal(nextMonth.income, 0)
+  assert.equal(nextMonth.planned, 0)
+  assert.equal(nextMonth.remaining, 0)
+  await request("/api/shopping/items", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-11",
+      name: "冰箱",
+      amount: 2000,
+    }),
+  })
+  const copied = await request("/api/shopping/incomes/copy-previous", {
+    method: "POST",
+    body: JSON.stringify({ month: "2026-11" }),
+  })
+  assert.equal(copied.copied, 2)
+  assert.equal(copied.from, "2026-10")
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.remaining, 5000)
+  assert.equal(shopping.months[1].month, "2026-11")
+  assert.equal(shopping.months[1].income, 8500)
+  assert.equal(shopping.months[1].planned, 2000)
+  assert.equal(shopping.months[1].remaining, 6500)
+  assert.equal(
+    (
+      await requestError("/api/shopping/incomes/copy-previous", {
+        method: "POST",
+        body: JSON.stringify({ month: "2026-11" }),
+      })
+    ).status,
+    400,
+  )
+  const updatedClothes = await request(`/api/shopping/items/${clothes.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ amount: 800, purchased: true }),
+  })
+  assert.equal(updatedClothes.amount, 800)
+  assert.equal(updatedClothes.purchased, true)
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.planned, 3800)
+  assert.equal(shopping.remaining, 4700)
+  assert.equal(shopping.purchasedCount, 1)
+  const moved = await request(`/api/shopping/items/${clothes.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ month: "2026-12" }),
+  })
+  assert.equal(moved.month, "2026-12")
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.planned, 3000)
+  assert.equal(shopping.remaining, 5500)
+  assert.equal(shopping.months[2].planned, 800)
+  await request(`/api/shopping/items/${clothes.id}`, { method: "DELETE" })
+  const updatedBonus = await request(`/api/shopping/incomes/${bonus.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ amount: 1000 }),
+  })
+  assert.equal(updatedBonus.amount, 1000)
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.income, 9000)
+  assert.equal(shopping.remaining, 6000)
+  assert.equal(
+    (await request(`/api/shopping/items/${monitor.id}`, { method: "DELETE" }))
+      .deleted,
+    true,
+  )
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.items.length, 0)
+  assert.equal(shopping.remaining, 9000)
+  const overspend = await request("/api/shopping/items", {
+    method: "POST",
+    body: JSON.stringify({
+      month: "2026-10",
+      name: "车子",
+      amount: 10000,
+    }),
+  })
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.remaining, -1000)
+  assert.equal(shopping.status, "over")
+  await request(`/api/shopping/items/${overspend.id}`, { method: "DELETE" })
+  await request(`/api/shopping/incomes/${wage.id}`, { method: "DELETE" })
+  shopping = await request("/api/shopping?month=2026-10")
+  assert.equal(shopping.income, 1000)
+  assert.equal(
+    (
+      await requestError("/api/shopping/items", {
+        method: "POST",
+        body: JSON.stringify({ month: "2026-10", name: "", amount: 12 }),
+      })
+    ).status,
+    400,
+  )
+  assert.equal(
+    (
+      await requestError("/api/shopping/items", {
+        method: "POST",
+        body: JSON.stringify({
+          month: "2026-10",
+          name: "无效价格",
+          amount: 0,
+        }),
+      })
+    ).status,
+    400,
+  )
+  assert.equal(
+    (
+      await requestError("/api/shopping/items/missing", {
+        method: "DELETE",
+      })
+    ).status,
+    404,
+  )
+
+  const shoppingAgentConversationId = "smoke-agent-shopping"
+  await request("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ id: shoppingAgentConversationId }),
+  })
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-income-create",
+          shoppingIncome: {
+            month: "2026-12",
+            name: "工资",
+            amount: 9000,
+            note: "Agent",
+          },
+          item: "工资",
+          amount: 9000,
+          display: { month: "2026-12", name: "工资" },
+        },
+        {
+          type: "shopping-item-create",
+          shoppingItem: {
+            month: "2026-12",
+            name: "键盘",
+            amount: 400,
+            note: "",
+          },
+          item: "键盘",
+          amount: 400,
+          display: { month: "2026-12", name: "键盘" },
+        },
+      ],
+    },
+  })
+  const rejectedShoppingEdit = await requestError(
+    `/api/ai/conversations/${shoppingAgentConversationId}/proposals`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        proposals: [
+          {
+            type: "shopping-income-create",
+            shoppingIncome: {
+              month: "2026-12",
+              name: "工资",
+              amount: 8000,
+              note: "Agent",
+            },
+          },
+          {
+            type: "shopping-item-create",
+            shoppingItem: {
+              month: "2026-12",
+              name: "键盘",
+              amount: 400,
+              note: "",
+            },
+          },
+        ],
+      }),
+    },
+  )
+  assert.equal(rejectedShoppingEdit.status, 400)
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  let planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.income, 9000)
+  assert.equal(planned.planned, 400)
+  assert.equal(planned.remaining, 8600)
+  assert.equal(planned.items[0].purchased, false)
+  const agentKeyboard = planned.items[0]
+  const agentWage = planned.incomes[0]
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-item-update",
+          itemId: agentKeyboard.id,
+          changes: { amount: 450, purchased: true },
+          item: "键盘",
+          display: { month: "2026-12", name: "键盘" },
+        },
+        {
+          type: "shopping-income-copy",
+          month: "2027-01",
+          display: { month: "2027-01", from: "2026-12" },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.planned, 450)
+  assert.equal(planned.purchasedCount, 1)
+  assert.equal(planned.items[0].purchased, true)
+  const copiedPlan = await request("/api/shopping?month=2027-01")
+  assert.equal(copiedPlan.income, 9000)
+  assert.equal(copiedPlan.incomes[0].name, "工资")
+  await testDatabase.aiConversation.update({
+    where: { id: shoppingAgentConversationId },
+    data: {
+      pendingProposals: [
+        {
+          type: "shopping-item-delete",
+          itemId: agentKeyboard.id,
+          item: "键盘",
+          display: { month: "2026-12", name: "键盘", amount: 450 },
+        },
+        {
+          type: "shopping-income-delete",
+          incomeId: agentWage.id,
+          item: "工资",
+          display: { month: "2026-12", name: "工资", amount: 9000 },
+        },
+      ],
+    },
+  })
+  await request("/api/ai/execute", {
+    method: "POST",
+    body: JSON.stringify({ conversationId: shoppingAgentConversationId }),
+  })
+  planned = await request("/api/shopping?month=2026-12")
+  assert.equal(planned.income, 0)
+  assert.equal(planned.items.length, 0)
+  assert.equal((await request("/api/shopping?month=2027-01")).income, 9000)
+
   const sourceCategory = await request("/api/management/categories", {
     method: "POST",
     body: JSON.stringify({
@@ -1726,15 +2044,15 @@ try {
     method: "POST",
     body: JSON.stringify({ name: "收纳盒", unitPrice: "0.10", quantity: 3 }),
   })
-  let shopping = await request("/api/shopping")
-  assert.equal(shopping.summary.pendingTotal, 400.28)
-  assert.equal(shopping.summary.pendingCount, 2)
+  let legacyShopping = await request("/api/shopping")
+  assert.equal(legacyShopping.summary.pendingTotal, 400.28)
+  assert.equal(legacyShopping.summary.pendingCount, 2)
   assert.equal(
-    shopping.items.find((item) => item.id === shoppingOne.id).name,
+    legacyShopping.items.find((item) => item.id === shoppingOne.id).name,
     "耳机",
   )
   assert.equal(
-    shopping.items.find((item) => item.id === shoppingOne.id).subtotal,
+    legacyShopping.items.find((item) => item.id === shoppingOne.id).subtotal,
     399.98,
   )
   await request(`/api/shopping/${shoppingOne.id}`, {
@@ -1746,11 +2064,11 @@ try {
       purchased: true,
     }),
   })
-  shopping = await request("/api/shopping")
-  assert.equal(shopping.summary.pendingTotal, 0.3)
-  assert.equal(shopping.summary.purchasedTotal, 450.75)
-  assert.equal(shopping.summary.total, 451.05)
-  assert.equal(shopping.summary.purchasedCount, 1)
+  legacyShopping = await request("/api/shopping")
+  assert.equal(legacyShopping.summary.pendingTotal, 0.3)
+  assert.equal(legacyShopping.summary.purchasedTotal, 450.75)
+  assert.equal(legacyShopping.summary.total, 451.05)
+  assert.equal(legacyShopping.summary.purchasedCount, 1)
   await request(`/api/shopping/${shoppingOne.id}`, {
     method: "PATCH",
     body: JSON.stringify({ purchased: false }),
@@ -1840,6 +2158,9 @@ try {
   )
   assert.equal((await request("/api/transactions?page=1&pageSize=20")).total, 0)
   assert.equal((await request("/api/ai/settings")).profiles.length, 0)
+  assert.equal((await request("/api/shopping?month=2026-10")).income, 0)
+  assert.equal((await request("/api/shopping?month=2026-10")).incomes.length, 0)
+  assert.equal((await request("/api/shopping?month=2026-10")).items.length, 0)
   assert.equal(
     (
       await requestError("/api/transactions", {

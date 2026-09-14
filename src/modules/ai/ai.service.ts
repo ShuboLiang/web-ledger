@@ -17,6 +17,10 @@ import { AiSettingsService } from "./ai-settings.service.js"
 import { CurrentUserService } from "../auth/current-user.service.js"
 import { normalizeRecord } from "../../../lib/db.mjs"
 import { AiConversationCoordinator } from "./ai-conversation-coordinator.service.js"
+import {
+  ShoppingService,
+  SHOPPING_PROPOSAL_TYPES,
+} from "../shopping/shopping.service.js"
 
 const EDITABLE_FIELDS = [
   "date",
@@ -52,9 +56,9 @@ const displayFieldValue = (
       ? !value || value === "none"
         ? "不记账户"
         : String(value)
-    : Array.isArray(value)
-      ? value.join("、") || "空"
-      : String(value || "空")
+      : Array.isArray(value)
+        ? value.join("、") || "空"
+        : String(value || "空")
 
 @Injectable()
 export class AiService {
@@ -65,16 +69,70 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly currentUser: CurrentUserService,
     private readonly coordinator: AiConversationCoordinator,
+    private readonly shopping: ShoppingService,
   ) {}
+
+  private shoppingAdapter() {
+    const ledgerId = this.currentUser.ledgerId
+    return {
+      overview: (month?: string, horizon?: number) =>
+        this.shopping.agentOverview(ledgerId, month, horizon),
+      getIncome: async (id: string) => {
+        try {
+          return await this.shopping.getIncome(ledgerId, id)
+        } catch {
+          return null
+        }
+      },
+      getItem: async (id: string) => {
+        try {
+          return await this.shopping.getItem(ledgerId, id)
+        } catch {
+          return null
+        }
+      },
+    }
+  }
 
   private conversationManager() {
     return createLedgerAiConversationManager({
       ledger: this.ledger,
+      shopping: this.shoppingAdapter(),
       dashboard: (anchor: string) => this.dashboard.build(anchor),
       getToday: currentDate,
       getConfig: () => this.settings.runtime(),
       maxConversations: 1,
     })
+  }
+
+  private async executeAll(operations: any[], database?: any) {
+    if (!database)
+      return this.prisma.$transaction((transaction) =>
+        this.executeAll(operations, transaction),
+      )
+    const results: any[] = []
+    const ledgerBatch: any[] = []
+    const flushLedger = async () => {
+      if (!ledgerBatch.length) return
+      results.push(
+        ...(await this.ledger.executeAiOperations(ledgerBatch, database)),
+      )
+      ledgerBatch.length = 0
+    }
+    for (const proposal of operations) {
+      if (String(proposal?.type || "").startsWith("shopping-")) {
+        await flushLedger()
+        results.push(
+          await this.shopping.executeAiProposal(
+            this.currentUser.ledgerId,
+            proposal,
+            database,
+          ),
+        )
+      } else ledgerBatch.push(proposal)
+    }
+    await flushLedger()
+    return results
   }
 
   private conversationKey(id: string) {
@@ -225,6 +283,7 @@ export class AiService {
           "repayment",
           "lending-entry",
           "lending-settle",
+          ...SHOPPING_PROPOSAL_TYPES,
         ].includes(stored.type)
       ) {
         if (JSON.stringify(edited) !== JSON.stringify(stored))
@@ -446,6 +505,73 @@ export class AiService {
             日期: proposal.settlement?.date,
             金额: proposal.settlement?.amount,
             资金账户: proposal.display?.accountName,
+          },
+        ]
+      if (proposal?.type === "shopping-income-create")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "购物计划收入",
+            月份: proposal.shoppingIncome?.month || proposal.display?.month,
+            来源: proposal.shoppingIncome?.name || proposal.item,
+            金额: proposal.shoppingIncome?.amount,
+            备注: proposal.shoppingIncome?.note || "",
+          },
+        ]
+      if (proposal?.type === "shopping-income-update")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "修改购物收入",
+            收入: proposal.display?.name || proposal.item,
+            修改为: proposal.changes,
+          },
+        ]
+      if (proposal?.type === "shopping-income-delete")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "删除购物收入",
+            收入: proposal.display?.name || proposal.item,
+            金额: proposal.display?.amount ?? proposal.amount,
+          },
+        ]
+      if (proposal?.type === "shopping-income-copy")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "复制上月购物收入",
+            复制到: proposal.month || proposal.display?.month,
+            来源月份: proposal.display?.from,
+          },
+        ]
+      if (proposal?.type === "shopping-item-create")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "加入购物清单",
+            月份: proposal.shoppingItem?.month || proposal.display?.month,
+            物品: proposal.shoppingItem?.name || proposal.item,
+            金额: proposal.shoppingItem?.amount,
+            备注: proposal.shoppingItem?.note || "",
+          },
+        ]
+      if (proposal?.type === "shopping-item-update")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "修改购物清单",
+            物品: proposal.display?.name || proposal.item,
+            修改为: proposal.changes,
+          },
+        ]
+      if (proposal?.type === "shopping-item-delete")
+        return [
+          {
+            序号: ++displayIndex,
+            操作: "移出购物清单",
+            物品: proposal.display?.name || proposal.item,
+            金额: proposal.display?.amount ?? proposal.amount,
           },
         ]
       const current = proposal?.current || {}
@@ -783,6 +909,28 @@ export class AiService {
       } ¥${Number(proposal.settlement?.amount || 0).toFixed(2)}（${
         proposal.display?.contactName || "往来对象"
       }）`
+    if (proposal?.type === "shopping-income-create")
+      return `购物计划收入“${proposal.shoppingIncome?.name || proposal.item || "未命名"}” ¥${Number(
+        proposal.shoppingIncome?.amount || 0,
+      ).toFixed(
+        2,
+      )}（${proposal.shoppingIncome?.month || proposal.display?.month || ""}）`
+    if (proposal?.type === "shopping-income-update")
+      return `修改购物收入“${proposal.display?.name || proposal.item || "未命名"}”`
+    if (proposal?.type === "shopping-income-delete")
+      return `删除购物收入“${proposal.display?.name || proposal.item || "未命名"}”`
+    if (proposal?.type === "shopping-income-copy")
+      return `复制上月购物收入到 ${proposal.month || proposal.display?.month || "本月"}`
+    if (proposal?.type === "shopping-item-create")
+      return `加入购物清单“${proposal.shoppingItem?.name || proposal.item || "未命名"}” ¥${Number(
+        proposal.shoppingItem?.amount || 0,
+      ).toFixed(
+        2,
+      )}（${proposal.shoppingItem?.month || proposal.display?.month || ""}）`
+    if (proposal?.type === "shopping-item-update")
+      return `修改购物清单“${proposal.display?.name || proposal.item || "未命名"}”`
+    if (proposal?.type === "shopping-item-delete")
+      return `移出购物清单“${proposal.display?.name || proposal.item || "未命名"}”`
     const item = proposal?.current?.item || ""
     const label = `${item ? `“${item}”` : `账目 #${proposal?.id}`}`
     return proposal?.type === "update"
@@ -800,9 +948,11 @@ export class AiService {
         runPiLedgerDirectCommand({
           text: input,
           ledger: this.ledger,
+          shopping: this.shoppingAdapter(),
           dashboard: (anchor: string) => this.dashboard.build(anchor),
           today: currentDate(),
           piConfig,
+          executeOperations: (operations: any[]) => this.executeAll(operations),
         }),
     )
     return {
@@ -827,10 +977,7 @@ export class AiService {
           : []
         if (!operations.length) throw new BadRequestException("没有待执行操作")
         const humanEdits = this.editSummary(operations)
-        const results = await this.ledger.executeAiOperations(
-          operations,
-          database,
-        )
+        const results = await this.executeAll(operations, database)
         const editNotice = humanEdits.length
           ? `\n执行前人工调整：\n${humanEdits.map((item) => `- ${item}`).join("\n")}`
           : ""

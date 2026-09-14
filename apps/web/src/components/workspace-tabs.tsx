@@ -46,7 +46,6 @@ export function TransactionsWorkspace() {
     <WorkspaceShell
       items={[
         { path: "/transactions", label: "明细" },
-        { path: "/transactions/shopping", label: "购物计划" },
         { path: "/transactions/recurring", label: "定期" },
         { path: "/transactions/trash", label: "回收站" },
       ]}
@@ -72,6 +71,7 @@ export function AnalyticsWorkspace() {
         { path: "/analytics", label: "统计" },
         { path: "/analytics/heatmap", label: "热力" },
         { path: "/analytics/budgets", label: "预算" },
+        { path: "/analytics/shopping", label: "购物" },
         { path: "/analytics/tags", label: "标签" },
       ]}
     />
