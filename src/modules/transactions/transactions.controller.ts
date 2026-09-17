@@ -34,6 +34,8 @@ export class TransactionsController {
       "tagMatch",
       "sortBy",
       "sortOrder",
+      "minAmount",
+      "maxAmount",
     ].some((key) => Object.hasOwn(query, key))
     return paged
       ? this.ledger.pageTransactions(query)

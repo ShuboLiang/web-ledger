@@ -227,6 +227,8 @@ export class LedgerService {
     tagId = "",
     tagIds = "",
     tagMatch = "",
+    minAmount = "",
+    maxAmount = "",
   }: Record<string, unknown> = {}) {
     const { ledgerId } = await this.context()
     const take = Math.min(Math.max(Number(pageSize) || 20, 1), 100)
@@ -290,8 +292,92 @@ export class LedgerService {
       ] as Prisma.TransactionWhereInput[]
     if (primary) where.category1 = primary
     if (secondary) where.category2 = secondary
-    if (selectedDirection)
+
+    const rawMin =
+      minAmount !== undefined &&
+      minAmount !== null &&
+      String(minAmount).trim() !== ""
+        ? Number(minAmount)
+        : null
+    const rawMax =
+      maxAmount !== undefined &&
+      maxAmount !== null &&
+      String(maxAmount).trim() !== ""
+        ? Number(maxAmount)
+        : null
+    const hasMin = rawMin !== null && Number.isFinite(rawMin) && rawMin >= 0
+    const hasMax = rawMax !== null && Number.isFinite(rawMax) && rawMax >= 0
+    let minVal = hasMin ? Number(rawMin) : null
+    let maxVal = hasMax ? Number(rawMax) : null
+    if (minVal !== null && maxVal !== null && minVal > maxVal) {
+      const temp = minVal
+      minVal = maxVal
+      maxVal = temp
+    }
+
+    if (minVal !== null || maxVal !== null) {
+      if (selectedDirection === "expense") {
+        if (minVal !== null && maxVal !== null) {
+          where.amount = { gte: -maxVal, lte: -minVal }
+        } else if (minVal !== null) {
+          where.amount = { lte: -minVal }
+        } else if (maxVal !== null) {
+          where.amount = { gte: -maxVal, lt: 0 }
+        }
+      } else if (selectedDirection === "income") {
+        if (minVal !== null && maxVal !== null) {
+          where.amount = { gte: minVal, lte: maxVal }
+        } else if (minVal !== null) {
+          where.amount = { gte: minVal }
+        } else if (maxVal !== null) {
+          where.amount = { lte: maxVal, gt: 0 }
+        }
+      } else {
+        if (minVal !== null && maxVal !== null) {
+          where.AND = [
+            ...(Array.isArray(where.AND)
+              ? where.AND
+              : where.AND
+                ? [where.AND]
+                : []),
+            {
+              OR: [
+                { amount: { gte: -maxVal, lte: -minVal } },
+                { amount: { gte: minVal, lte: maxVal } },
+              ],
+            },
+          ]
+        } else if (minVal !== null) {
+          where.AND = [
+            ...(Array.isArray(where.AND)
+              ? where.AND
+              : where.AND
+                ? [where.AND]
+                : []),
+            {
+              OR: [
+                { amount: { lte: -minVal } },
+                { amount: { gte: minVal } },
+              ],
+            },
+          ]
+        } else if (maxVal !== null) {
+          where.AND = [
+            ...(Array.isArray(where.AND)
+              ? where.AND
+              : where.AND
+                ? [where.AND]
+                : []),
+            {
+              amount: { gte: -maxVal, lte: maxVal },
+            },
+          ]
+        }
+      }
+    } else if (selectedDirection) {
       where.amount = selectedDirection === "expense" ? { lt: 0 } : { gt: 0 }
+    }
+
     const selectedAccountId = clean(accountId, 100)
     if (selectedAccountId === UNACCOUNTED_ACCOUNT_ID) where.accountId = null
     else if (selectedAccountId) where.accountId = selectedAccountId
@@ -329,11 +415,15 @@ export class LedgerService {
     const current = Math.min(Math.max(Number(page) || 1, 1), totalPages)
     const [expenseAgg, incomeAgg, rows] = await Promise.all([
       this.prisma.transaction.aggregate({
-        where: { ...where, amount: { lt: 0 } },
+        where: {
+          AND: [where, { amount: { lt: 0 } }],
+        },
         _sum: { amount: true },
       }),
       this.prisma.transaction.aggregate({
-        where: { ...where, amount: { gt: 0 } },
+        where: {
+          AND: [where, { amount: { gt: 0 } }],
+        },
         _sum: { amount: true },
       }),
       this.prisma.transaction.findMany({
@@ -376,6 +466,8 @@ export class LedgerService {
         String(tagMatch).toLowerCase() === "all"
           ? "all"
           : "any",
+      minAmount: minVal !== null ? minVal : undefined,
+      maxAmount: maxVal !== null ? maxVal : undefined,
     }
   }
 

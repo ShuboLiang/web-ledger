@@ -2,6 +2,7 @@ import {
   CalendarOutlined,
   ClearOutlined,
   DeleteOutlined,
+  DollarOutlined,
   DownloadOutlined,
   EditOutlined,
   FilterOutlined,
@@ -28,6 +29,7 @@ import {
   Form,
   Grid,
   Input,
+  InputNumber,
   List,
   Popover,
   Segmented,
@@ -90,6 +92,8 @@ const transactionFilterKeys = [
   "tagIds",
   "tagMatch",
   "accountId",
+  "minAmount",
+  "maxAmount",
 ] as const
 const transactionStateKeys = [
   ...transactionFilterKeys,
@@ -143,6 +147,15 @@ export function TransactionsPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeOpen, setTimeOpen] = useState(false)
+  const [amountOpen, setAmountOpen] = useState(false)
+  const [amountMinInput, setAmountMinInput] = useState<number | null>(() => {
+    const v = params.get("minAmount")
+    return v !== null && v !== "" && !isNaN(Number(v)) ? Number(v) : null
+  })
+  const [amountMaxInput, setAmountMaxInput] = useState<number | null>(() => {
+    const v = params.get("maxAmount")
+    return v !== null && v !== "" && !isNaN(Number(v)) ? Number(v) : null
+  })
   const [searchValue, setSearchValue] = useState(params.get("query") || "")
   const [bulkForm] = Form.useForm()
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -186,6 +199,18 @@ export function TransactionsPage() {
     : null
   useEffect(() => {
     setSearchValue(params.get("query") || "")
+    const minParam = params.get("minAmount")
+    const maxParam = params.get("maxAmount")
+    setAmountMinInput(
+      minParam !== null && minParam !== "" && !isNaN(Number(minParam))
+        ? Number(minParam)
+        : null,
+    )
+    setAmountMaxInput(
+      maxParam !== null && maxParam !== "" && !isNaN(Number(maxParam))
+        ? Number(maxParam)
+        : null,
+    )
     if (params.get("focus") === "search") searchRef.current?.focus()
     const currentState = savedTransactionState(params).toString()
     if (pendingFilterRestore.current === undefined) {
@@ -489,6 +514,8 @@ export function TransactionsPage() {
       "tagIds",
       "tagMatch",
       "accountId",
+      "minAmount",
+      "maxAmount",
     ])
   const today = dayjs().startOf("day")
   const weekStart = today.subtract((today.day() + 6) % 7, "day")
@@ -797,6 +824,213 @@ export function TransactionsPage() {
       )}
     </Flex>
   )
+  const activeMin = useMemo(() => {
+    const v = params.get("minAmount")
+    return v !== null && v !== "" && !isNaN(Number(v)) ? Number(v) : null
+  }, [params])
+  const activeMax = useMemo(() => {
+    const v = params.get("maxAmount")
+    return v !== null && v !== "" && !isNaN(Number(v)) ? Number(v) : null
+  }, [params])
+  const isAmountFilterActive = activeMin !== null || activeMax !== null
+
+  const amountPresets = [
+    { label: "全部金额", min: null, max: null },
+    { label: "0 - 50", min: 0, max: 50 },
+    { label: "50 - 100", min: 50, max: 100 },
+    { label: "100 - 500", min: 100, max: 500 },
+    { label: "500 - 1000", min: 500, max: 1000 },
+    { label: "1000 - 5000", min: 1000, max: 5000 },
+    { label: "5000以上", min: 5000, max: null },
+  ]
+
+  const amountLabel = useMemo(() => {
+    if (activeMin !== null && activeMax !== null) {
+      return `¥${activeMin} - ¥${activeMax}`
+    }
+    if (activeMin !== null) {
+      return `≥ ¥${activeMin}`
+    }
+    if (activeMax !== null) {
+      return `≤ ¥${activeMax}`
+    }
+    return "金额范围"
+  }, [activeMin, activeMax])
+
+  const setAmountRange = (min: number | null, max: number | null) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      if (min !== null && min !== undefined && !isNaN(min)) {
+        next.set("minAmount", String(min))
+      } else {
+        next.delete("minAmount")
+      }
+      if (max !== null && max !== undefined && !isNaN(max)) {
+        next.set("maxAmount", String(max))
+      } else {
+        next.delete("maxAmount")
+      }
+      next.set("page", "1")
+      return next
+    })
+  }
+
+  const clearAmountFilter = () => clearFilterKeys(["minAmount", "maxAmount"])
+
+  const amountPresetButtons = (
+    <div className="transaction-amount-presets">
+      {amountPresets.map((preset) => {
+        const isActive =
+          activeMin === preset.min && activeMax === preset.max
+        return (
+          <Button
+            key={preset.label}
+            size="small"
+            type={isActive ? "primary" : "default"}
+            onClick={() => {
+              setAmountRange(preset.min, preset.max)
+              setAmountMinInput(preset.min)
+              setAmountMaxInput(preset.max)
+              setAmountOpen(false)
+            }}
+          >
+            {preset.label}
+          </Button>
+        )
+      })}
+    </div>
+  )
+
+  const desktopAmountFilterContent = (
+    <div className="transaction-amount-panel">
+      <div className="transaction-amount-presets-wrap">
+        <Typography.Text type="secondary">快捷预设</Typography.Text>
+        {amountPresetButtons}
+      </div>
+      <div className="transaction-custom-amount">
+        <Typography.Text type="secondary">自定义金额</Typography.Text>
+        <Flex align="center" gap={8} className="transaction-amount-inputs">
+          <InputNumber
+            min={0}
+            precision={2}
+            prefix="¥"
+            placeholder="最低金额"
+            value={amountMinInput}
+            onChange={(val) => setAmountMinInput(val)}
+            className="transaction-amount-input"
+            onPressEnter={() => {
+              let min = amountMinInput
+              let max = amountMaxInput
+              if (min !== null && max !== null && min > max) {
+                const temp = min
+                min = max
+                max = temp
+                setAmountMinInput(min)
+                setAmountMaxInput(max)
+              }
+              setAmountRange(min, max)
+              setAmountOpen(false)
+            }}
+          />
+          <span className="transaction-amount-separator">至</span>
+          <InputNumber
+            min={0}
+            precision={2}
+            prefix="¥"
+            placeholder="最高金额"
+            value={amountMaxInput}
+            onChange={(val) => setAmountMaxInput(val)}
+            className="transaction-amount-input"
+            onPressEnter={() => {
+              let min = amountMinInput
+              let max = amountMaxInput
+              if (min !== null && max !== null && min > max) {
+                const temp = min
+                min = max
+                max = temp
+                setAmountMinInput(min)
+                setAmountMaxInput(max)
+              }
+              setAmountRange(min, max)
+              setAmountOpen(false)
+            }}
+          />
+        </Flex>
+        <Flex justify="flex-end" gap={8} style={{ marginTop: 12 }}>
+          <Button
+            size="small"
+            onClick={() => {
+              setAmountMinInput(null)
+              setAmountMaxInput(null)
+              setAmountRange(null, null)
+              setAmountOpen(false)
+            }}
+          >
+            重置
+          </Button>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              let min = amountMinInput
+              let max = amountMaxInput
+              if (min !== null && max !== null && min > max) {
+                const temp = min
+                min = max
+                max = temp
+                setAmountMinInput(min)
+                setAmountMaxInput(max)
+              }
+              setAmountRange(min, max)
+              setAmountOpen(false)
+            }}
+          >
+            确定
+          </Button>
+        </Flex>
+      </div>
+    </div>
+  )
+
+  const amountTrigger = (className = "", label = amountLabel) => (
+    <Button
+      className={`transaction-amount-trigger ${isAmountFilterActive ? "is-active" : ""} ${className}`.trim()}
+      icon={<DollarOutlined />}
+      onClick={
+        screens.md
+          ? undefined
+          : () => {
+              setAmountMinInput(activeMin)
+              setAmountMaxInput(activeMax)
+              setFilterOpen(true)
+            }
+      }
+    >
+      {label}
+    </Button>
+  )
+
+  const renderAmountFilter = (className = "") =>
+    screens.md ? (
+      <Popover
+        open={amountOpen}
+        onOpenChange={(open) => {
+          setAmountOpen(open)
+          if (open) {
+            setAmountMinInput(activeMin)
+            setAmountMaxInput(activeMax)
+          }
+        }}
+        trigger="click"
+        placement="bottomLeft"
+        content={desktopAmountFilterContent}
+      >
+        {amountTrigger(className)}
+      </Popover>
+    ) : (
+      amountTrigger(className)
+    )
+
   const renderMobileFilters = () => (
     <div className="advanced-filter-panel">
       <Flex vertical gap={16}>
@@ -845,7 +1079,65 @@ export function TransactionsPage() {
             />
           )}
         </Flex>
-        <Button type="primary" onClick={() => setFilterOpen(false)}>
+        <Flex vertical gap={8}>
+          <Typography.Text type="secondary">金额范围</Typography.Text>
+          <div className="mobile-amount-presets">
+            {amountPresets.map((preset) => {
+              const isActive =
+                amountMinInput === preset.min && amountMaxInput === preset.max
+              return (
+                <Button
+                  key={preset.label}
+                  size="small"
+                  type={isActive ? "primary" : "default"}
+                  onClick={() => {
+                    setAmountMinInput(preset.min)
+                    setAmountMaxInput(preset.max)
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              )
+            })}
+          </div>
+          <Flex align="center" gap={8} style={{ marginTop: 4 }}>
+            <InputNumber
+              min={0}
+              precision={2}
+              prefix="¥"
+              placeholder="最低金额"
+              value={amountMinInput}
+              onChange={(val) => setAmountMinInput(val)}
+              style={{ flex: 1 }}
+            />
+            <span style={{ color: "#667781" }}>-</span>
+            <InputNumber
+              min={0}
+              precision={2}
+              prefix="¥"
+              placeholder="最高金额"
+              value={amountMaxInput}
+              onChange={(val) => setAmountMaxInput(val)}
+              style={{ flex: 1 }}
+            />
+          </Flex>
+        </Flex>
+        <Button
+          type="primary"
+          onClick={() => {
+            let min = amountMinInput
+            let max = amountMaxInput
+            if (min !== null && max !== null && min > max) {
+              const temp = min
+              min = max
+              max = temp
+              setAmountMinInput(min)
+              setAmountMaxInput(max)
+            }
+            setAmountRange(min, max)
+            setFilterOpen(false)
+          }}
+        >
           完成
         </Button>
       </Flex>
@@ -857,6 +1149,16 @@ export function TransactionsPage() {
       key: "direction",
       label: params.get("direction") === "expense" ? "支出" : "收入",
       clear: () => clearFilterKeys(["direction"]),
+    },
+    isAmountFilterActive && {
+      key: "amount",
+      label:
+        activeMin !== null && activeMax !== null
+          ? `金额：¥${activeMin} - ¥${activeMax}`
+          : activeMin !== null
+            ? `金额 ≥ ¥${activeMin}`
+            : `金额 ≤ ¥${activeMax}`,
+      clear: clearAmountFilter,
     },
     params.get("category1") && {
       key: "category",
@@ -894,6 +1196,7 @@ export function TransactionsPage() {
   const mobileMoreFilterCount =
     Number(Boolean(params.get("category1"))) +
     Number(Boolean(params.get("accountId"))) +
+    Number(Boolean(isAmountFilterActive)) +
     selectedTagIds.length
   const mobileActiveFilterChips = filterChips.filter(
     (chip) => !["time", "direction"].includes(chip.key),
@@ -1071,6 +1374,7 @@ export function TransactionsPage() {
             <div className="transaction-filter-secondary">
               {renderAccountFilter()}
               {renderTagFilter("transaction-tag-filter")}
+              {renderAmountFilter("transaction-amount-filter")}
               {renderFilterSummary()}
               <Flex
                 align="center"
@@ -1130,8 +1434,12 @@ export function TransactionsPage() {
                 <Button
                   className="transaction-mobile-icon-btn"
                   icon={<FilterOutlined />}
-                  aria-label="筛选分类、账户和标签"
-                  onClick={() => setFilterOpen(true)}
+                  aria-label="筛选分类、账户、金额与标签"
+                  onClick={() => {
+                    setAmountMinInput(activeMin)
+                    setAmountMaxInput(activeMax)
+                    setFilterOpen(true)
+                  }}
                 />
               </Badge>
               <Dropdown menu={mobileActionMenu} trigger={["click"]}>

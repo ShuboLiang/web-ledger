@@ -543,6 +543,84 @@ try {
     "/api/transactions?start=2026-08-01&end=2026-08-11&page=1&pageSize=100",
   )
   assert.equal(rangedPage.total, 25)
+  const amountTestRecords = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      records: [
+        {
+          date: "2026-08-15",
+          amount: 80,
+          direction: "expense",
+          item: "金额范围测试支出80",
+          category1: "其他",
+          category2: "待分类",
+        },
+        {
+          date: "2026-08-15",
+          amount: 300,
+          direction: "expense",
+          item: "金额范围测试支出300",
+          category1: "其他",
+          category2: "待分类",
+        },
+        {
+          date: "2026-08-15",
+          amount: 500,
+          direction: "income",
+          item: "金额范围测试收入500",
+          category1: "其他",
+          category2: "待分类",
+        },
+      ],
+    }),
+  })
+  const amountRangePage = await request(
+    "/api/transactions?minAmount=100&maxAmount=400&page=1&pageSize=20",
+  )
+  assert.ok(
+    amountRangePage.records.some((r) => r.item === "金额范围测试支出300"),
+  )
+  assert.ok(
+    !amountRangePage.records.some((r) => r.item === "金额范围测试支出80"),
+  )
+  assert.ok(
+    !amountRangePage.records.some((r) => r.item === "金额范围测试收入500"),
+  )
+
+  const amountMinPage = await request(
+    "/api/transactions?minAmount=200&page=1&pageSize=20",
+  )
+  assert.ok(amountMinPage.records.some((r) => r.item === "金额范围测试支出300"))
+  assert.ok(amountMinPage.records.some((r) => r.item === "金额范围测试收入500"))
+  assert.ok(!amountMinPage.records.some((r) => r.item === "金额范围测试支出80"))
+
+  const amountIncomePage = await request(
+    "/api/transactions?minAmount=200&maxAmount=600&direction=income&page=1&pageSize=20",
+  )
+  assert.ok(
+    amountIncomePage.records.some((r) => r.item === "金额范围测试收入500"),
+  )
+  assert.ok(
+    !amountIncomePage.records.some((r) => r.item === "金额范围测试支出300"),
+  )
+  assert.equal(amountIncomePage.summary.income, 500)
+  assert.equal(amountIncomePage.summary.expense, 0)
+
+  const amountExpensePage = await request(
+    "/api/transactions?minAmount=200&maxAmount=600&direction=expense&page=1&pageSize=20",
+  )
+  assert.ok(
+    amountExpensePage.records.some((r) => r.item === "金额范围测试支出300"),
+  )
+  assert.ok(
+    !amountExpensePage.records.some((r) => r.item === "金额范围测试收入500"),
+  )
+  assert.equal(amountExpensePage.summary.expense, 300)
+  assert.equal(amountExpensePage.summary.income, 0)
+
+  for (const rec of amountTestRecords.records) {
+    await request(`/api/transactions/${rec.id}`, { method: "DELETE" })
+  }
   assert.equal(
     (await request("/api/dashboard?anchor=2026-08-11")).rangeSeries.week.length,
     7,

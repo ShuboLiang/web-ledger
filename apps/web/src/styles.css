@@ -778,11 +778,67 @@ select {
   min-width: 0;
   align-items: center;
   grid-template-columns:
-    minmax(140px, 180px) minmax(220px, 320px) minmax(0, 1fr)
+    minmax(130px, 160px) minmax(180px, 240px) minmax(120px, 160px) minmax(0, 1fr)
     auto;
   gap: 12px;
   padding-top: 10px;
   border-top: 1px solid #e7ece8;
+}
+.transaction-amount-trigger {
+  min-width: 0;
+  justify-content: flex-start;
+}
+.transaction-amount-trigger > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transaction-amount-trigger.is-active {
+  border-color: #8dbdb0;
+  background: #f1f7f4;
+  color: #176b62;
+}
+.transaction-amount-panel {
+  width: 310px;
+  padding: 4px;
+}
+.transaction-amount-panel-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.transaction-amount-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.transaction-amount-presets .ant-btn {
+  width: 100%;
+  padding-inline: 4px;
+}
+.transaction-custom-amount {
+  display: flex;
+  margin-top: 12px;
+  padding-top: 12px;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid #e7ece8;
+}
+.transaction-amount-inputs {
+  width: 100%;
+}
+.transaction-amount-input {
+  width: 100% !important;
+}
+.transaction-amount-separator {
+  color: #667781;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+.mobile-amount-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .transaction-account-filter {
   min-width: 0;
