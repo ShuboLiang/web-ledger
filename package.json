@@ -40,6 +40,7 @@
     "antd": "^6.6.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "compression": "^1.8.2",
     "dayjs": "^1.11.21",
     "helmet": "^8.3.0",
     "prisma": "^6.19.3",
@@ -54,6 +55,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",

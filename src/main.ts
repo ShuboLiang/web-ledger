@@ -1,6 +1,7 @@
 import "reflect-metadata"
 import { Logger, ValidationPipe } from "@nestjs/common"
 import { NestFactory } from "@nestjs/core"
+import compression from "compression"
 import helmet from "helmet"
 import { pathToFileURL } from "node:url"
 import { AppModule } from "./app.module.js"
@@ -9,6 +10,7 @@ import { ApiExceptionFilter } from "./common/api-exception.filter.js"
 export async function createApplication() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   app.useLogger(["log", "error", "warn"])
+  app.use(compression())
   app.use(helmet({ contentSecurityPolicy: false }))
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: false }))
   app.useGlobalFilters(new ApiExceptionFilter())

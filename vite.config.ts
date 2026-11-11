@@ -51,7 +51,19 @@ export default defineConfig({
         skipWaiting: true,
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
+        globPatterns: ["**/*.{css,html,svg,png,ico,webmanifest}"],
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.destination === "script" &&
+              url.pathname.startsWith("/assets/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "app-scripts",
+              expiration: { maxEntries: 64, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            },
+          },
+        ],
       },
     }),
   ],

@@ -35,6 +35,16 @@ export function currentDate() {
 const expense = (record: { amount: number }) =>
   record.amount < 0 ? -Number(record.amount) : 0
 
+type DailyAmount = { date: string; amount: number }
+type CategoryExpense = DailyAmount & {
+  category1: string
+  category2: string
+}
+type CategoryIcons = {
+  primary: Map<string, string>
+  secondary: Map<string, string>
+}
+
 export const parseCategoryPaths = (raw?: string | null) => {
   if (!raw) return null
   const paths = String(raw)
@@ -48,30 +58,26 @@ export const parseCategoryPaths = (raw?: string | null) => {
     .filter((path) => path.length > 0 && path.length <= 2)
   return paths.length ? paths : null
 }
-const matchCategoryPaths = (
-  record: { category1: string; category2: string },
-  paths: string[][],
-) =>
-  paths.some((path) =>
-    path.length === 1
-      ? record.category1 === path[0]
-      : record.category1 === path[0] && record.category2 === path[1],
-  )
-const sumRange = (records: any[], start: string, end: string) =>
+const sumRange = (records: DailyAmount[], start: string, end: string) =>
   Number(
     records
       .filter((row) => row.date >= start && row.date <= end)
       .reduce((sum, row) => sum + expense(row), 0)
       .toFixed(2),
   )
-const cashflowRange = (records: any[], start: string, end: string) => {
-  const selected = records.filter((row) => row.date >= start && row.date <= end)
-  const expenseAmount = selected
-    .filter((row) => row.amount < 0)
-    .reduce((sum, row) => sum - Number(row.amount), 0)
-  const income = selected
-    .filter((row) => row.amount > 0)
-    .reduce((sum, row) => sum + Number(row.amount), 0)
+const cashflowRange = (
+  expenses: DailyAmount[],
+  incomes: DailyAmount[],
+  start: string,
+  end: string,
+) => {
+  const expenseAmount = sumRange(expenses, start, end)
+  const income = Number(
+    incomes
+      .filter((row) => row.date >= start && row.date <= end)
+      .reduce((sum, row) => sum + Number(row.amount), 0)
+      .toFixed(2),
+  )
   return {
     expense: Number(expenseAmount.toFixed(2)),
     income: Number(income.toFixed(2)),
@@ -80,9 +86,10 @@ const cashflowRange = (records: any[], start: string, end: string) => {
 }
 
 function breakdown(
-  records: any[],
+  records: CategoryExpense[],
   start: string,
   end: string,
+  icons: CategoryIcons,
   level = "primary",
 ) {
   const grouped = new Map<string, number>()
@@ -103,7 +110,9 @@ function breakdown(
         category: child,
         ...(parent ? { parent } : {}),
         icon:
-          level === "secondary" ? rowIcon(records, parent, child, false) : rowIcon(records, child, "", true),
+          level === "secondary"
+            ? icons.secondary.get(`${parent}\u0000${child}`) || "tag"
+            : icons.primary.get(child) || "folder",
         amount: Number(amount.toFixed(2)),
         share: total ? amount / total : 0,
       }
@@ -111,21 +120,7 @@ function breakdown(
     .sort((a, b) => b.amount - a.amount)
 }
 
-function rowIcon(
-  records: any[],
-  category1: string,
-  category2: string,
-  primary: boolean,
-) {
-  const row = records.find(
-    (item) =>
-      item.category1 === category1 &&
-      (primary || item.category2 === category2),
-  )
-  return primary ? row?.primaryIcon || "folder" : row?.secondaryIcon || "tag"
-}
-
-function dailySeries(records: any[], anchor: string) {
+function dailySeries(records: DailyAmount[], anchor: string) {
   return Array.from({ length: 14 }, (_, index) => {
     const date = addDays(anchor, index - 13)
     return {
@@ -136,7 +131,7 @@ function dailySeries(records: any[], anchor: string) {
   })
 }
 
-function weeklySeries(records: any[], anchor: string) {
+function weeklySeries(records: DailyAmount[], anchor: string) {
   const current = startOfWeek(anchor)
   return Array.from({ length: 8 }, (_, index) => {
     const start = addDays(current, (index - 7) * 7)
@@ -148,7 +143,7 @@ function weeklySeries(records: any[], anchor: string) {
   })
 }
 
-function monthlySeries(records: any[], anchor: string) {
+function monthlySeries(records: DailyAmount[], anchor: string) {
   const base = utcDate(startOfMonth(anchor))
   return Array.from({ length: 12 }, (_, index) => {
     const date = new Date(base)
@@ -163,7 +158,7 @@ function monthlySeries(records: any[], anchor: string) {
 }
 
 function periodSeries(
-  records: any[],
+  records: DailyAmount[],
   start: string,
   end: string,
   scope: string,
@@ -201,15 +196,20 @@ function periodSeries(
   })
 }
 
-function comparisonBreakdown(records: any[], start: string, end: string) {
+function comparisonBreakdown(
+  records: CategoryExpense[],
+  start: string,
+  end: string,
+  icons: CategoryIcons,
+) {
   const days =
     Math.round(
       (utcDate(end).getTime() - utcDate(start).getTime()) / 86_400_000,
     ) + 1
   const previousEnd = addDays(start, -1)
   const previousStart = addDays(previousEnd, -days + 1)
-  const current = breakdown(records, start, end)
-  const previous = breakdown(records, previousStart, previousEnd)
+  const current = breakdown(records, start, end, icons)
+  const previous = breakdown(records, previousStart, previousEnd, icons)
   const currentMap = new Map(current.map((row) => [row.category, row.amount]))
   const previousMap = new Map(previous.map((row) => [row.category, row.amount]))
   return [...new Set([...currentMap.keys(), ...previousMap.keys()])]
@@ -233,14 +233,107 @@ export class DashboardService {
     private readonly prisma: PrismaService,
   ) {}
 
+  private async queryAnalyticsData(
+    start: string,
+    end: string,
+    categories?: string[][] | null,
+  ) {
+    const { ledgerId } = await this.ledger.context()
+    const categoryPaths = categories?.length
+      ? {
+          OR: categories.map(([category1, category2]) =>
+            category2 ? { category1, category2 } : { category1 },
+          ),
+        }
+      : {}
+    const where = { ledgerId, deletedAt: null, ...categoryPaths }
+    const rangeWhere = {
+      ...where,
+      date: { gte: utcDate(start), lte: utcDate(end) },
+    }
+    const [expenseRows, incomeRows, categoryRows, summary, categoriesRows] =
+      await Promise.all([
+        this.prisma.transaction.groupBy({
+          by: ["date"],
+          where: { ...rangeWhere, amount: { lt: 0 } },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.groupBy({
+          by: ["date"],
+          where: { ...rangeWhere, amount: { gt: 0 } },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.groupBy({
+          by: ["date", "category1", "category2"],
+          where: { ...rangeWhere, amount: { lt: 0 } },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.aggregate({
+          where,
+          _count: { _all: true },
+          _max: { date: true },
+        }),
+        this.prisma.category.findMany({
+          where: { ledgerId },
+          select: {
+            category1: true,
+            category2: true,
+            primaryIcon: true,
+            secondaryIcon: true,
+          },
+        }),
+      ])
+    const icons: CategoryIcons = {
+      primary: new Map(),
+      secondary: new Map(),
+    }
+    for (const category of categoriesRows) {
+      icons.primary.set(category.category1, category.primaryIcon)
+      icons.secondary.set(
+        `${category.category1}\u0000${category.category2}`,
+        category.secondaryIcon,
+      )
+    }
+    return {
+      expenses: expenseRows.map((row) => ({
+        date: dateString(row.date),
+        amount: Number(row._sum.amount || 0),
+      })),
+      incomes: incomeRows.map((row) => ({
+        date: dateString(row.date),
+        amount: Number(row._sum.amount || 0),
+      })),
+      categoryExpenses: categoryRows.map((row) => ({
+        date: dateString(row.date),
+        category1: row.category1,
+        category2: row.category2,
+        amount: Number(row._sum.amount || 0),
+      })),
+      icons,
+      transactionCount: summary._count._all,
+      latestDate: summary._max.date ? dateString(summary._max.date) : null,
+    }
+  }
+
   async build(requestedAnchor?: string | null, categories?: string[][] | null) {
-    let records = (await this.ledger.allTransactions()) as any[]
-    if (categories?.length)
-      records = records.filter((row) => matchCategoryPaths(row, categories))
-    const latestDate = String(records[0]?.date || currentDate())
     const anchor = /^\d{4}-\d{2}-\d{2}$/.test(requestedAnchor || "")
       ? requestedAnchor!
       : currentDate()
+    const anchorYear = Number(anchor.slice(0, 4))
+    const previousYear = String(anchorYear - 1).padStart(4, "0")
+    const {
+      expenses,
+      incomes,
+      categoryExpenses,
+      icons,
+      transactionCount,
+      latestDate: latest,
+    } = await this.queryAnalyticsData(
+      `${previousYear}-01-01`,
+      `${anchor.slice(0, 4)}-12-31`,
+      categories,
+    )
+    const latestDate = latest || currentDate()
     const weekStart = startOfWeek(anchor)
     const ranges = {
       day: [anchor, anchor],
@@ -256,8 +349,8 @@ export class DashboardService {
           ) + 1
         const previousEnd = addDays(start, -1)
         const previousStart = addDays(previousEnd, -days + 1)
-        const current = sumRange(records, start, end)
-        const previous = sumRange(records, previousStart, previousEnd)
+        const current = sumRange(expenses, start, end)
+        const previous = sumRange(expenses, previousStart, previousEnd)
         return [
           key,
           {
@@ -272,13 +365,15 @@ export class DashboardService {
     const cashflow = Object.fromEntries(
       Object.entries(ranges).map(([key, [start, end]]) => [
         key,
-        cashflowRange(records, start, end),
+        cashflowRange(expenses, incomes, start, end),
       ]),
     ) as Record<string, { expense: number; income: number; balance: number }>
     const { ledgerId } = await this.ledger.context()
     const filterActive = Boolean(categories?.length)
     const selectedPrimaries = new Set(
-      (categories || []).filter((path) => path.length === 1).map((path) => path[0]),
+      (categories || [])
+        .filter((path) => path.length === 1)
+        .map((path) => path[0]),
     )
     const budgetRows = await this.prisma.budget.findMany({
       where: { ledgerId, month: utcDate(startOfMonth(anchor)) },
@@ -290,7 +385,12 @@ export class DashboardService {
     const budgetAmount = Number(budgetRow?.amount || 0)
     const budgetUsed = cashflow.month.expense
     const budgetRate = budgetAmount > 0 ? budgetUsed / budgetAmount : 0
-    const monthBreakdown = breakdown(records, ranges.month[0], ranges.month[1])
+    const monthBreakdown = breakdown(
+      categoryExpenses,
+      ranges.month[0],
+      ranges.month[1],
+      icons,
+    )
     const categorySpending = new Map(
       monthBreakdown.map((row) => [row.category, row.amount]),
     )
@@ -309,9 +409,7 @@ export class DashboardService {
           id: row.id,
           month: anchor.slice(0, 7),
           category1: row.category1!,
-          primaryIcon:
-            records.find((record) => record.category1 === row.category1)
-              ?.primaryIcon || "folder",
+          primaryIcon: icons.primary.get(row.category1!) || "folder",
           amount,
           used,
           remaining: Number((amount - used).toFixed(2)),
@@ -325,8 +423,8 @@ export class DashboardService {
           riskRank[b.status] - riskRank[a.status] || b.usageRate - a.usageRate,
       )
     const yearExpenses = new Map<string, number>()
-    for (const row of records)
-      if (row.date.startsWith(anchor.slice(0, 4)) && row.amount < 0)
+    for (const row of expenses)
+      if (row.date.startsWith(anchor.slice(0, 4)))
         yearExpenses.set(
           row.date,
           (yearExpenses.get(row.date) || 0) - Number(row.amount),
@@ -338,45 +436,45 @@ export class DashboardService {
       totals: Object.fromEntries(
         Object.entries(ranges).map(([key, [start, end]]) => [
           key,
-          sumRange(records, start, end),
+          sumRange(expenses, start, end),
         ]),
       ),
       cashflow,
       breakdowns: Object.fromEntries(
         Object.entries(ranges).map(([key, [start, end]]) => [
           key,
-          breakdown(records, start, end),
+          breakdown(categoryExpenses, start, end, icons),
         ]),
       ),
       secondaryBreakdowns: Object.fromEntries(
         Object.entries(ranges).map(([key, [start, end]]) => [
           key,
-          breakdown(records, start, end, "secondary"),
+          breakdown(categoryExpenses, start, end, icons, "secondary"),
         ]),
       ),
       series: {
-        day: dailySeries(records, anchor),
-        week: weeklySeries(records, anchor),
-        month: monthlySeries(records, anchor),
+        day: dailySeries(expenses, anchor),
+        week: weeklySeries(expenses, anchor),
+        month: monthlySeries(expenses, anchor),
       },
       rangeSeries: Object.fromEntries(
         Object.entries(ranges).map(([key, [start, end]]) => [
           key,
-          periodSeries(records, start, end, key),
+          periodSeries(expenses, start, end, key),
         ]),
       ),
       comparison,
       comparisonBreakdowns: Object.fromEntries(
         Object.entries(ranges).map(([key, [start, end]]) => [
           key,
-          comparisonBreakdown(records, start, end),
+          comparisonBreakdown(categoryExpenses, start, end, icons),
         ]),
       ),
       yearHeatmap: [...yearExpenses.entries()].map(([date, amount]) => [
         date,
         Number(amount.toFixed(2)),
       ]),
-      transactionCount: records.length,
+      transactionCount,
       budget: budgetRow
         ? {
             id: budgetRow.id,
@@ -397,25 +495,22 @@ export class DashboardService {
     }
   }
 
-  async buildRange(
-    start: string,
-    end: string,
-    categories?: string[][] | null,
-  ) {
+  async buildRange(start: string, end: string, categories?: string[][] | null) {
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(end) ||
       start > end
     )
       throw new Error("自定义日期范围无效")
-    let records = (await this.ledger.allTransactions()) as any[]
-    if (categories?.length)
-      records = records.filter((row) => matchCategoryPaths(row, categories))
     const days =
       Math.round(
         (utcDate(end).getTime() - utcDate(start).getTime()) / 86_400_000,
       ) + 1
     if (days > 3660) throw new Error("单次自定义统计范围不能超过 10 年")
+    const previousEnd = addDays(start, -1)
+    const previousStart = addDays(previousEnd, -days + 1)
+    const { expenses, incomes, categoryExpenses, icons } =
+      await this.queryAnalyticsData(previousStart, end, categories)
     const series: { key: string; label: string; amount: number }[] = []
     if (days <= 120) {
       for (let index = 0; index < days; index += 1) {
@@ -423,7 +518,7 @@ export class DashboardService {
         series.push({
           key: date,
           label: date.slice(5).replace("-", "/"),
-          amount: sumRange(records, date, date),
+          amount: sumRange(expenses, date, date),
         })
       }
     } else {
@@ -433,7 +528,7 @@ export class DashboardService {
           key: cursor.slice(0, 7),
           label: cursor.slice(0, 7),
           amount: sumRange(
-            records,
+            expenses,
             cursor < start ? start : cursor,
             endOfMonth(cursor) > end ? end : endOfMonth(cursor),
           ),
@@ -443,18 +538,27 @@ export class DashboardService {
         cursor = dateString(date)
       }
     }
-    const previousEnd = addDays(start, -1)
-    const previousStart = addDays(previousEnd, -days + 1)
-    const currentExpense = sumRange(records, start, end)
-    const previousExpense = sumRange(records, previousStart, previousEnd)
+    const currentExpense = sumRange(expenses, start, end)
+    const previousExpense = sumRange(expenses, previousStart, previousEnd)
     return {
       start,
       end,
       days,
-      cashflow: cashflowRange(records, start, end),
-      breakdown: breakdown(records, start, end),
-      secondaryBreakdown: breakdown(records, start, end, "secondary"),
-      comparisonBreakdown: comparisonBreakdown(records, start, end),
+      cashflow: cashflowRange(expenses, incomes, start, end),
+      breakdown: breakdown(categoryExpenses, start, end, icons),
+      secondaryBreakdown: breakdown(
+        categoryExpenses,
+        start,
+        end,
+        icons,
+        "secondary",
+      ),
+      comparisonBreakdown: comparisonBreakdown(
+        categoryExpenses,
+        start,
+        end,
+        icons,
+      ),
       comparison: {
         current: currentExpense,
         previous: previousExpense,

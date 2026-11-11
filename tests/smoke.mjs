@@ -71,7 +71,9 @@ try {
   const health = await request("/api/health")
   assert.equal(health.ok, true)
   assert.match(health.database, /^postgresql:\/\//)
-  const page = await (await fetch(base)).text()
+  const pageResponse = await fetch(base)
+  assert.equal(pageResponse.headers.get("content-encoding"), "gzip")
+  const page = await pageResponse.text()
   assert.match(page, /id="root"/)
   assert.match(page, /\/assets\//)
   assert.match(page, /rel="manifest" href="\/manifest\.webmanifest"/)
@@ -119,6 +121,12 @@ try {
   const serviceWorker = await serviceWorkerResponse.text()
   assert.match(serviceWorker, /precacheAndRoute/)
   assert.ok(serviceWorker.includes("denylist:[/^\\/api\\//]"))
+  assert.ok(serviceWorker.includes('cacheName:"app-scripts"'))
+  const precacheEntries = serviceWorker.match(
+    /precacheAndRoute\((\[.*?\]),\{\}\)/,
+  )?.[1]
+  assert.ok(precacheEntries)
+  assert.doesNotMatch(precacheEntries, /\.js"/)
   const dashboardPage = await (await fetch(`${base}/dashboard`)).text()
   assert.match(dashboardPage, /id="root"/)
   assert.equal((await requestError("/api/dashboard")).status, 401)
@@ -228,11 +236,34 @@ try {
     }),
   })
   const id = created.records[0].id
+  const historic = await request("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({
+      date: "2020-01-02",
+      amount: 70,
+      direction: "expense",
+      item: "历史统计测试",
+      category1: "购物",
+      category2: "日用品",
+    }),
+  })
   const firstDashboard = await request("/api/dashboard?anchor=2026-08-11")
   assert.equal(firstDashboard.totals.day, 10)
+  assert.equal(firstDashboard.latestDate, "2026-08-11")
+  assert.equal(firstDashboard.transactionCount, 2)
+  assert.deepEqual(firstDashboard.yearHeatmap, [["2026-08-11", 10]])
   assert.equal(firstDashboard.secondaryBreakdowns.day[0].category, "午餐")
   assert.equal(firstDashboard.secondaryBreakdowns.day[0].parent, "餐饮")
   assert.equal(firstDashboard.secondaryBreakdowns.day[0].share, 1)
+  const filteredDashboard = await request(
+    `/api/dashboard?anchor=2026-08-11&cats=${encodeURIComponent("购物/日用品")}`,
+  )
+  assert.equal(filteredDashboard.latestDate, "2020-01-02")
+  assert.equal(filteredDashboard.transactionCount, 1)
+
+  await request(`/api/transactions/${historic.records[0].id}`, {
+    method: "DELETE",
+  })
 
   await request(`/api/transactions/${id}`, {
     method: "PUT",

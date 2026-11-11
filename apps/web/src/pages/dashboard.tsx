@@ -3,7 +3,6 @@ import {
   FileDoneOutlined,
   RobotOutlined,
 } from "@ant-design/icons"
-import { Line } from "@ant-design/plots"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Alert,
@@ -24,10 +23,8 @@ import {
   Tag,
   Typography,
 } from "antd"
-import { useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import {
   api,
   type Dashboard,
@@ -36,10 +33,21 @@ import {
   type Transaction,
 } from "@/lib/api"
 import { useQuickStore, type QuickResult } from "@/lib/quick-store"
-import { compactMoney, money } from "@/lib/utils"
+import { money } from "@/lib/utils"
 import { analyticsPath } from "@/lib/analytics-scope"
 import { CategoryBreakdownBars } from "@/components/category-breakdown-bars"
 import { CategoryIcon } from "@/components/category-icon"
+
+const DashboardTrend = lazy(() =>
+  import("./dashboard-trend").then((module) => ({
+    default: module.DashboardTrend,
+  })),
+)
+const MarkdownContent = lazy(() =>
+  import("@/components/markdown-content").then((module) => ({
+    default: module.MarkdownContent,
+  })),
+)
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -108,36 +116,6 @@ export function DashboardPage() {
     monthComparison.change == null
       ? "—"
       : `${monthComparison.change > 0 ? "+" : ""}${(monthComparison.change * 100).toFixed(1)}%`
-  const trendConfig: any = {
-    data: data.series.day,
-    xField: "label",
-    yField: "amount",
-    height: 260,
-    smooth: true,
-    autoFit: true,
-    paddingTop: 30,
-    paddingRight: 64,
-    style: { lineWidth: 2.5, stroke: "#2a8277" },
-    label: {
-      text: (row: { amount: number }) =>
-        row.amount ? compactMoney(row.amount) : "",
-      position: "top",
-      dy: -8,
-      fontSize: 11,
-      fill: "#56635e",
-      transform: [{ type: "overlapHide" }],
-    },
-    axis: {
-      x: { tick: false },
-      y: {
-        labelFormatter: (value: number) => compactMoney(value),
-        gridStroke: "#e3e9e4",
-      },
-    },
-    tooltip: false,
-    interaction: { tooltip: false },
-  }
-
   return (
     <div className="page-stack dashboard-page">
       {Boolean(lendingDue.length) && (
@@ -233,15 +211,20 @@ export function DashboardPage() {
             className="trend-card"
             title="每日支出轨迹"
             extra={
-              <Button
-                type="link"
-                onClick={() => navigate(analyticsPath())}
-              >
+              <Button type="link" onClick={() => navigate(analyticsPath())}>
                 打开完整分析 <ArrowRightOutlined />
               </Button>
             }
           >
-            <Line {...trendConfig} />
+            <Suspense
+              fallback={
+                <div style={{ height: 260 }}>
+                  <Skeleton active paragraph={{ rows: 5 }} />
+                </div>
+              }
+            >
+              <DashboardTrend data={data.series.day} />
+            </Suspense>
           </Card>
         </Col>
       </Row>
@@ -289,7 +272,9 @@ export function DashboardPage() {
               </div>
               <Button
                 type="link"
-                onClick={() => navigate(`/analytics/budgets?month=${data.budget!.month}`)}
+                onClick={() =>
+                  navigate(`/analytics/budgets?month=${data.budget!.month}`)
+                }
               >
                 管理预算 <ArrowRightOutlined />
               </Button>
@@ -393,7 +378,9 @@ export function DashboardPage() {
                 <Button
                   type="link"
                   onClick={() =>
-                    navigate(`/analytics/budgets?month=${data.anchor.slice(0, 7)}`)
+                    navigate(
+                      `/analytics/budgets?month=${data.anchor.slice(0, 7)}`,
+                    )
                   }
                 >
                   查看全部 {data.categoryBudgets.length} 项
@@ -532,11 +519,13 @@ export function DashboardPage() {
           </Button>
         }
       >
-        <div className="markdown-body quick-result-content">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {quickModalData?.message || ""}
-          </ReactMarkdown>
-        </div>
+        {quickModalOpen && (
+          <div className="markdown-body quick-result-content">
+            <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+              <MarkdownContent content={quickModalData?.message || ""} />
+            </Suspense>
+          </div>
+        )}
         {quickModalData?.warning && (
           <Typography.Text type="warning">
             ⚠️ {quickModalData.warning}
