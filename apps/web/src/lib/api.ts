@@ -292,3 +292,11 @@ export async function api<T>(
   if (!response.ok) throw new Error(payload.error || "请求失败")
   return payload
 }
+
+export type FilterPreset = {
+  id: string
+  page: string
+  name: string
+  params: string
+  updatedAt: string
+}

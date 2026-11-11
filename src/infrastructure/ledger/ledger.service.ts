@@ -41,6 +41,19 @@ const moneyValue = (value: unknown) => {
   return Number(amount.toFixed(2))
 }
 const CONTACT_ACCOUNT_TYPE = "contact"
+const categoryPaths = (raw: unknown) => {
+  if (!raw) return null
+  const paths = String(raw)
+    .split(";")
+    .map((path) =>
+      path
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    )
+    .filter((path) => path.length > 0 && path.length <= 2)
+  return paths.length ? paths : null
+}
 const liabilityAccountTypes = new Set(["credit", "loan"])
 const assetAccountTypes = new Set(["cash", "bank", "ewallet"])
 const accountTypes = new Set([
@@ -220,6 +233,7 @@ export class LedgerService {
     query = "",
     category1 = "",
     category2 = "",
+    cats = "",
     direction = "",
     sortBy = "date",
     sortOrder = "desc",
@@ -290,8 +304,22 @@ export class LedgerService {
           },
         },
       ] as Prisma.TransactionWhereInput[]
-    if (primary) where.category1 = primary
-    if (secondary) where.category2 = secondary
+    const selectedPaths = categoryPaths(cats)
+    if (selectedPaths?.length) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: selectedPaths.map((path) =>
+            path.length === 1
+              ? { category1: path[0] }
+              : { category1: path[0], category2: path[1] },
+          ),
+        } as Prisma.TransactionWhereInput,
+      ]
+    } else {
+      if (primary) where.category1 = primary
+      if (secondary) where.category2 = secondary
+    }
 
     const rawMin =
       minAmount !== undefined &&

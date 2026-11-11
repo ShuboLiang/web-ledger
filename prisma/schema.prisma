@@ -28,6 +28,7 @@ model Ledger {
   lendingSettlements LendingSettlement[]
   shoppingIncomes ShoppingIncome[]
   shoppingItems ShoppingItem[]
+  filterPresets FilterPreset[]
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("ledgers")
@@ -423,4 +424,18 @@ model AuditLog {
 
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+model FilterPreset {
+  id        String   @id @default(cuid())
+  ledgerId  String   @map("ledger_id")
+  page      String   @db.VarChar(20)
+  name      String   @db.VarChar(40)
+  params    String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@unique([ledgerId, page, name])
+  @@map("filter_presets")
 }

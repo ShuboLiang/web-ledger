@@ -8,6 +8,7 @@ import {
   Alert,
   Button,
   Card,
+  Cascader,
   Col,
   Drawer,
   Empty,
@@ -30,6 +31,7 @@ import {
   type Breakdown,
   type BreakdownChange,
   type Dashboard,
+  type Dictionaries,
   type Transaction,
 } from "@/lib/api"
 import { compactMoney, money } from "@/lib/utils"
@@ -42,7 +44,9 @@ import {
 } from "@/lib/analytics-scope"
 import { usePickerInputReadOnly } from "@/lib/use-viewport"
 import { ExpenseCategoryOverview } from "@/components/expense-category-overview"
+import { FilterPresets } from "@/components/filter-presets"
 import { DatePicker } from "@/components/sheet-date-picker"
+import { encodeCatsParam, parseCatsParam } from "@/lib/category-paths"
 
 type Scope = "day" | "week" | "month" | "year"
 type TrendChartRow = {
@@ -266,6 +270,56 @@ export function AnalyticsPage() {
       value ? next.set(key, value) : next.delete(key)
       return next
     })
+  const catsParam = params.get("cats") || ""
+  const categoryPaths = parseCatsParam(params.get("cats"))
+  const setCategoryPaths = (paths: string[][]) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      const encoded = encodeCatsParam(paths)
+      encoded ? next.set("cats", encoded) : next.delete("cats")
+      next.delete("focusCategory")
+      return next
+    })
+  }
+  const { data: dictionaries } = useQuery({
+    queryKey: ["dictionaries"],
+    queryFn: () => api<Dictionaries>("/api/dictionaries"),
+  })
+  const categoryOptions = [
+    ...new Set(dictionaries?.categories.map((row) => row.category1)),
+  ].map((category1) => ({
+    value: category1,
+    label: category1,
+    children: [
+      ...new Set(
+        dictionaries?.categories
+          .filter((row) => row.category1 === category1)
+          .map((row) => row.category2),
+      ),
+    ].map((category2) => ({ value: category2, label: category2 })),
+  }))
+  const categoryFilter = (
+    <Cascader
+      multiple
+      allowClear
+      changeOnSelect
+      maxTagCount="responsive"
+      placeholder="筛选分类"
+      value={categoryPaths}
+      options={categoryOptions}
+      onChange={(value) => setCategoryPaths(value as string[][])}
+    />
+  )
+  const buildPresetParams = () => {
+    const saved = new URLSearchParams()
+    ;["scope", "anchor", "start", "end", "cats"].forEach((key) => {
+      const value = params.get(key)
+      if (value) saved.set(key, value)
+    })
+    return saved.toString()
+  }
+  const applyPresetParams = (presetParams: string) =>
+    setParams(new URLSearchParams(presetParams))
   useEffect(() => {
     if (!params.toString()) {
       const savedScope = readAnalyticsScope()
@@ -319,10 +373,15 @@ export function AnalyticsPage() {
     })
     setCustomMode(false)
   }
+  const catsQuery = catsParam ? `cats=${encodeURIComponent(catsParam)}` : ""
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["analytics", anchor],
-    queryFn: () =>
-      api<Dashboard>(`/api/dashboard${anchor ? `?anchor=${anchor}` : ""}`),
+    queryKey: ["analytics", anchor, catsParam],
+    queryFn: () => {
+      const query = [anchor ? `anchor=${anchor}` : "", catsQuery]
+        .filter(Boolean)
+        .join("&")
+      return api<Dashboard>(`/api/dashboard${query ? `?${query}` : ""}`)
+    },
   })
   const selected = data?.anchor || anchor || dayjs().format("YYYY-MM-DD")
   const requestedRange =
@@ -333,11 +392,11 @@ export function AnalyticsPage() {
     isError: customError,
     refetch: refetchCustom,
   } = useQuery({
-    queryKey: ["analytics-range", customRange],
+    queryKey: ["analytics-range", customRange, catsParam],
     enabled: Boolean(customRange),
     queryFn: () =>
       api<RangeAnalytics>(
-        `/api/dashboard/range?start=${customRange![0]}&end=${customRange![1]}`,
+        `/api/dashboard/range?start=${customRange![0]}&end=${customRange![1]}${catsQuery ? `&${catsQuery}` : ""}`,
       ),
   })
   const {
@@ -346,11 +405,11 @@ export function AnalyticsPage() {
     isError: largeError,
     refetch: refetchLarge,
   } = useQuery({
-    queryKey: ["large-expenses", requestedRange],
+    queryKey: ["large-expenses", requestedRange, catsParam],
     enabled: Boolean(requestedRange),
     queryFn: () =>
       api<{ records: Transaction[] }>(
-        `/api/transactions?start=${requestedRange![0]}&end=${requestedRange![1]}&page=1&pageSize=5&direction=expense&sortBy=amount&sortOrder=asc`,
+        `/api/transactions?start=${requestedRange![0]}&end=${requestedRange![1]}&page=1&pageSize=5&direction=expense&sortBy=amount&sortOrder=asc${catsQuery ? `&${catsQuery}` : ""}`,
       ),
   })
   if (isLoading || !data)
@@ -586,10 +645,25 @@ export function AnalyticsPage() {
               >
                 {customRange ? "退出自定义" : "自定义范围"}
               </Button>
+              {categoryFilter}
+              <FilterPresets
+                page="analytics"
+                buildParams={buildPresetParams}
+                applyParams={applyPresetParams}
+              />
             </Space>
             <Flex vertical align="flex-end" gap={2}>
               <Typography.Text type="secondary">当前统计周期</Typography.Text>
               <Typography.Text strong>{currentRange}</Typography.Text>
+              {categoryPaths.length > 0 && (
+                <Tag
+                  color="#176b62"
+                  closable
+                  onClose={() => setCategoryPaths([])}
+                >
+                  已按 {categoryPaths.length} 项分类筛选
+                </Tag>
+              )}
               <Button
                 type="link"
                 className="analytics-range-ledger-link"
@@ -628,6 +702,25 @@ export function AnalyticsPage() {
                 aria-label="下一周期"
               />
             </div>
+            <div className="analytics-category-filter">{categoryFilter}</div>
+            <div className="analytics-category-filter">
+              <FilterPresets
+                page="analytics"
+                buildParams={buildPresetParams}
+                applyParams={applyPresetParams}
+              />
+            </div>
+            {categoryPaths.length > 0 && (
+              <div className="analytics-category-hint">
+                <Tag
+                  color="#176b62"
+                  closable
+                  onClose={() => setCategoryPaths([])}
+                >
+                  已按 {categoryPaths.length} 项分类筛选，预算卡片不适用
+                </Tag>
+              </div>
+            )}
             <div
               className={`analytics-mobile-actions${
                 showJumpToCurrent ? " has-jump" : ""
@@ -752,8 +845,9 @@ export function AnalyticsPage() {
       <div
         className={`analytics-insight-grid${budgetPaceRows.length > 0 ? " has-budget" : ""}`}
       >
-        <Card
-          title="预算消耗节奏"
+        {categoryPaths.length === 0 && (
+          <Card
+            title="预算消耗节奏"
           extra={
             data.budget ? (
               <Typography.Text type="secondary">
@@ -790,7 +884,8 @@ export function AnalyticsPage() {
               </Button>
             </Empty>
           )}
-        </Card>
+          </Card>
+        )}
         <Card
           className="large-expense-card"
           title="支出排行"

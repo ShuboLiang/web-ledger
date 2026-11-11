@@ -46,9 +46,11 @@ import dayjs, { type Dayjs } from "dayjs"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { TransactionDrawer } from "@/components/transaction-drawer"
+import { FilterPresets } from "@/components/filter-presets"
 import { DatePicker } from "@/components/sheet-date-picker"
 import { api, type Dictionaries, type Transaction, UNACCOUNTED_ACCOUNT_ID, UNACCOUNTED_ACCOUNT_LABEL } from "@/lib/api"
 import { CategoryIcon } from "@/components/category-icon"
+import { encodeCatsParam, parseCatsParam } from "@/lib/category-paths"
 import { money, readPersist, writePersist } from "@/lib/utils"
 import { usePickerInputReadOnly, useSearchableSelect } from "@/lib/use-viewport"
 
@@ -87,6 +89,7 @@ const transactionFilterKeys = [
   "direction",
   "category1",
   "category2",
+  "cats",
   "query",
   "tagId",
   "tagIds",
@@ -270,12 +273,6 @@ export function TransactionsPage() {
       label: category2,
     })),
   }))
-  const categoryValue = params.get("category1")
-    ? [
-        params.get("category1")!,
-        ...(params.get("category2") ? [params.get("category2")!] : []),
-      ]
-    : undefined
   const remove = useMutation({
     mutationFn: (id: number) =>
       api(`/api/transactions/${id}`, { method: "DELETE" }),
@@ -509,6 +506,7 @@ export function TransactionsPage() {
       "direction",
       "category1",
       "category2",
+      "cats",
       "query",
       "tagId",
       "tagIds",
@@ -594,16 +592,50 @@ export function TransactionsPage() {
       next.set("page", "1")
       return next
     })
-  const setCategoryFilter = (selected?: (string | number | null)[]) => {
-    const path = (selected || []).map(String).filter(Boolean)
+  const catsPaths = parseCatsParam(params.get("cats"))
+  const categoryPaths = useMemo(
+    () =>
+      catsPaths.length
+        ? catsPaths
+        : params.get("category1")
+          ? [
+              [
+                params.get("category1")!,
+                ...(params.get("category2") ? [params.get("category2")!] : []),
+              ],
+            ]
+        : [],
+    [catsPaths, params],
+  )
+  const setCategoryPathsFilter = (paths: string[][]) => {
     setParams((current) => {
       const next = new URLSearchParams(current)
-      path[0] ? next.set("category1", path[0]) : next.delete("category1")
-      path[1] ? next.set("category2", path[1]) : next.delete("category2")
+      const encoded = encodeCatsParam(paths)
+      encoded ? next.set("cats", encoded) : next.delete("cats")
+      next.delete("category1")
+      next.delete("category2")
       next.set("page", "1")
       return next
     })
   }
+  const buildPresetParams = () => {
+    const saved = new URLSearchParams()
+    transactionFilterKeys.forEach((key) => {
+      const value = params.get(key)
+      if (value) saved.set(key, value)
+    })
+    return saved.toString()
+  }
+  const applyPresetParams = (presetParams: string) =>
+    setParams((current) => {
+      const next = new URLSearchParams(current)
+      transactionFilterKeys.forEach((key) => next.delete(key))
+      new URLSearchParams(presetParams).forEach((value, key) =>
+        next.set(key, value),
+      )
+      next.set("page", "1")
+      return next
+    })
   const setTagFilter = (values: string[]) =>
     setParams((current) => {
       const next = new URLSearchParams(current)
@@ -737,8 +769,10 @@ export function TransactionsPage() {
   const renderCategoryFilter = (className = "") => (
     <Cascader
       className={className}
+      multiple
       allowClear
       changeOnSelect
+      maxTagCount="responsive"
       expandTrigger="hover"
       showSearch={
         searchableSelect
@@ -754,9 +788,9 @@ export function TransactionsPage() {
       }
       popupClassName="transaction-category-popup"
       placeholder="全部分类"
-      value={categoryValue}
+      value={categoryPaths}
       options={categoryOptions}
-      onChange={setCategoryFilter}
+      onChange={(value) => setCategoryPathsFilter(value as string[][])}
     />
   )
   const accountFilterOptions = [
@@ -1035,13 +1069,22 @@ export function TransactionsPage() {
     <div className="advanced-filter-panel">
       <Flex vertical gap={16}>
         <Flex vertical gap={8}>
-          <Typography.Text type="secondary">分类</Typography.Text>
+          <Typography.Text type="secondary">分类（可多选）</Typography.Text>
           <Cascader.Panel
             className="mobile-category-cascader"
+            multiple
             changeOnSelect
-            value={categoryValue}
+            value={categoryPaths}
             options={categoryOptions}
-            onChange={setCategoryFilter}
+            onChange={(value) => setCategoryPathsFilter(value as string[][])}
+          />
+        </Flex>
+        <Flex vertical gap={8}>
+          <Typography.Text type="secondary">筛选方案</Typography.Text>
+          <FilterPresets
+            page="transactions"
+            buildParams={buildPresetParams}
+            applyParams={applyPresetParams}
           />
         </Flex>
         <Flex vertical gap={8}>
@@ -1160,13 +1203,19 @@ export function TransactionsPage() {
             : `金额 ≤ ¥${activeMax}`,
       clear: clearAmountFilter,
     },
-    params.get("category1") && {
-      key: "category",
-      label: params.get("category2")
-        ? `${params.get("category1")} / ${params.get("category2")}`
-        : params.get("category1")!,
-      clear: () => clearFilterKeys(["category1", "category2"]),
-    },
+    params.get("cats")
+      ? {
+          key: "category",
+          label: `${parseCatsParam(params.get("cats")).length} 个分类`,
+          clear: () => clearFilterKeys(["cats", "category1", "category2"]),
+        }
+      : params.get("category1") && {
+          key: "category",
+          label: params.get("category2")
+            ? `${params.get("category1")} / ${params.get("category2")}`
+            : params.get("category1")!,
+          clear: () => clearFilterKeys(["category1", "category2"]),
+        },
     params.get("query") && {
       key: "query",
       label: `搜索：${params.get("query")}`,
@@ -1194,7 +1243,7 @@ export function TransactionsPage() {
   ].filter(Boolean) as { key: string; label: string; clear: () => void }[]
   const activeFilterCount = filterChips.length
   const mobileMoreFilterCount =
-    Number(Boolean(params.get("category1"))) +
+    Number(Boolean(params.get("category1") || params.get("cats"))) +
     Number(Boolean(params.get("accountId"))) +
     Number(Boolean(isAmountFilterActive)) +
     selectedTagIds.length
@@ -1375,6 +1424,11 @@ export function TransactionsPage() {
               {renderAccountFilter()}
               {renderTagFilter("transaction-tag-filter")}
               {renderAmountFilter("transaction-amount-filter")}
+              <FilterPresets
+                page="transactions"
+                buildParams={buildPresetParams}
+                applyParams={applyPresetParams}
+              />
               {renderFilterSummary()}
               <Flex
                 align="center"

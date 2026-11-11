@@ -64,6 +64,11 @@ const ManagementPage = lazy(() =>
     default: module.ManagementPage,
   })),
 )
+const PresetsPage = lazy(() =>
+  import("@/pages/presets").then((module) => ({
+    default: module.PresetsPage,
+  })),
+)
 const SettingsPage = lazy(() =>
   import("@/pages/settings").then((module) => ({
     default: module.SettingsPage,
@@ -140,6 +145,7 @@ export function App() {
           <Route path="settings" element={<SettingsWorkspace />}>
             <Route index element={<SettingsPage />} />
             <Route path="categories" element={<ManagementPage />} />
+            <Route path="presets" element={<PresetsPage />} />
           </Route>
           <Route path="more" element={<MorePage />} />
           <Route

@@ -34,6 +34,29 @@ export function currentDate() {
 
 const expense = (record: { amount: number }) =>
   record.amount < 0 ? -Number(record.amount) : 0
+
+export const parseCategoryPaths = (raw?: string | null) => {
+  if (!raw) return null
+  const paths = String(raw)
+    .split(";")
+    .map((path) =>
+      path
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    )
+    .filter((path) => path.length > 0 && path.length <= 2)
+  return paths.length ? paths : null
+}
+const matchCategoryPaths = (
+  record: { category1: string; category2: string },
+  paths: string[][],
+) =>
+  paths.some((path) =>
+    path.length === 1
+      ? record.category1 === path[0]
+      : record.category1 === path[0] && record.category2 === path[1],
+  )
 const sumRange = (records: any[], start: string, end: string) =>
   Number(
     records
@@ -210,8 +233,10 @@ export class DashboardService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async build(requestedAnchor?: string | null) {
-    const records = (await this.ledger.allTransactions()) as any[]
+  async build(requestedAnchor?: string | null, categories?: string[][] | null) {
+    let records = (await this.ledger.allTransactions()) as any[]
+    if (categories?.length)
+      records = records.filter((row) => matchCategoryPaths(row, categories))
     const latestDate = String(records[0]?.date || currentDate())
     const anchor = /^\d{4}-\d{2}-\d{2}$/.test(requestedAnchor || "")
       ? requestedAnchor!
@@ -251,11 +276,17 @@ export class DashboardService {
       ]),
     ) as Record<string, { expense: number; income: number; balance: number }>
     const { ledgerId } = await this.ledger.context()
+    const filterActive = Boolean(categories?.length)
+    const selectedPrimaries = new Set(
+      (categories || []).filter((path) => path.length === 1).map((path) => path[0]),
+    )
     const budgetRows = await this.prisma.budget.findMany({
       where: { ledgerId, month: utcDate(startOfMonth(anchor)) },
       orderBy: { category1: "asc" },
     })
-    const budgetRow = budgetRows.find((row) => row.category1 === null) || null
+    const budgetRow = filterActive
+      ? null
+      : budgetRows.find((row) => row.category1 === null) || null
     const budgetAmount = Number(budgetRow?.amount || 0)
     const budgetUsed = cashflow.month.expense
     const budgetRate = budgetAmount > 0 ? budgetUsed / budgetAmount : 0
@@ -265,7 +296,11 @@ export class DashboardService {
     )
     const riskRank: Record<string, number> = { over: 2, warning: 1, normal: 0 }
     const categoryBudgets = budgetRows
-      .filter((row) => row.category1 !== null)
+      .filter(
+        (row) =>
+          row.category1 !== null &&
+          (!filterActive || selectedPrimaries.has(row.category1)),
+      )
       .map((row) => {
         const amount = Number(row.amount)
         const used = categorySpending.get(row.category1!) || 0
@@ -362,14 +397,20 @@ export class DashboardService {
     }
   }
 
-  async buildRange(start: string, end: string) {
+  async buildRange(
+    start: string,
+    end: string,
+    categories?: string[][] | null,
+  ) {
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(end) ||
       start > end
     )
       throw new Error("自定义日期范围无效")
-    const records = (await this.ledger.allTransactions()) as any[]
+    let records = (await this.ledger.allTransactions()) as any[]
+    if (categories?.length)
+      records = records.filter((row) => matchCategoryPaths(row, categories))
     const days =
       Math.round(
         (utcDate(end).getTime() - utcDate(start).getTime()) / 86_400_000,

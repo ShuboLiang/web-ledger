@@ -192,6 +192,14 @@ export function BudgetsPage() {
       },
     })
   const total = data?.totalBudget
+  const categoryRemaining = Number(
+    (
+      data?.categoryBudgets.reduce(
+        (sum, budget) => sum + budget.remaining,
+        0,
+      ) ?? 0
+    ).toFixed(2),
+  )
   const risk =
     total?.status === "over"
       ? {
@@ -269,9 +277,20 @@ export function BudgetsPage() {
       <Card
         title="分类预算"
         extra={
-          <Typography.Text type="secondary">
-            可选 · 只控制需要重点关注的类别
-          </Typography.Text>
+          <Flex vertical align="flex-end" gap={2}>
+            {data?.categoryBudgets.length ? (
+              <Typography.Text
+                strong
+                type={categoryRemaining < 0 ? "danger" : undefined}
+              >
+                剩余总和 {categoryRemaining < 0 ? "-" : ""}¥
+                {Math.abs(categoryRemaining).toFixed(2)}
+              </Typography.Text>
+            ) : null}
+            <Typography.Text type="secondary">
+              可选 · 只控制需要重点关注的类别
+            </Typography.Text>
+          </Flex>
         }
         loading={isLoading}
       >

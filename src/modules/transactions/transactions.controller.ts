@@ -27,6 +27,7 @@ export class TransactionsController {
       "query",
       "category1",
       "category2",
+      "cats",
       "direction",
       "accountId",
       "tagId",

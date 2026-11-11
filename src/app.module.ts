@@ -17,6 +17,7 @@ import { RecurringModule } from "./modules/recurring/recurring.module.js"
 import { TrashModule } from "./modules/trash/trash.module.js"
 import { LendingModule } from "./modules/lending/lending.module.js"
 import { ShoppingModule } from "./modules/shopping/shopping.module.js"
+import { FiltersModule } from "./modules/filters/filters.module.js"
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ShoppingModule } from "./modules/shopping/shopping.module.js"
     TrashModule,
     LendingModule,
     ShoppingModule,
+    FiltersModule,
   ],
   controllers: [FrontendController],
 })

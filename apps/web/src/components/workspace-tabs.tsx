@@ -84,6 +84,7 @@ export function SettingsWorkspace() {
       items={[
         { path: "/settings", label: "模型" },
         { path: "/settings/categories", label: "分类" },
+        { path: "/settings/presets", label: "方案" },
       ]}
     />
   )
