@@ -159,6 +159,15 @@ export function TransactionsPage() {
     const v = params.get("maxAmount")
     return v !== null && v !== "" && !isNaN(Number(v)) ? Number(v) : null
   })
+  const [amountExactInput, setAmountExactInput] = useState<number | null>(
+    () => {
+      const min = params.get("minAmount")
+      const max = params.get("maxAmount")
+      return min !== null && min !== "" && min === max && !isNaN(Number(min))
+        ? Number(min)
+        : null
+    },
+  )
   const [searchValue, setSearchValue] = useState(params.get("query") || "")
   const [bulkForm] = Form.useForm()
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -212,6 +221,14 @@ export function TransactionsPage() {
     setAmountMaxInput(
       maxParam !== null && maxParam !== "" && !isNaN(Number(maxParam))
         ? Number(maxParam)
+        : null,
+    )
+    setAmountExactInput(
+      minParam !== null &&
+        minParam !== "" &&
+        minParam === maxParam &&
+        !isNaN(Number(minParam))
+        ? Number(minParam)
         : null,
     )
     if (params.get("focus") === "search") searchRef.current?.focus()
@@ -880,6 +897,7 @@ export function TransactionsPage() {
 
   const amountLabel = useMemo(() => {
     if (activeMin !== null && activeMax !== null) {
+      if (activeMin === activeMax) return `¥${activeMin}`
       return `¥${activeMin} - ¥${activeMax}`
     }
     if (activeMin !== null) {
@@ -909,6 +927,15 @@ export function TransactionsPage() {
     })
   }
 
+  const applyExactAmount = () => {
+    if (amountExactInput === null) return
+    setAmountMinInput(amountExactInput)
+    setAmountMaxInput(amountExactInput)
+    setAmountRange(amountExactInput, amountExactInput)
+    setAmountOpen(false)
+    setFilterOpen(false)
+  }
+
   const clearAmountFilter = () => clearFilterKeys(["minAmount", "maxAmount"])
 
   const amountPresetButtons = (
@@ -925,6 +952,11 @@ export function TransactionsPage() {
               setAmountRange(preset.min, preset.max)
               setAmountMinInput(preset.min)
               setAmountMaxInput(preset.max)
+              setAmountExactInput(
+                preset.min !== null && preset.min === preset.max
+                  ? preset.min
+                  : null,
+              )
               setAmountOpen(false)
             }}
           >
@@ -937,6 +969,29 @@ export function TransactionsPage() {
 
   const desktopAmountFilterContent = (
     <div className="transaction-amount-panel">
+      <div className="transaction-custom-amount">
+        <Typography.Text type="secondary">按金额精确搜索</Typography.Text>
+        <Flex align="center" gap={8} className="transaction-amount-inputs">
+          <InputNumber
+            min={0}
+            precision={2}
+            prefix="¥"
+            placeholder="输入商品金额"
+            value={amountExactInput}
+            onChange={(value) => setAmountExactInput(value)}
+            className="transaction-amount-input"
+            onPressEnter={applyExactAmount}
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            disabled={amountExactInput === null}
+            onClick={applyExactAmount}
+          >
+            搜索
+          </Button>
+        </Flex>
+      </div>
       <div className="transaction-amount-presets-wrap">
         <Typography.Text type="secondary">快捷预设</Typography.Text>
         {amountPresetButtons}
@@ -950,7 +1005,12 @@ export function TransactionsPage() {
             prefix="¥"
             placeholder="最低金额"
             value={amountMinInput}
-            onChange={(val) => setAmountMinInput(val)}
+            onChange={(val) => {
+              setAmountMinInput(val)
+              setAmountExactInput(
+                val !== null && val === amountMaxInput ? val : null,
+              )
+            }}
             className="transaction-amount-input"
             onPressEnter={() => {
               let min = amountMinInput
@@ -973,7 +1033,12 @@ export function TransactionsPage() {
             prefix="¥"
             placeholder="最高金额"
             value={amountMaxInput}
-            onChange={(val) => setAmountMaxInput(val)}
+            onChange={(val) => {
+              setAmountMaxInput(val)
+              setAmountExactInput(
+                val !== null && val === amountMinInput ? val : null,
+              )
+            }}
             className="transaction-amount-input"
             onPressEnter={() => {
               let min = amountMinInput
@@ -996,6 +1061,7 @@ export function TransactionsPage() {
             onClick={() => {
               setAmountMinInput(null)
               setAmountMaxInput(null)
+              setAmountExactInput(null)
               setAmountRange(null, null)
               setAmountOpen(false)
             }}
@@ -1016,6 +1082,7 @@ export function TransactionsPage() {
                 setAmountMaxInput(max)
               }
               setAmountRange(min, max)
+              setAmountExactInput(min !== null && min === max ? min : null)
               setAmountOpen(false)
             }}
           >
@@ -1036,6 +1103,11 @@ export function TransactionsPage() {
           : () => {
               setAmountMinInput(activeMin)
               setAmountMaxInput(activeMax)
+              setAmountExactInput(
+                activeMin !== null && activeMin === activeMax
+                  ? activeMin
+                  : null,
+              )
               setFilterOpen(true)
             }
       }
@@ -1053,6 +1125,9 @@ export function TransactionsPage() {
           if (open) {
             setAmountMinInput(activeMin)
             setAmountMaxInput(activeMax)
+            setAmountExactInput(
+              activeMin !== null && activeMin === activeMax ? activeMin : null,
+            )
           }
         }}
         trigger="click"
@@ -1123,6 +1198,29 @@ export function TransactionsPage() {
           )}
         </Flex>
         <Flex vertical gap={8}>
+          <Typography.Text type="secondary">按金额精确搜索</Typography.Text>
+          <Flex align="center" gap={8}>
+            <InputNumber
+              min={0}
+              precision={2}
+              prefix="¥"
+              placeholder="输入商品金额"
+              value={amountExactInput}
+              onChange={(value) => setAmountExactInput(value)}
+              style={{ flex: 1 }}
+              onPressEnter={applyExactAmount}
+            />
+            <Button
+              type="primary"
+              icon={<SearchOutlined />}
+              disabled={amountExactInput === null}
+              onClick={applyExactAmount}
+            >
+              搜索
+            </Button>
+          </Flex>
+        </Flex>
+        <Flex vertical gap={8}>
           <Typography.Text type="secondary">金额范围</Typography.Text>
           <div className="mobile-amount-presets">
             {amountPresets.map((preset) => {
@@ -1150,7 +1248,12 @@ export function TransactionsPage() {
               prefix="¥"
               placeholder="最低金额"
               value={amountMinInput}
-              onChange={(val) => setAmountMinInput(val)}
+              onChange={(val) => {
+                setAmountMinInput(val)
+                setAmountExactInput(
+                  val !== null && val === amountMaxInput ? val : null,
+                )
+              }}
               style={{ flex: 1 }}
             />
             <span style={{ color: "#667781" }}>-</span>
@@ -1160,7 +1263,12 @@ export function TransactionsPage() {
               prefix="¥"
               placeholder="最高金额"
               value={amountMaxInput}
-              onChange={(val) => setAmountMaxInput(val)}
+              onChange={(val) => {
+                setAmountMaxInput(val)
+                setAmountExactInput(
+                  val !== null && val === amountMinInput ? val : null,
+                )
+              }}
               style={{ flex: 1 }}
             />
           </Flex>
@@ -1178,6 +1286,7 @@ export function TransactionsPage() {
               setAmountMaxInput(max)
             }
             setAmountRange(min, max)
+            setAmountExactInput(min !== null && min === max ? min : null)
             setFilterOpen(false)
           }}
         >
@@ -1197,7 +1306,9 @@ export function TransactionsPage() {
       key: "amount",
       label:
         activeMin !== null && activeMax !== null
-          ? `金额：¥${activeMin} - ¥${activeMax}`
+          ? activeMin === activeMax
+            ? `金额：¥${activeMin}`
+            : `金额：¥${activeMin} - ¥${activeMax}`
           : activeMin !== null
             ? `金额 ≥ ¥${activeMin}`
             : `金额 ≤ ¥${activeMax}`,
@@ -1492,6 +1603,11 @@ export function TransactionsPage() {
                   onClick={() => {
                     setAmountMinInput(activeMin)
                     setAmountMaxInput(activeMax)
+                    setAmountExactInput(
+                      activeMin !== null && activeMin === activeMax
+                        ? activeMin
+                        : null,
+                    )
                     setFilterOpen(true)
                   }}
                 />

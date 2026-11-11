@@ -596,6 +596,14 @@ try {
         },
         {
           date: "2026-08-15",
+          amount: 300,
+          direction: "income",
+          item: "金额精确搜索收入300",
+          category1: "其他",
+          category2: "待分类",
+        },
+        {
+          date: "2026-08-15",
           amount: 500,
           direction: "income",
           item: "金额范围测试收入500",
@@ -618,6 +626,19 @@ try {
     !amountRangePage.records.some((r) => r.item === "金额范围测试收入500"),
   )
 
+  const exactAmountPage = await request(
+    "/api/transactions?minAmount=300&maxAmount=300&page=1&pageSize=20",
+  )
+  assert.ok(
+    exactAmountPage.records.some((r) => r.item === "金额范围测试支出300"),
+  )
+  assert.ok(
+    exactAmountPage.records.some((r) => r.item === "金额精确搜索收入300"),
+  )
+  assert.ok(
+    !exactAmountPage.records.some((r) => r.item === "金额范围测试收入500"),
+  )
+
   const amountMinPage = await request(
     "/api/transactions?minAmount=200&page=1&pageSize=20",
   )
@@ -634,7 +655,10 @@ try {
   assert.ok(
     !amountIncomePage.records.some((r) => r.item === "金额范围测试支出300"),
   )
-  assert.equal(amountIncomePage.summary.income, 500)
+  assert.ok(
+    amountIncomePage.records.some((r) => r.item === "金额精确搜索收入300"),
+  )
+  assert.equal(amountIncomePage.summary.income, 800)
   assert.equal(amountIncomePage.summary.expense, 0)
 
   const amountExpensePage = await request(
