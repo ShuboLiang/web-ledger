@@ -51,7 +51,7 @@ export default defineConfig({
         skipWaiting: true,
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ["**/*.{css,html,svg,png,ico,webmanifest}"],
+        globPatterns: ["**/*.{css,html,svg,png,ico}"],
         runtimeCaching: [
           {
             urlPattern: ({ request, url }) =>
@@ -74,16 +74,32 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes("@ant-design/plots") || id.includes("@antv"))
-            return "charts"
-          if (id.includes("@ant-design/x")) return "ai-ui"
+          const normalized = id.replaceAll("\\", "/")
+          if (normalized.includes("vite/preload-helper")) return "react"
+          if (!normalized.includes("/node_modules/")) return undefined
           if (
-            id.includes("node_modules/antd") ||
-            id.includes("@ant-design/icons")
+            normalized.includes("/node_modules/react/") ||
+            normalized.includes("/node_modules/react-dom/") ||
+            normalized.includes("/node_modules/react-router") ||
+            normalized.includes("/node_modules/scheduler/")
+          )
+            return "react"
+          if (
+            normalized.includes("@ant-design/plots") ||
+            normalized.includes("@antv")
+          )
+            return "charts"
+          if (normalized.includes("@ant-design/x")) return "ai-ui"
+          if (
+            normalized.includes("/node_modules/antd/") ||
+            normalized.includes("@ant-design/icons")
           )
             return "antd"
-          if (id.includes("@tanstack/react-query")) return "query"
-          if (id.includes("react-markdown") || id.includes("remark-gfm"))
+          if (normalized.includes("@tanstack/react-query")) return "query"
+          if (
+            normalized.includes("react-markdown") ||
+            normalized.includes("remark-gfm")
+          )
             return "markdown"
           return undefined
         },

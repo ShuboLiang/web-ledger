@@ -73,11 +73,24 @@ try {
   assert.match(health.database, /^postgresql:\/\//)
   const pageResponse = await fetch(base)
   assert.equal(pageResponse.headers.get("content-encoding"), "gzip")
+  assert.match(
+    pageResponse.headers.get("cache-control") || "",
+    /no-cache|max-age=0/,
+  )
   const page = await pageResponse.text()
   assert.match(page, /id="root"/)
   assert.match(page, /\/assets\//)
+  assert.doesNotMatch(page, /\/assets\/(?:charts|ai-ui|markdown)-/)
   assert.match(page, /rel="manifest" href="\/manifest\.webmanifest"/)
   assert.match(page, /src="\/registerSW\.js"/)
+
+  const entryAsset = page.match(/src="(\/assets\/index-[^"]+\.js)"/)?.[1]
+  assert.ok(entryAsset)
+  const entryAssetResponse = await fetch(`${base}${entryAsset}`)
+  assert.equal(
+    entryAssetResponse.headers.get("cache-control"),
+    "public, max-age=31536000, immutable",
+  )
 
   const manifestResponse = await fetch(`${base}/manifest.webmanifest`)
   assert.match(
@@ -118,6 +131,7 @@ try {
     serviceWorkerResponse.headers.get("content-type") || "",
     /javascript/,
   )
+  assert.equal(serviceWorkerResponse.headers.get("cache-control"), "no-cache")
   const serviceWorker = await serviceWorkerResponse.text()
   assert.match(serviceWorker, /precacheAndRoute/)
   assert.ok(serviceWorker.includes("denylist:[/^\\/api\\//]"))
@@ -127,6 +141,19 @@ try {
   )?.[1]
   assert.ok(precacheEntries)
   assert.doesNotMatch(precacheEntries, /\.js"/)
+  const precacheUrls = Array.from(
+    precacheEntries.matchAll(/url:"([^"]+)"/g),
+    (match) => match[1],
+  )
+  assert.equal(
+    new Set(precacheUrls).size,
+    precacheUrls.length,
+    `Duplicate precache URLs in sw.js: ${precacheUrls.join(", ")}`,
+  )
+  assert.equal(
+    precacheUrls.filter((url) => url === "manifest.webmanifest").length,
+    1,
+  )
   const dashboardPage = await (await fetch(`${base}/dashboard`)).text()
   assert.match(dashboardPage, /id="root"/)
   assert.equal((await requestError("/api/dashboard")).status, 401)

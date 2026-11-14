@@ -19,11 +19,32 @@ import { LendingModule } from "./modules/lending/lending.module.js"
 import { ShoppingModule } from "./modules/shopping/shopping.module.js"
 import { FiltersModule } from "./modules/filters/filters.module.js"
 
+const distWebRoot = path.join(process.cwd(), "dist-web")
+const assetsRoot = path.join(distWebRoot, "assets") + path.sep
+const noCacheFiles = new Set([
+  "index.html",
+  "sw.js",
+  "registerSW.js",
+  "manifest.webmanifest",
+])
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
-      rootPath: path.join(process.cwd(), "dist-web"),
+      rootPath: distWebRoot,
+      serveStaticOptions: {
+        setHeaders: (res, filePath) => {
+          if (filePath.startsWith(assetsRoot)) {
+            res.setHeader(
+              "Cache-Control",
+              "public, max-age=31536000, immutable",
+            )
+          } else if (noCacheFiles.has(path.basename(filePath))) {
+            res.setHeader("Cache-Control", "no-cache")
+          }
+        },
+      },
     }),
     LedgerModule,
     AuthModule,

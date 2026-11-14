@@ -33,10 +33,15 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
-import { useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
-import { TransactionDrawer } from "@/components/transaction-drawer"
 import { api, type AuthUser } from "@/lib/api"
+
+const TransactionDrawer = lazy(() =>
+  import("@/components/transaction-drawer").then((module) => ({
+    default: module.TransactionDrawer,
+  })),
+)
 import { clearPersist } from "@/lib/utils"
 import { analyticsPath } from "@/lib/analytics-scope"
 import {
@@ -96,6 +101,11 @@ const titleFor = (pathname: string): [string, string] => {
 
 export function AppShell() {
   const [drawer, setDrawer] = useState(false)
+  const [drawerMounted, setDrawerMounted] = useState(false)
+  const openDrawer = () => {
+    setDrawerMounted(true)
+    setDrawer(true)
+  }
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchValue, setSearchValue] = useState("")
   const screens = Grid.useBreakpoint()
@@ -241,7 +251,7 @@ export function AppShell() {
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
-                  onClick={() => setDrawer(true)}
+                  onClick={openDrawer}
                 >
                   记一笔
                 </Button>
@@ -302,7 +312,7 @@ export function AppShell() {
               icon={<PlusOutlined />}
               className="mobile-add"
               aria-label="记一笔"
-              onClick={() => setDrawer(true)}
+              onClick={openDrawer}
             />
             {mobileNav.slice(3).map((item) => (
               <Button
@@ -339,7 +349,11 @@ export function AppShell() {
           placeholder="例如：午饭、饮品、出差"
         />
       </Modal>
-      <TransactionDrawer open={drawer} onOpenChange={setDrawer} />
+      {drawerMounted && (
+        <Suspense fallback={null}>
+          <TransactionDrawer open={drawer} onOpenChange={setDrawer} />
+        </Suspense>
+      )}
     </Layout>
   )
 }

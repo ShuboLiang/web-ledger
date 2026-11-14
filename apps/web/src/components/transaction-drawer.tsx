@@ -58,6 +58,7 @@ export function TransactionDrawer({
   const { data } = useQuery({
     queryKey: ["dictionaries"],
     queryFn: () => api<Dictionaries>("/api/dictionaries"),
+    enabled: open,
   })
   const categories = data?.categories || []
   const primaryOptions = useMemo(
@@ -90,9 +91,7 @@ export function TransactionDrawer({
     const contacts = accounts.filter((account) => account.isContact).map(option)
     if (
       record?.accountId &&
-      ![...own, ...contacts].some(
-        (entry) => entry.value === record.accountId,
-      )
+      ![...own, ...contacts].some((entry) => entry.value === record.accountId)
     ) {
       own.push({
         value: record.accountId,

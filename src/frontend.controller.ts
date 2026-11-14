@@ -32,6 +32,9 @@ export class FrontendController {
     "more",
   ])
   render(@Res() response: Response) {
-    return response.sendFile(path.join(process.cwd(), "dist-web", "index.html"))
+    return response.sendFile(
+      path.join(process.cwd(), "dist-web", "index.html"),
+      { headers: { "Cache-Control": "no-cache" } },
+    )
   }
 }
